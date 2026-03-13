@@ -64,13 +64,13 @@
   </dialog>
 
   <!-- Modal do Placar Completo -->
-  <dialog id="placarModal" class="rules-modal placar-modal" style="max-height: 85vh; overflow-y: auto;">
-    <div class="rules-content">
-      <h3>🏆 Placar Completo do Modo Desafio</h3>
-      <p style="font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 20px;">
-        Aqui estao as quadras ranqueadas do modo desafio.
-      </p>
-      <div id="fullPlacarList" class="placar-list"></div>
+      <dialog id="placarModal" class="rules-modal placar-modal" style="max-height: 85vh; overflow-y: auto;">
+        <div class="rules-content">
+          <h3>🏆 Top 10 do Modo Desafio</h3>
+          <p style="font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 20px;">
+            Aqui estao as 10 quadras mais bem colocadas no modo desafio.
+          </p>
+          <div id="fullPlacarList" class="placar-list"></div>
       <div style="text-align: center; margin-top: 24px;">
         <button id="closePlacar" class="btn btn-secondary" type="button"
           style="width:100%; justify-content:center;">Voltar ao Jogo</button>
@@ -273,19 +273,18 @@
       </div> <!-- /editor-area -->
 
       <!-- Lado Direito: Placar -->
-      <aside class="ranking-area">
-        <div class="step-header">
-          <h2>🏆 Top 10 do Modo Desafio</h2>
-          <p class="step-desc" style="font-size: 13px;">As 10 melhores quadras produzidas no modo desafio.</p>
-          <button id="btnRefreshPlacar" class="btn btn-ghost"
-            style="margin-top: 5px; font-size: 12px; padding: 4px 8px;">🔄 Atualizar</button>
-        </div>
-        <div id="placarList" class="placar-list">
-          <p style="text-align: center; color: var(--muted); margin-top:20px;">Carregando placar...</p>
-        </div>
-        <button id="btnViewFullPlacar" class="btn btn-primary"
-          style="margin-top: 20px; width: 100%; justify-content: center; display: none;">👀 Ver Placar Completo</button>
-      </aside>
+        <aside class="ranking-area ranking-openable" id="rankingArea" tabindex="0"
+          aria-label="Abrir Top 10 do modo desafio">
+          <div class="step-header">
+            <h2>🏆 Top 3 do Modo Desafio</h2>
+            <p class="step-desc" style="font-size: 13px;">Clique no placar para abrir o Top 10 completo.</p>
+            <button id="btnRefreshPlacar" class="btn btn-ghost"
+              style="margin-top: 5px; font-size: 12px; padding: 4px 8px;">🔄 Atualizar</button>
+          </div>
+          <div id="placarList" class="placar-list">
+            <p style="text-align: center; color: var(--muted); margin-top:20px;">Carregando placar...</p>
+          </div>
+        </aside>
 
     </div> <!-- /game-layout -->
 
