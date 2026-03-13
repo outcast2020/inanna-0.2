@@ -1176,6 +1176,21 @@ select:focus-visible,
   flex-direction: column;
 }
 
+.ranking-openable {
+  cursor: pointer;
+  transition: var(--t);
+}
+
+.ranking-openable:hover {
+  border-color: rgba(249, 115, 22, 0.32);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+}
+
+.ranking-openable:focus-visible {
+  outline: 2px solid rgba(249, 115, 22, 0.85);
+  outline-offset: 4px;
+}
+
 @media (max-width: 900px) {
   .game-layout {
     flex-direction: column;
