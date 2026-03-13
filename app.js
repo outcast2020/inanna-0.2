@@ -1017,12 +1017,11 @@ loadPlacar();
   const cat = document.getElementById("inannaCat");
   const shell = cat ? cat.querySelector(".inanna-cat-shell") : null;
   const sprite = document.getElementById("inannaCatSprite");
-  const focusFrame = document.getElementById("inannaCatFocus");
   const eyes = document.getElementById("inannaCatEyes");
   const bubble = document.getElementById("catSpeechBubble");
   const counter = document.getElementById("petCounter");
   const petSpan = document.getElementById("petCount");
-  if (!footer || !cat || !shell || !sprite || !focusFrame || !eyes) return;
+  if (!footer || !cat || !shell || !sprite || !eyes) return;
 
   const PHRASES = {
     idle: ["Miau...", "Rodape em ordem.", "Fico de olho por aqui."],
@@ -1132,12 +1131,12 @@ loadPlacar();
 
   function updateLook(x, y) {
     const rect = cat.getBoundingClientRect();
-    const anchorX = rect.left + rect.width * 0.34;
-    const anchorY = rect.top + rect.height * 0.39;
-    const dx = clamp((x - anchorX) / 34, -1.5, 1.5);
-    const dy = clamp((y - anchorY) / 42, -1.1, 1.1);
-    shell.style.setProperty("--look-x", `${(dx * 1.55).toFixed(2)}px`);
-    shell.style.setProperty("--look-y", `${(dy * 1.05).toFixed(2)}px`);
+    const anchorX = rect.left + rect.width * 0.28;
+    const anchorY = rect.top + rect.height * 0.38;
+    const dx = clamp((x - anchorX) / 44, -1.05, 1.05);
+    const dy = clamp((y - anchorY) / 52, -0.7, 0.7);
+    shell.style.setProperty("--look-x", `${(dx * 1.1).toFixed(2)}px`);
+    shell.style.setProperty("--look-y", `${(dy * 0.8).toFixed(2)}px`);
   }
 
   function scheduleIdle() {
@@ -1152,26 +1151,26 @@ loadPlacar();
 
   function updateLoop() {
     if (!isCursorNear) {
-      targetX += direction * 0.42;
+      targetX += direction * 0.18;
       if (targetX >= maxX() || targetX <= minX()) {
         direction *= -1;
         targetX = clampX(targetX);
       }
-      cursorX = catX + (direction > 0 ? 70 : -18);
-      cursorY = window.innerHeight - 42;
+      cursorX = catX + (direction > 0 ? 56 : -8);
+      cursorY = window.innerHeight - 46;
     }
 
     const delta = targetX - catX;
-    velocityX = (velocityX * 0.8) + (delta * 0.035);
+    velocityX = (velocityX * 0.88) + (delta * 0.022);
 
-    if (Math.abs(delta) < 0.6 && Math.abs(velocityX) < 0.12) {
+    if (Math.abs(delta) < 0.45 && Math.abs(velocityX) < 0.05) {
       velocityX = 0;
       setWalking(false);
     } else {
       setWalking(true);
     }
 
-    if (Math.abs(velocityX) > 0.02) {
+    if (Math.abs(velocityX) > 0.01) {
       direction = velocityX >= 0 ? 1 : -1;
       setFacing(direction);
       positionCat(catX + velocityX);
@@ -1192,6 +1191,9 @@ loadPlacar();
 
     if (isCursorNear) {
       targetX = clampX(event.clientX - catWidth() * 0.5);
+      if (Math.abs(targetX - catX) < 10) {
+        velocityX *= 0.7;
+      }
       if (!wasCursorNear) {
         showBubble(pickRandom(PHRASES.near), 1400);
       }
