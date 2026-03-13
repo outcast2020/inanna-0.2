@@ -1,0 +1,321 @@
+﻿<!doctype html>
+<html lang="pt-br">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inanna — IA & Cordel</title>
+  <meta name="description"
+    content="Aprenda como a Inteligência Artificial prevê palavras através da cultura popular brasileira. Escreva versos de Cordel e descubra a mágica das probabilidades." />
+  <link rel="icon" type="image/png" href="inanna-app-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Outfit:wght@300;400;600;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="glow-sphere sphere-1"></div>
+  <div class="glow-sphere sphere-2"></div>
+  <div class="glow-sphere sphere-3"></div>
+
+  <!-- Modal de Regras -->
+  <dialog id="rulesModal" class="rules-modal">
+    <div class="rules-content">
+      <h3>🏆 Regras do Modo Desafio</h3>
+      <p style="margin-bottom: 15px;">
+        Ao ativar o <strong>Modo Desafio</strong>, sua pontuação será registrada no banco de dados!
+        <strong style="color:var(--primary)">Somente poemas concluídos no Modo Desafio poderão entrar no Placar em
+          Destaque.</strong>
+      </p>
+      <p style="text-align: left; font-weight: bold; font-size: 15px;">⚡ Pontos por surpreender a IA:</p>
+      <ul style="text-align: left; margin: 6px 25px 16px; font-size: 14px; line-height: 1.7; color: var(--muted);">
+        <li>Você ganha <strong>+1 pt</strong> por verso quando a IA prever opções com <span
+            style="color:var(--accent)">Confiança Baixa (&lt; 42%)</span>.</li>
+        <li>Isso ocorre quando você usa palavras criativas fora do padrão esperado.</li>
+        <li>Máximo de <strong>+4 pts</strong> por quadra (um por verso).</li>
+      </ul>
+      <p style="text-align: left; font-weight: bold; font-size: 15px;">🎶 Pontos de Rima (ao finalizar a quadra):</p>
+      <ul style="text-align: left; margin: 6px 25px 8px; font-size: 13px; line-height: 1.9; color: var(--muted);">
+        <li><strong style="color:#f97316;">🔥 +3 pts</strong> por par — 3 letras finais iguais (rima rica)</li>
+        <li><strong style="color:#a855f7;">✨ +2 pts</strong> por par — 2 letras finais iguais (rima boa)</li>
+        <li><strong style="color:var(--text);">👍 +1 pt</strong> por par — 1 letra final igual (rima leve)</li>
+        <li><strong style="color:#ef4444;">❌ −1 pt</strong> por par — sem rima alguma</li>
+        <li><strong style="color:#22c55e;">✅ Bônus +2</strong> — se todos os pares da quadra rimarem!</li>
+      </ul>
+      <p style="text-align: left; margin: 2px 25px 14px; font-size: 12px; color: var(--muted);">
+        Esquemas reconhecidos: <strong style="color:#f97316;">AABB</strong> (parândo)
+        &nbsp;·&nbsp; <strong style="color:#a855f7;">ABAB</strong> (alternado)
+        &nbsp;·&nbsp; <strong style="color:#06b6d4;">ABBA</strong> (abraçado)
+      </p>
+      <div
+        style="background:rgba(249,115,22,0.08);border-radius:10px;padding:10px 14px;margin-bottom:18px;font-size:13px;color:var(--muted);border-left:3px solid var(--primary);">
+        💡 <strong>Pontuação máxima por quadra: <span style="color:var(--primary);">+12 pts</span></strong><br>
+        4 × IA criativa + 2 pares × 🔥(+3) + bônus +2
+      </div>
+
+      <div style="text-align: center;">
+        <button id="closeRules" class="btn btn-custom" type="button"
+          style="width:100%; justify-content:center;">Entendi, vamos jogar! 🚀</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Modal do Placar Completo -->
+  <dialog id="placarModal" class="rules-modal placar-modal" style="max-height: 85vh; overflow-y: auto;">
+    <div class="rules-content">
+      <h3>🏆 Placar Completo da Inanna</h3>
+      <p style="font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 20px;">
+        Aqui estão todos os maiores criadores de Cordel em destaque!
+      </p>
+      <div id="fullPlacarList" class="placar-list"></div>
+      <div style="text-align: center; margin-top: 24px;">
+        <button id="closePlacar" class="btn btn-secondary" type="button"
+          style="width:100%; justify-content:center;">Voltar ao Jogo</button>
+      </div>
+    </div>
+  </dialog>
+
+  <main class="app">
+
+    <!-- ── CABEÇALHO ─────────────────────────────────────────────── -->
+    <header class="top">
+      <div class="brand">
+        <div class="logo-wrap">
+          <img src="inanna-app-icon.png" alt="Inanna Logo" class="app-icon" />
+        </div>
+        <div class="brand-text">
+          <h1>Inanna <span class="badge">Proto-IA</span></h1>
+          <p class="sub">Aprenda como a IA prevê palavras brincando com versos de Cordel e cultura popular brasileira.
+          </p>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="toggles glass-pill">
+          <label class="mode-toggle">
+            <input id="modeChallenge" type="checkbox" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span class="toggle-label">Modo Desafio <span id="challengeStatus" style="color:var(--primary); font-family:var(--font-mono); font-size:11px;">[ OFF ]</span></span>
+          </label>
+        </div>
+        <div class="metrics-mini">
+          <div class="metric-mini" title="Nível de certeza da previsão"><span
+              id="confidence">—</span><small>Confiança</small></div>
+          <button class="metric-mini highlight metric-trigger" id="challengeScore" type="button" title="Clique para ver as regras do placar"><span id="points">0</span><small>Pts Desafio ℹ️</small></button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── INDICADORES DE PROGRESSO ──────────────────────────────── -->
+    <nav class="steps-bar" aria-label="Progresso do jogo">
+      <div class="step-indicator current" data-step="0">
+        <div class="step-num">0</div>
+        <div class="step-lbl">Identificacao</div>
+      </div>
+      <div class="steps-connector"></div>
+      <div class="step-indicator" data-step="1">
+        <div class="step-num">1</div>
+        <div class="step-lbl">Escolha o Tema</div>
+      </div>
+      <div class="steps-connector"></div>
+      <div class="step-indicator" data-step="2">
+        <div class="step-num">2</div>
+        <div class="step-lbl">Escreva o Verso</div>
+      </div>
+      <div class="steps-connector"></div>
+      <div class="step-indicator" data-step="3">
+        <div class="step-num">3</div>
+        <div class="step-lbl">Complete com IA</div>
+      </div>
+    </nav>
+
+    <!-- ── MENU DIVISÃO LAYOUT ────────────────────────────────────── -->
+    <div class="game-layout">
+      <!-- Lado Esquerdo: Editor -->
+      <div class="editor-area">
+
+        <!-- ── ETAPA 0: IDENTIFICAÇÃO ─────────────────────────────────── -->
+        <section id="step0" class="game-step active" aria-label="Etapa 0 - Identificação">
+          <div class="step-header">
+            <img src="cat_hello_1772756851224.png" alt="Gatinha Roblox Hello" class="cat-roblox" />
+            <h2>👋 Bem-vindo ao Cordel 2.0</h2>
+            <p class="step-desc">Identifique-se para começarmos a criar.</p>
+          </div>
+          <div class="verse-input-area" style="max-width: 400px; margin: 0 auto; gap: 16px;">
+            <label class="field-label" for="playerName">Nome</label>
+            <input type="text" id="playerName" placeholder="Nome" class="input-row"
+              style="width: 100%; padding: 14px 18px; border-radius: var(--r-md); background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.12);" />
+            <label class="field-label" for="playerEmail">Email</label>
+            <input type="email" id="playerEmail" placeholder="Email" class="input-row"
+              style="width: 100%; padding: 14px 18px; border-radius: var(--r-md); background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.12);" />
+            <label class="field-label" for="playerType">Tipo de participante</label>
+            <select id="playerType" class="input-row"
+              style="width: 100%; padding: 14px 18px; border-radius: var(--r-md); background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.12); appearance: none;">
+              <option value="" disabled selected>Selecione seu tipo</option>
+              <option value="Oficina Cordel 2.0" style="color: #000;">Oficina Cordel 2.0</option>
+              <option value="Participante geral" style="color: #000;">Participante geral</option>
+            </select>
+            <button id="btnStart" class="btn btn-primary" style="width: 100%; justify-content: center;">🚀 Iniciar
+              Jogo</button>
+            <p id="startHint" class="verse-hint form-hint" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <!-- ── ETAPA 1: ESCOLHER TEMA ─────────────────────────────────── -->
+        <section id="step1" class="game-step" aria-label="Etapa 1 - Escolha um tema">
+          <div class="step-header">
+            <h2>🎭 Escolha um Contexto</h2>
+            <p class="step-desc">O sistema usará este tema para gerar as previsões, como um modelo de linguagem que
+              aprende
+              padrões de um corpus específico.</p>
+          </div>
+          <div id="themeGrid" class="theme-grid"></div>
+        </section>
+
+        <!-- ── ETAPA 2: ESCREVER VERSO INCOMPLETO ────────────────────── -->
+        <section id="step2" class="game-step" aria-label="Etapa 2 - Escreva um verso incompleto">
+          <div class="step-header">
+            <h2>✍️ Escreva um Verso Incompleto</h2>
+            <p class="step-desc">
+              Tema selecionado: <strong id="selectedThemeName">—</strong>
+            </p>
+            <p class="step-desc">
+              Use <code>___</code> (três underlines) para marcar onde a IA deve completar. Exemplo:
+              <em>"No sertão eu vi uma ___"</em> ou <em>"A caatinga tem o estrondo do ___"</em>
+            </p>
+          </div>
+
+          <!-- Progresso da quadra -->
+          <div id="history" class="history-inline"></div>
+
+          <div id="schemeHint" class="scheme-hint" style="background: rgba(249,115,22,0.1); color: var(--primary); padding: 8px 12px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; border: 1px solid rgba(249,115,22,0.3); font-size: 13px;">
+             💡 Esquema sugerido: <span id="suggestedScheme">Livre</span>
+          </div>
+
+          <div class="verse-input-area">
+            <label class="field-label" for="verseInput">Verso com lacuna <code>___</code></label>
+            <div class="input-row">
+              <input id="verseInput" type="text" maxlength="160" placeholder='Ex.: No São João eu vi a ___'
+                autocomplete="off" />
+              <button id="btnAnalyze" class="btn btn-primary" type="button">
+                🔮 Prever
+              </button>
+            </div>
+            <p id="verseHint" class="verse-hint">Use ___ para indicar a lacuna que a IA vai completar.</p>
+          </div>
+        </section>
+
+        <!-- ── ETAPA 3: VER PREVISÕES E COMPLETAR ────────────────────── -->
+        <section id="step3" class="game-step" aria-label="Etapa 3 - Complete o verso">
+          <div class="step-header">
+            <img src="cat_magic_1772756905944.png" alt="Gatinha Roblox Pensando" class="cat-roblox" />
+            <h2>🤖 Previsões da Proto-IA</h2>
+            <p class="step-desc">Escolha uma das previsões abaixo <strong>ou</strong> invente sua própria palavra para
+              completar o verso.</p>
+          </div>
+
+          <!-- Verso com lacuna -->
+          <div class="verse-preview-box">
+            <div class="verse-preview-label">Seu verso:</div>
+            <div id="versePreview" class="verse-preview-text"></div>
+            <div class="context-tag">Contexto detectado: <span id="contextDetected">—</span></div>
+          </div>
+
+          <div class="predictions-grid">
+
+            <!-- Coluna Esquerda: Botões de seleção -->
+            <div class="pred-column">
+              <h3 class="col-title">🎯 Top 4 Opções da IA</h3>
+              <div id="predList" class="predList"></div>
+
+              <div class="custom-divider"><span>ou crie a sua própria</span></div>
+
+              <div class="custom-input-row">
+                <input id="customInput" type="text" placeholder='Digite sua palavra aqui...' maxlength="40" />
+                <button id="btnCustom" class="btn btn-custom" type="button">✍️ Usar</button>
+              </div>
+            </div>
+
+            <!-- Coluna Direita: Probabilidades e explicação -->
+            <div class="pred-column">
+              <h3 class="col-title">📊 Por dentro do Algoritmo</h3>
+              <div id="bars" class="bars"></div>
+              <div id="explainBox" class="explain-text"></div>
+            </div>
+          </div>
+
+          <div class="step3-actions">
+            <button id="btnBack" class="btn btn-ghost" type="button">← Reescrever o verso</button>
+          </div>
+        </section>
+
+        <!-- ── SEÇÃO DO POEMA COMPLETO ────────────────────────────────── -->
+        <section id="poemSection" class="poem-section" aria-label="Quadra completa">
+          <div class="poem-header">
+            <img src="cat_happy_1772756975631.png" alt="Gatinha Roblox Comemorando" class="cat-roblox" />
+            <div class="poem-trophy">🏆</div>
+            <h2>Sua Quadra está pronta!</h2>
+            <p>Você criou 4 versos com ajuda da Proto-IA. Veja como ficou:</p>
+          </div>
+          <pre id="quadra" class="quadra"></pre>
+          <div id="currentLine" class="sr-only"></div>
+          <div class="poem-actions">
+            <button id="copyQuadra" class="btn btn-secondary" type="button">📋 Copiar Quadra</button>
+            <button id="btnSubmitPoem" class="btn btn-custom" type="button">🚀 Enviar Verso</button>
+            <button id="btnNewPoem" class="btn btn-primary" type="button">🔄 Novo Poema</button>
+          </div>
+          <p id="submitResponse" style="text-align:center; display:none; margin-top:10px; font-weight: bold;"></p>
+        </section>
+
+      </div> <!-- /editor-area -->
+
+      <!-- Lado Direito: Placar -->
+      <aside class="ranking-area">
+        <div class="step-header">
+          <h2>🏆 Top 10 Destaques</h2>
+          <p class="step-desc" style="font-size: 13px;">Os melhores versos até agora!</p>
+          <button id="btnRefreshPlacar" class="btn btn-ghost"
+            style="margin-top: 5px; font-size: 12px; padding: 4px 8px;">🔄 Atualizar</button>
+        </div>
+        <div id="placarList" class="placar-list">
+          <p style="text-align: center; color: var(--muted); margin-top:20px;">Carregando placar...</p>
+        </div>
+        <button id="btnViewFullPlacar" class="btn btn-primary"
+          style="margin-top: 20px; width: 100%; justify-content: center; display: none;">👀 Ver Placar Completo</button>
+      </aside>
+
+    </div> <!-- /game-layout -->
+
+    <footer class="foot">
+  <div class="foot-content">
+    <span>Inanna e Cordel 2.0 by Celeste Farias e Carlos Vidal é protegido por direitos de autor sob CC BY-ND 4.0</span>
+    <a href="https://www.cordel2pontozero.com/laboratorio" target="_blank" title="Visite o Laboratório Cordel 2.0" class="cordel-logo-link">
+      <img src="CORDEL%202.0%20SEM%20FUNDO.png" alt="Projeto Cordel 2.0" class="cordel-logo" />
+    </a>
+  </div>
+
+  <div class="inanna-footer" id="inannaFooter">
+    <div class="inanna-track" aria-hidden="true"></div>
+    <div class="cat-speech-bubble" id="catSpeechBubble" hidden></div>
+    <div class="pet-counter" id="petCounter" hidden>+<span id="petCount">0</span></div>
+    <button id="inannaCat" class="inanna-cat-button" type="button" aria-label="Interagir com a gata Inanna">
+      <span class="inanna-shadow" aria-hidden="true"></span>
+      <span class="inanna-cat-shell" aria-hidden="true">
+        <img src="cat_step_1.png" id="inannaCatFrameA" class="inanna-cat-frame is-active" alt="" />
+        <img src="cat_step_2.png" id="inannaCatFrameB" class="inanna-cat-frame" alt="" />
+        <img src="cat_siamese_walk.png" id="inannaCatFocus" class="inanna-cat-focus" alt="" />
+      </span>
+    </button>
+  </div>
+</footer>
+  </main>
+
+  <script src="cordel_rhyme_bank.js"></script>
+  <script src="prediction_engine_v2.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
