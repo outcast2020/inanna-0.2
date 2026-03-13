@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="pt-br">
 
 <head>
@@ -66,9 +66,9 @@
   <!-- Modal do Placar Completo -->
   <dialog id="placarModal" class="rules-modal placar-modal" style="max-height: 85vh; overflow-y: auto;">
     <div class="rules-content">
-      <h3>🏆 Placar Completo da Inanna</h3>
+      <h3>🏆 Placar Completo do Modo Desafio</h3>
       <p style="font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 20px;">
-        Aqui estão todos os maiores criadores de Cordel em destaque!
+        Aqui estao as quadras ranqueadas do modo desafio.
       </p>
       <div id="fullPlacarList" class="placar-list"></div>
       <div style="text-align: center; margin-top: 24px;">
@@ -275,8 +275,8 @@
       <!-- Lado Direito: Placar -->
       <aside class="ranking-area">
         <div class="step-header">
-          <h2>🏆 Top 10 Destaques</h2>
-          <p class="step-desc" style="font-size: 13px;">Os melhores versos até agora!</p>
+          <h2>🏆 Top 10 do Modo Desafio</h2>
+          <p class="step-desc" style="font-size: 13px;">As 10 melhores quadras produzidas no modo desafio.</p>
           <button id="btnRefreshPlacar" class="btn btn-ghost"
             style="margin-top: 5px; font-size: 12px; padding: 4px 8px;">🔄 Atualizar</button>
         </div>
@@ -304,9 +304,8 @@
     <button id="inannaCat" class="inanna-cat-button" type="button" aria-label="Interagir com a gata Inanna">
       <span class="inanna-shadow" aria-hidden="true"></span>
       <span class="inanna-cat-shell" aria-hidden="true">
-        <img src="cat_step_1.png" id="inannaCatFrameA" class="inanna-cat-frame is-active" alt="" />
-        <img src="cat_step_2.png" id="inannaCatFrameB" class="inanna-cat-frame" alt="" />
-        <img src="cat_siamese_walk.png" id="inannaCatFocus" class="inanna-cat-focus" alt="" />
+        <span id="inannaCatSprite" class="inanna-cat-sprite"></span>
+        <span id="inannaCatEyes" class="inanna-cat-eyes"></span>
       </span>
     </button>
   </div>
