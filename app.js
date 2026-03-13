@@ -1,4 +1,4 @@
-﻿// =====================================================================
+// =====================================================================
 // Inanna — Proto-IA Educativa (Cordel 2.0)
 // Novo fluxo de jogo:
 //  ETAPA 1: Usuário escolhe um contexto (tema)
@@ -96,8 +96,8 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxnB1kg0al9Dj79GTws
 // Caso a planilha não esteja conectada, o administrador pode adicionar 
 // ganhadores diretamente neste Array abaixo, colar Posicao, Nome, Pontos e Verso.
 const PLACAR_LIBRARY = [
-  { posicao: "1º", autor: "Celinho da Paraíba", pontos: 12, verso: "No sertão eu vi a poeira\nPlantar um sonho acordado\nSeco e quente meu roçado\nCantar a minha canseira" },
-  { posicao: "2º", autor: "Maria Bonita", pontos: 9, verso: "A fogueira incendeia o salão\nPara pular minha festança\nColorido passo de dança\nNo compasso do baião" }
+  { posicao: "1º", autor: "Celinho da Paraíba", pontos: 12, timestamp: "2026-03-12T20:15:00.000Z", verso: "No sertão eu vi a poeira\nPlantar um sonho acordado\nSeco e quente meu roçado\nCantar a minha canseira" },
+  { posicao: "2º", autor: "Maria Bonita", pontos: 9, timestamp: "2026-03-12T19:40:00.000Z", verso: "A fogueira incendeia o salão\nPara pular minha festança\nColorido passo de dança\nNo compasso do baião" }
 ];
 
 // ── Temas / Contextos ────────────────────────────────────────────────
@@ -794,11 +794,18 @@ function renderPlacarItems(data) {
     return;
   }
 
-  // Ordenar o data pelo número de pontos (descendente) para automatizar o ranqueamento
+  function toTimestamp(value) {
+    if (!value) return 0;
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  // Ordenar por pontos; em empate, vence o registro mais recente.
   const sortedData = [...data].sort((a, b) => {
     const ptsA = typeof a.pontos === "number" ? a.pontos : parseInt(a.pontos, 10) || 0;
     const ptsB = typeof b.pontos === "number" ? b.pontos : parseInt(b.pontos, 10) || 0;
-    return ptsB - ptsA;
+    if (ptsB !== ptsA) return ptsB - ptsA;
+    return toTimestamp(b.timestamp) - toTimestamp(a.timestamp);
   });
 
   // Reindexar posições baseadas nos pontos
@@ -816,12 +823,12 @@ function renderPlacarItems(data) {
   const populateList = (list, container) => {
     container.innerHTML = "";
     list.forEach((item, i) => {
-      const medal = i===0 ? "🥇" : i===1 ? "🥈" : i===2 ? "🥉" : "🏅";
+      const medal = i === 0 ? "🥇 " : i === 1 ? "🥈 " : i === 2 ? "🥉 " : "";
       const div = document.createElement("div");
       div.className = "placar-item";
       div.innerHTML = `
         <div class="placar-header" style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="placar-pos" style="font-size:15px; font-weight:bold;">${medal} ${i+1}º</span>
+          <span class="placar-pos" style="font-size:15px; font-weight:bold;">${medal}${i + 1}º</span>
           <span class="placar-pontos" style="font-size:11px; font-weight:800; background:rgba(249,115,22,0.15); color:var(--primary); padding:2px 8px; border-radius:99px;">${item.pontos ? item.pontos + ' pts' : '0 pts'}</span>
         </div>
         <div class="placar-autor" style="font-weight:600; margin-top:4px;">${escapeHtml(item.autor)}</div>
@@ -1003,47 +1010,51 @@ loadPlacar();
 
 
 // =====================================================================
-// Inanna Cat - interactive footer companion
+// Inanna Cat - lightweight footer sprite companion
 // =====================================================================
 (function () {
   const footer = document.getElementById("inannaFooter");
   const cat = document.getElementById("inannaCat");
   const shell = cat ? cat.querySelector(".inanna-cat-shell") : null;
-  const frameA = document.getElementById("inannaCatFrameA");
-  const frameB = document.getElementById("inannaCatFrameB");
+  const sprite = document.getElementById("inannaCatSprite");
   const focusFrame = document.getElementById("inannaCatFocus");
+  const eyes = document.getElementById("inannaCatEyes");
   const bubble = document.getElementById("catSpeechBubble");
   const counter = document.getElementById("petCounter");
   const petSpan = document.getElementById("petCount");
-  if (!footer || !cat || !shell || !frameA || !frameB || !focusFrame) return;
+  if (!footer || !cat || !shell || !sprite || !focusFrame || !eyes) return;
 
-  const frames = [frameA, frameB];
   const PHRASES = {
-    idle: ["Miau...", "Ronrom.", "Aqui embaixo esta gostoso.", "Estou de plantao no rodape."],
-    near: ["Oi, eu vi seu cursor.", "Chegue mais perto.", "Posso acompanhar?", "Que bom te ver."],
+    idle: ["Miau...", "Rodape em ordem.", "Fico de olho por aqui."],
+    near: ["Oi, vi seu cursor.", "Posso acompanhar?", "Chegue mais perto."],
     petted: ["Purrrr!", "Carinho aceito.", "Gostei disso.", "Mais um afago."],
-    patrol: ["Passeando pelo app.", "Vigiando a quadra.", "Rodape com classe."]
+    patrol: ["Passeando pelo app.", "Vigiando as quadras.", "Modo desafio na mira."]
   };
 
   let catX = 24;
   let targetX = 24;
+  let velocityX = 0;
   let direction = 1;
   let petCount = 0;
   let bubbleTimer = null;
   let idleTimer = null;
-  let frameTimer = null;
   let rafId = null;
-  let activeFrame = 0;
   let isCursorNear = false;
   let wasCursorNear = false;
   let isWalking = true;
+  let cursorX = window.innerWidth * 0.5;
+  let cursorY = window.innerHeight;
 
   function pickRandom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
   function catWidth() {
-    return cat.offsetWidth || 132;
+    return cat.offsetWidth || 92;
   }
 
   function minX() {
@@ -1055,7 +1066,7 @@ loadPlacar();
   }
 
   function clampX(x) {
-    return Math.max(minX(), Math.min(maxX(), x));
+    return clamp(x, minX(), maxX());
   }
 
   function setFacing(nextDirection) {
@@ -1069,16 +1080,9 @@ loadPlacar();
     cat.classList.toggle("is-alert", mode === "alert");
   }
 
-  function activateFrame(index) {
-    activeFrame = index;
-    frames.forEach((frame, frameIndex) => {
-      frame.classList.toggle("is-active", frameIndex === index);
-    });
-  }
-
   function moveDecor() {
-    const bubbleX = clampX(catX - 6);
-    const counterX = clampX(catX + 16);
+    const bubbleX = clampX(catX - 4);
+    const counterX = clampX(catX + 12);
     if (bubble) bubble.style.left = `${bubbleX}px`;
     if (counter) counter.style.left = `${counterX}px`;
   }
@@ -1123,56 +1127,74 @@ loadPlacar();
       setMode("walking");
     } else {
       setMode(isCursorNear ? "alert" : "idle");
-      activateFrame(0);
     }
+  }
+
+  function updateLook(x, y) {
+    const rect = cat.getBoundingClientRect();
+    const anchorX = rect.left + rect.width * 0.34;
+    const anchorY = rect.top + rect.height * 0.39;
+    const dx = clamp((x - anchorX) / 34, -1.5, 1.5);
+    const dy = clamp((y - anchorY) / 42, -1.1, 1.1);
+    shell.style.setProperty("--look-x", `${(dx * 1.55).toFixed(2)}px`);
+    shell.style.setProperty("--look-y", `${(dy * 1.05).toFixed(2)}px`);
   }
 
   function scheduleIdle() {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       if (!isCursorNear) {
-        showBubble(pickRandom(Math.random() < 0.45 ? PHRASES.idle : PHRASES.patrol), 1800);
+        showBubble(pickRandom(Math.random() < 0.5 ? PHRASES.idle : PHRASES.patrol), 1600);
       }
       scheduleIdle();
-    }, 4200 + Math.random() * 2600);
+    }, 4600 + Math.random() * 3200);
   }
 
   function updateLoop() {
     if (!isCursorNear) {
-      targetX += direction * 1.1;
+      targetX += direction * 0.42;
       if (targetX >= maxX() || targetX <= minX()) {
         direction *= -1;
         targetX = clampX(targetX);
       }
+      cursorX = catX + (direction > 0 ? 70 : -18);
+      cursorY = window.innerHeight - 42;
     }
 
     const delta = targetX - catX;
-    if (Math.abs(delta) > 1.4) {
-      setWalking(true);
-      setFacing(delta);
-      positionCat(catX + delta * 0.08);
-    } else {
+    velocityX = (velocityX * 0.8) + (delta * 0.035);
+
+    if (Math.abs(delta) < 0.6 && Math.abs(velocityX) < 0.12) {
+      velocityX = 0;
       setWalking(false);
+    } else {
+      setWalking(true);
+    }
+
+    if (Math.abs(velocityX) > 0.02) {
+      direction = velocityX >= 0 ? 1 : -1;
+      setFacing(direction);
+      positionCat(catX + velocityX);
+    } else {
       setFacing(direction);
     }
 
+    updateLook(cursorX, cursorY);
     rafId = requestAnimationFrame(updateLoop);
   }
 
   function onPointerMove(event) {
-    const inFooterZone = event.clientY >= window.innerHeight - 210;
+    cursorX = event.clientX;
+    cursorY = event.clientY;
+    const inFooterZone = event.clientY >= window.innerHeight - 190;
     wasCursorNear = isCursorNear;
     isCursorNear = inFooterZone;
 
     if (isCursorNear) {
       targetX = clampX(event.clientX - catWidth() * 0.5);
-      direction = targetX >= catX ? 1 : -1;
-      setMode(Math.abs(targetX - catX) > 10 ? "walking" : "alert");
       if (!wasCursorNear) {
-        showBubble(pickRandom(PHRASES.near), 1500);
+        showBubble(pickRandom(PHRASES.near), 1400);
       }
-    } else if (wasCursorNear) {
-      setMode(isWalking ? "walking" : "idle");
     }
   }
 
@@ -1183,25 +1205,22 @@ loadPlacar();
 
   function onPet() {
     petCount += 1;
+    velocityX = 0;
+    targetX = catX;
     cat.classList.add("is-petting", "is-alert");
     setWalking(false);
     showBubble(pickRandom(PHRASES.petted), 1700);
     flashCounter();
     setTimeout(() => {
       cat.classList.remove("is-petting");
-      setMode(isCursorNear ? "alert" : (isWalking ? "walking" : "idle"));
+      setMode(isCursorNear ? "alert" : "idle");
     }, 260);
   }
-
-  frameTimer = setInterval(() => {
-    if (!isWalking || cat.classList.contains("is-alert")) return;
-    activateFrame(activeFrame === 0 ? 1 : 0);
-  }, 170);
 
   window.addEventListener("mousemove", onPointerMove);
   window.addEventListener("resize", onResize);
   cat.addEventListener("click", onPet);
-  cat.addEventListener("mouseenter", () => showBubble(pickRandom(PHRASES.near), 1200));
+  cat.addEventListener("mouseenter", () => showBubble(pickRandom(PHRASES.near), 1100));
   cat.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -1210,12 +1229,12 @@ loadPlacar();
   });
 
   positionCat(catX);
-  activateFrame(0);
+  setFacing(direction);
   setMode("walking");
   scheduleIdle();
   rafId = requestAnimationFrame(updateLoop);
 
   setTimeout(() => {
-    showBubble("Ola, eu sou a Inanna.", 2200);
-  }, 1400);
+    showBubble("Ola, eu sou a Inanna.", 2000);
+  }, 1200);
 })();
