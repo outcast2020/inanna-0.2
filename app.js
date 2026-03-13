@@ -28,6 +28,7 @@ const ui = {
   submitResponse: $("submitResponse"),
   placarList: $("placarList"),
   btnRefreshPlacar: $("btnRefreshPlacar"),
+  rankingArea: $("rankingArea"),
 
   // rules modal
   rulesModal: $("rulesModal"),
@@ -37,7 +38,6 @@ const ui = {
   // placar modal
   placarModal: $("placarModal"),
   closePlacar: $("closePlacar"),
-  btnViewFullPlacar: $("btnViewFullPlacar"),
   fullPlacarList: $("fullPlacarList"),
 
   // etapa 1
@@ -790,7 +790,6 @@ function renderPlacarItems(data) {
   if (!data || data.length === 0) {
     ui.placarList.innerHTML = "<p style='text-align: center; color: var(--muted); margin-top:20px;'>Ainda não há destaques.</p>";
     if (ui.fullPlacarList) ui.fullPlacarList.innerHTML = "<p style='text-align: center; color: var(--muted); margin-top:20px;'>Ainda não há destaques.</p>";
-    if (ui.btnViewFullPlacar) ui.btnViewFullPlacar.style.display = "none";
     return;
   }
 
@@ -813,12 +812,8 @@ function renderPlacarItems(data) {
     item.posicao = (index + 1) + "º";
   });
 
-  // Exibir o botão se houver mais de 3 itens
-  if (ui.btnViewFullPlacar) {
-    ui.btnViewFullPlacar.style.display = sortedData.length > 10 ? "flex" : "none";
-  }
-
   const top10 = sortedData.slice(0, 10);
+  const top3 = top10.slice(0, 3);
 
   const populateList = (list, container) => {
     container.innerHTML = "";
@@ -838,8 +833,8 @@ function renderPlacarItems(data) {
     });
   };
 
-  populateList(top10, ui.placarList);
-  if (ui.fullPlacarList) populateList(sortedData, ui.fullPlacarList);
+  populateList(top3, ui.placarList);
+  if (ui.fullPlacarList) populateList(top10, ui.fullPlacarList);
 }
 
 function loadPlacar() {
@@ -986,10 +981,22 @@ if (ui.closeRules && ui.rulesModal) {
   });
 }
 
-// Modal Placar Completo
-if (ui.btnViewFullPlacar && ui.placarModal) {
-  ui.btnViewFullPlacar.addEventListener("click", () => {
-    ui.placarModal.showModal();
+// Modal Placar Top 10
+function openPlacarModal() {
+  if (ui.placarModal) ui.placarModal.showModal();
+}
+
+if (ui.rankingArea && ui.placarModal) {
+  ui.rankingArea.addEventListener("click", (event) => {
+    if (event.target.closest("button")) return;
+    openPlacarModal();
+  });
+  ui.rankingArea.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      if (event.target.closest("button")) return;
+      event.preventDefault();
+      openPlacarModal();
+    }
   });
 }
 if (ui.closePlacar && ui.placarModal) {
