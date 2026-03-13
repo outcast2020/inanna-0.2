@@ -1382,8 +1382,7 @@ select:focus-visible,
   transform: scaleX(var(--cat-facing));
 }
 
-.inanna-cat-sprite,
-.inanna-cat-focus {
+.inanna-cat-sprite {
   position: absolute;
   inset: auto 0 0;
   width: 100%;
@@ -1401,25 +1400,15 @@ select:focus-visible,
   transition: opacity 0.12s ease;
 }
 
-.inanna-cat-focus {
-  background-image: url("inanna_footer_focus.png");
-  background-repeat: no-repeat;
-  background-size: contain;
-  background-position: center bottom;
-  opacity: 0;
-  transform: translateY(1px) scale(0.98);
-  transition: opacity 0.16s ease, transform 0.16s ease;
-}
-
 .inanna-cat-eyes {
   position: absolute;
-  left: 11px;
-  bottom: 34px;
-  width: 18px;
+  left: 12px;
+  bottom: 32px;
+  width: 16px;
   height: 8px;
-  opacity: 0.92;
+  opacity: 0.68;
   transform: translate(var(--look-x), var(--look-y));
-  transition: transform 0.08s linear, opacity 0.12s ease;
+  transition: transform 0.1s ease-out, opacity 0.16s ease;
 }
 
 .inanna-cat-eyes::before,
@@ -1442,17 +1431,8 @@ select:focus-visible,
   right: 2px;
 }
 
-.inanna-cat-button.is-alert .inanna-cat-sprite {
-  opacity: 0;
-}
-
-.inanna-cat-button.is-alert .inanna-cat-focus {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-
 .inanna-cat-button.is-alert .inanna-cat-eyes {
-  opacity: 1;
+  opacity: 0.9;
 }
 
 .inanna-cat-button.is-idle .inanna-cat-shell {
@@ -1460,11 +1440,11 @@ select:focus-visible,
 }
 
 .inanna-cat-button.is-walking .inanna-cat-shell {
-  animation: catStride 0.46s ease-in-out infinite;
+  animation: catStride 0.74s ease-in-out infinite;
 }
 
 .inanna-cat-button.is-walking .inanna-cat-sprite {
-  animation: inannaSprite 0.46s steps(2) infinite;
+  animation: inannaSprite 0.74s steps(2) infinite;
 }
 
 .inanna-cat-button.is-idle .inanna-cat-sprite,
@@ -1569,7 +1549,7 @@ select:focus-visible,
   }
 
   50% {
-    transform: scaleX(var(--cat-facing)) translateY(-3px) rotate(-1.2deg);
+    transform: scaleX(var(--cat-facing)) translateY(-1.4px) rotate(-0.45deg);
   }
 }
 
@@ -1604,7 +1584,6 @@ select:focus-visible,
   .inanna-cat-button,
   .inanna-cat-shell,
   .inanna-cat-sprite,
-  .inanna-cat-focus,
   .inanna-cat-eyes,
   .cat-speech-bubble,
   .pet-counter {
