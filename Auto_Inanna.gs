@@ -197,9 +197,6 @@ function atualizarPlacar(ss, mainSheet) {
 
   records.sort(function (a, b) {
     if (b.pontos !== a.pontos) return b.pontos - a.pontos;
-    if (b.pontosRima !== a.pontosRima) return b.pontosRima - a.pontosRima;
-    if (b.pontosCriatividade !== a.pontosCriatividade) return b.pontosCriatividade - a.pontosCriatividade;
-    if (b.pontosForma !== a.pontosForma) return b.pontosForma - a.pontosForma;
     return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
   });
 

@@ -1100,15 +1100,6 @@ function renderPlacarItems(data) {
     const ptsA = typeof a.pontos === "number" ? a.pontos : parseInt(a.pontos, 10) || 0;
     const ptsB = typeof b.pontos === "number" ? b.pontos : parseInt(b.pontos, 10) || 0;
     if (ptsB !== ptsA) return ptsB - ptsA;
-    const rhymeA = typeof a.pontosRima === "number" ? a.pontosRima : parseInt(a.pontosRima, 10) || 0;
-    const rhymeB = typeof b.pontosRima === "number" ? b.pontosRima : parseInt(b.pontosRima, 10) || 0;
-    if (rhymeB !== rhymeA) return rhymeB - rhymeA;
-    const creativeA = typeof a.pontosCriatividade === "number" ? a.pontosCriatividade : parseInt(a.pontosCriatividade, 10) || 0;
-    const creativeB = typeof b.pontosCriatividade === "number" ? b.pontosCriatividade : parseInt(b.pontosCriatividade, 10) || 0;
-    if (creativeB !== creativeA) return creativeB - creativeA;
-    const formA = typeof a.pontosForma === "number" ? a.pontosForma : parseInt(a.pontosForma, 10) || 0;
-    const formB = typeof b.pontosForma === "number" ? b.pontosForma : parseInt(b.pontosForma, 10) || 0;
-    if (formB !== formA) return formB - formA;
     return toTimestamp(b.timestamp) - toTimestamp(a.timestamp);
   });
 
@@ -1216,6 +1207,7 @@ ui.btnSubmitPoem.addEventListener("click", () => {
       ui.submitResponse.style.color = "var(--accent)";
       ui.submitResponse.textContent = "✅ Quadra enviada para a planilha!";
       ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
+      loadPlacar();
     }).catch((err) => {
       console.error(err);
       ui.submitResponse.style.color = "var(--danger)";
