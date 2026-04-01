@@ -162,6 +162,8 @@ function registrarVerso(e) {
       atualizarPlacar(ss, sheet);
     }
 
+    garantirTriggersDoPlacar_();
+
     return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
@@ -200,6 +202,8 @@ function atualizarPlacar(ss, mainSheet) {
     return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
   });
 
+  var rankedRecords = records.slice(0, 10);
+
   var placarSheet = ss.getSheetByName("placar");
   if (!placarSheet) {
     placarSheet = ss.insertSheet("placar");
@@ -209,17 +213,17 @@ function atualizarPlacar(ss, mainSheet) {
   placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema", "Timestamp"]);
   placarSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#fff2cc");
 
-  for (var j = 0; j < records.length; j++) {
+  for (var j = 0; j < rankedRecords.length; j++) {
     placarSheet.appendRow([
       (j + 1) + "º",
-      records[j].autor,
-      records[j].verso,
-      records[j].pontos,
-      records[j].pontosRima,
-      records[j].pontosForma,
-      records[j].pontosCriatividade,
-      records[j].bonusEsquema,
-      records[j].timestamp
+      rankedRecords[j].autor,
+      rankedRecords[j].verso,
+      rankedRecords[j].pontos,
+      rankedRecords[j].pontosRima,
+      rankedRecords[j].pontosForma,
+      rankedRecords[j].pontosCriatividade,
+      rankedRecords[j].bonusEsquema,
+      rankedRecords[j].timestamp
     ]);
   }
 }
@@ -229,6 +233,8 @@ function doGet(e) {
     if (e.parameter.action === "getPlacar") {
       var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
       var ss = SpreadsheetApp.openById(sheetId);
+      var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+      atualizarPlacar(ss, formSheet);
       var sheet = ss.getSheetByName("placar");
 
       if (!sheet) {
@@ -289,6 +295,7 @@ function setupInicial() {
     placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema", "Timestamp"]);
     placarSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#fff2cc");
   }
+  garantirTriggersDoPlacar_();
 
   Logger.log("Configuração concluída! Suas abas 'Página1' e 'placar' estão prontas.");
 }
@@ -298,7 +305,80 @@ function reconstruirPlacar() {
   var ss = SpreadsheetApp.openById(sheetId);
   var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
   atualizarPlacar(ss, formSheet);
+  garantirTriggersDoPlacar_();
   Logger.log("Placar reconstruído com a nova regra de pontuação.");
+}
+
+function sincronizarPlacar_() {
+  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+  var ss = SpreadsheetApp.openById(sheetId);
+  var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+  atualizarPlacar(ss, formSheet);
+}
+
+function aoNovoRegistroAtualizarPlacar(e) {
+  sincronizarPlacar_();
+}
+
+function aoEditarRegistroAtualizarPlacar(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  if (!sheet || sheet.getName() !== "Página1") return;
+  if (e.range.getRow() <= 1) return;
+  if (e.range.getColumn() > 12) return;
+  sincronizarPlacar_();
+}
+
+function limparTriggersDoPlacar() {
+  var handlers = {
+    aoNovoRegistroAtualizarPlacar: true,
+    aoEditarRegistroAtualizarPlacar: true
+  };
+
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    var handler = trigger.getHandlerFunction();
+    if (handlers[handler]) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
+
+function garantirTriggersDoPlacar_() {
+  var requiredHandlers = {
+    aoNovoRegistroAtualizarPlacar: false,
+    aoEditarRegistroAtualizarPlacar: false
+  };
+
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    var handler = trigger.getHandlerFunction();
+    if (Object.prototype.hasOwnProperty.call(requiredHandlers, handler)) {
+      requiredHandlers[handler] = true;
+    }
+  });
+
+  if (requiredHandlers.aoNovoRegistroAtualizarPlacar && requiredHandlers.aoEditarRegistroAtualizarPlacar) {
+    return false;
+  }
+
+  instalarTriggersDoPlacar();
+  return true;
+}
+
+function instalarTriggersDoPlacar() {
+  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+  limparTriggersDoPlacar();
+
+  ScriptApp.newTrigger("aoNovoRegistroAtualizarPlacar")
+    .forSpreadsheet(sheetId)
+    .onFormSubmit()
+    .create();
+
+  ScriptApp.newTrigger("aoEditarRegistroAtualizarPlacar")
+    .forSpreadsheet(sheetId)
+    .onEdit()
+    .create();
+
+  Logger.log("Triggers do placar instalados com sucesso.");
 }
 
 function buildBackupTimestamp_() {
@@ -366,5 +446,6 @@ function resetPlacarERegistrosComBackup() {
     "#fff2cc"
   );
 
+  garantirTriggersDoPlacar_();
   Logger.log("Reset concluído com backup. Abas criadas: " + backups.filter(function(name) { return !!name; }).join(", "));
 }

@@ -104,7 +104,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxnB1kg0al9Dj79GTwsvvhrNSAK4rFnUPyfRgV8pU_pOUkSrl0z9wlDwXR37ELHKaZC/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzs8Ed2Y42NaPIviqVN7eVsLyIcANZ641sM-KEx7OtUkkoZTEC_1l13hIqMHyPCvxMM/exec";
 
 // ── Banco de Curadoria Local (Fallback/Library Pré-Programado) ────────
 // Caso a planilha não esteja conectada, o administrador pode adicionar 
