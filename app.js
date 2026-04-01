@@ -918,12 +918,63 @@ ui.btnSubmitPoem.addEventListener("click", () => {
 });
 
 // ── Copiar quadra ─────────────────────────────────────────────────────
-function onCopyQuadra() {
+function fallbackCopyText(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch (error) {
+    copied = false;
+  }
+
+  document.body.removeChild(textarea);
+  return copied;
+}
+
+function showCopyFeedback(label, disabledFor) {
+  if (!ui.copyQuadra) return;
+  const originalLabel = ui.copyQuadra.dataset.originalLabel || ui.copyQuadra.textContent;
+  ui.copyQuadra.dataset.originalLabel = originalLabel;
+  ui.copyQuadra.textContent = label;
+  ui.copyQuadra.disabled = true;
+
+  window.setTimeout(() => {
+    ui.copyQuadra.textContent = originalLabel;
+    ui.copyQuadra.disabled = false;
+  }, disabledFor || 1500);
+}
+
+async function onCopyQuadra() {
   const text = (ui.quadra.textContent || "").trim();
-  if (!text) return;
-  navigator.clipboard?.writeText(text).then(() => {
+  if (!text) {
+    setExplain("Escreva a quadra antes de copiar.");
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const copied = fallbackCopyText(text);
+      if (!copied) throw new Error("Clipboard fallback falhou");
+    }
+
     setExplain("📋 Quadra copiada para a área de transferência!");
-  });
+    showCopyFeedback("✅ Copiado!", 1400);
+  } catch (error) {
+    console.error(error);
+    setExplain("❌ Não foi possível copiar automaticamente.");
+    showCopyFeedback("❌ Falhou", 1600);
+  }
 }
 
 // ── Novo poema / reiniciar ────────────────────────────────────────────
