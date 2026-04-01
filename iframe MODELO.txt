@@ -303,17 +303,14 @@
       <div class="cordel2-verso">
         No folheto da memória,<br>
         mia o verso em criação;<br>
-        gata siamesa e palavra<br>
+        gata sialata e palavra<br>
         seguem na mesma canção;<br>
         Inanna abre o caminho<br>
         pra brincar com a invenção.
       </div>
 
       <div class="cordel2-cat-tag">
-        <svg viewBox="0 0 64 64" aria-hidden="true">
-          <path d="M18 20l6-10 8 9h0l8-9 6 10c6 3 10 10 10 18 0 14-11 24-24 24S8 52 8 38c0-8 4-15 10-18zm10 10c-2 0-4 2-4 4s2 4 4 4 4-2 4-4-2-4-4-4zm8 0c-2 0-4 2-4 4s2 4 4 4 4-2 4-4-2-4-4-4zm-16 18c4 4 8 6 12 6s8-2 12-6l-2-2c-3 3-6 4-10 4s-7-1-10-4l-2 2zm11-9h2v6h-2z"/>
-        </svg>
-        A gata siamesa do laboratório Cordel 2.0
+        A gata sialata do laboratório Cordel 2.0
       </div>
     </div>
 
@@ -351,10 +348,7 @@
         </div>
 
         <div class="cordel2-cat-signature">
-          <svg viewBox="0 0 64 64" aria-hidden="true">
-            <path d="M18 20l6-10 8 9h0l8-9 6 10c6 3 10 10 10 18 0 14-11 24-24 24S8 52 8 38c0-8 4-15 10-18zm10 10c-2 0-4 2-4 4s2 4 4 4 4-2 4-4-2-4-4-4zm8 0c-2 0-4 2-4 4s2 4 4 4 4-2 4-4-2-4-4-4zm-16 18c4 4 8 6 12 6s8-2 12-6l-2-2c-3 3-6 4-10 4s-7-1-10-4l-2 2zm11-9h2v6h-2z"/>
-          </svg>
-          <span>Inanna · gata siamesa</span>
+          <span>Inanna · gata sialata</span>
         </div>
       </div>
     </div>

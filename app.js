@@ -100,6 +100,7 @@ const state = {
   scheme: "Livre",
   modeChallenge: false,
   rhyme: null,
+  scoreBreakdown: null,
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
@@ -473,6 +474,7 @@ function resetQuadraState(options) {
   state.lines = [];
   state.current = { rawVerse: "", pred: null };
   state.rhyme = null;
+  state.scoreBreakdown = null;
 
   if (settings.resetPoints) {
     state.points = 0;
@@ -667,12 +669,6 @@ function renderStep3() {
   ui.confidence.textContent = formatPct(pred.confidence);
   updateRoundStatus();
 
-  // Atualizar pontos no modo desafio
-  if (state.modeChallenge && pred.confidence < 0.42) {
-    state.points += 1;
-    ui.points.textContent = String(state.points);
-  }
-
   // Lista de candidatos
   ui.predList.innerHTML = "";
   pred.candidates.forEach((tok, i) => {
@@ -707,6 +703,9 @@ function chooseToken(token, index, source) {
   const completed = rawVerse.replace("___", token);
   const p = pred ? pred.probs[index] : null;
   const detail = pred && pred.details && index >= 0 ? pred.details[index] : null;
+  const wasSuggested = pred && Array.isArray(pred.candidates)
+    ? pred.candidates.some((candidate) => normWord(candidate) === normWord(token))
+    : false;
 
   state.lines.push({
     verse: completed,
@@ -715,6 +714,7 @@ function chooseToken(token, index, source) {
     pct: p ? formatPct(p) : "—",
     themeName: state.chosenTheme.name,
     vector: detail ? detail.dimensions : null,
+    creative: source === "custom" && !wasSuggested,
   });
 
   if (ui.vectorModal && ui.vectorModal.open) {
@@ -804,6 +804,68 @@ function rhymePairScore(a, b) {
   return -1;
 }
 
+function extractVerseTokens(verse) {
+  return String(verse || "")
+    .trim()
+    .split(/\s+/)
+    .map(function (token) {
+      return token.replace(/^[^A-Za-zÀ-ÿ]+|[^A-Za-zÀ-ÿ-]+$/g, "");
+    })
+    .filter(Boolean);
+}
+
+function buildScoringLexicon() {
+  var words = [];
+  if (typeof FALLBACK_TOKENS !== "undefined" && Array.isArray(FALLBACK_TOKENS)) {
+    words = words.concat(FALLBACK_TOKENS);
+  }
+  if (typeof getRhymeBankWords === "function") {
+    words = words.concat(getRhymeBankWords());
+  }
+
+  var set = new Set();
+  words.forEach(function (word) {
+    var normalized = normWord(word);
+    if (normalized) set.add(normalized);
+  });
+  return set;
+}
+
+function isSuspiciousJoinedToken(token, knownWords) {
+  var normalized = normWord(token);
+  if (!normalized) return false;
+  if (knownWords && knownWords.has(normalized)) return false;
+  if (/^(de|da|do|das|dos|na|no|nas|nos|em|com|pra|pro|e|foi|vai|sou|era|sao|estou|esta|ta|comeu)[a-z]{5,}$/.test(normalized)) {
+    return true;
+  }
+  return normalized.length >= 13;
+}
+
+function analyzeStructure(lines) {
+  var knownWords = buildScoringLexicon();
+  var stopwords = new Set(["de", "do", "da", "dos", "das", "e", "em", "com", "pra", "pro", "para", "que", "se", "na", "no", "nas", "nos"]);
+  var goodLines = 0;
+  var suspiciousLines = 0;
+
+  lines.forEach(function (line) {
+    var tokens = extractVerseTokens(line.verse);
+    var finalToken = tokens[tokens.length - 1] || "";
+    var finalWord = normWord(finalToken);
+    var balanced = tokens.length >= 3 && tokens.length <= 8;
+    var suspicious = tokens.some(function (token) { return isSuspiciousJoinedToken(token, knownWords); });
+    var clearEnding = finalWord.length >= 2 && !stopwords.has(finalWord) && !isSuspiciousJoinedToken(finalToken, knownWords);
+
+    if (suspicious) suspiciousLines += 1;
+    if (balanced && clearEnding && !suspicious) goodLines += 1;
+  });
+
+  return {
+    goodLines: goodLines,
+    suspiciousLines: suspiciousLines,
+    points: goodLines === 4 ? 2 : goodLines >= 3 ? 1 : 0
+  };
+}
+
 // Analisa o melhor esquema de rima da quadra (4 versos)
 function analyzeRhyme(lines) {
   const words = lines.map(function (l) { return lastWordOf(l.verse); });
@@ -822,23 +884,65 @@ function analyzeRhyme(lines) {
   });
 
   var allRhyming = bestPairScores.every(function (s) { return s > 0; });
-  var bonus = allRhyming ? 2 : 0;
+  var strongScheme = bestPairScores.every(function (s) { return s >= 2; });
+  var bonus = strongScheme ? 2 : 0;
 
   return {
     scheme: best.id, label: best.label, desc: best.desc,
-    pairScores: bestPairScores, words: words,
-    totalRhymePoints: bestScore + bonus, allRhyming: allRhyming
+    pairs: best.pairs,
+    pairScores: bestPairScores,
+    words: words,
+    pairScoreTotal: bestScore,
+    schemeBonus: bonus,
+    allRhyming: allRhyming,
+    strongScheme: strongScheme
   };
 }
 
-// Gera HTML do feedback de rima
-function rhymeFeedbackHTML(r) {
-  var iconMap = { 3: "🔥 +3", 2: "✨ +2", 1: "👍 +1" };
+function analyzeCreativity(lines, rhyme) {
+  if (!rhyme || !rhyme.pairs) {
+    return { bonus: 0, creativeIndexes: [] };
+  }
+
+  var creativeIndexes = [];
+  rhyme.pairs.forEach(function (pair, pairIndex) {
+    if ((rhyme.pairScores[pairIndex] || 0) < 2) return;
+
+    pair.forEach(function (lineIndex) {
+      var line = lines[lineIndex];
+      if (!line || !line.creative) return;
+      if (!creativeIndexes.includes(lineIndex)) creativeIndexes.push(lineIndex);
+    });
+  });
+
+  return {
+    bonus: Math.min(2, creativeIndexes.length),
+    creativeIndexes: creativeIndexes
+  };
+}
+
+function calculateChallengeScore(lines) {
+  var rhyme = analyzeRhyme(lines);
+  var structure = analyzeStructure(lines);
+  var creativity = analyzeCreativity(lines, rhyme);
+  var total = Math.max(0, structure.points + rhyme.pairScoreTotal + rhyme.schemeBonus + creativity.bonus);
+
+  return {
+    rhyme: rhyme,
+    structure: structure,
+    creativity: creativity,
+    total: total
+  };
+}
+
+// Gera HTML do feedback de rima e pontuação
+function rhymeFeedbackHTML(result, challengeMode) {
+  var r = result.rhyme;
   function icon(s) { return s >= 3 ? "🔥 +3" : s === 2 ? "✨ +2" : s === 1 ? "👍 +1" : "❌ −1"; }
   var colors = { AABB: "#f97316", ABAB: "#a855f7", ABBA: "#06b6d4" };
   var color = colors[r.scheme] || "var(--primary)";
   var pairsIdx = { AABB: [[0, 1], [2, 3]], ABAB: [[0, 2], [1, 3]], ABBA: [[0, 3], [1, 2]] }[r.scheme];
-  var totalColor = r.totalRhymePoints >= 4 ? "#22c55e" : r.totalRhymePoints >= 1 ? "#f97316" : "#ef4444";
+  var totalColor = result.total >= 9 ? "#22c55e" : result.total >= 5 ? "#f97316" : "#ef4444";
 
   var pairLines = pairsIdx.map(function (pair, k) {
     return '<div style="margin:4px 0;font-size:13px;">' +
@@ -846,15 +950,24 @@ function rhymeFeedbackHTML(r) {
       '<strong style="margin-left:8px;">' + icon(r.pairScores[k]) + '</strong></div>';
   }).join("");
 
-  var bonusLine = r.allRhyming
-    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus: todos os pares rimaram! <strong>+2</strong></div>'
-    : "";
+  var structureLine = '<div style="margin-top:10px;font-size:13px;color:var(--muted);">Forma da quadra: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' versos bem fechados de 4)</div>';
+  var schemeLine = r.strongScheme
+    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus de esquema forte: <strong>+2</strong> (os dois pares rimam com pelo menos 2 letras finais)</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Bônus de esquema forte: <strong>+0</strong></div>';
+  var creativityLine = result.creativity.bonus > 0
+    ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✨ Criatividade autoral: <strong>+' + result.creativity.bonus + '</strong> (palavra fora das sugestões e ainda sustentando a rima)</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Criatividade autoral: <strong>+0</strong></div>';
+  var scoreTitle = challengeMode ? 'Pontuação do Desafio' : 'No Modo Desafio, esta quadra valeria';
 
   return '<div style="margin-top:18px;padding:14px 18px;background:rgba(255,255,255,0.05);border-radius:12px;border-left:4px solid ' + color + ';">' +
     '<div style="font-weight:800;font-size:15px;margin-bottom:8px;">🎶 Esquema de Rima: <span style="color:' + color + ';">' + r.label + '</span></div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + r.desc + '</div>' +
-    pairLines + bonusLine +
-    '<div style="margin-top:12px;font-size:16px;font-weight:900;color:' + totalColor + ';">Pontos de Rima: ' + (r.totalRhymePoints >= 0 ? "+" : "") + r.totalRhymePoints + '</div>' +
+    pairLines +
+    structureLine +
+    '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Rima final: <strong style="color:var(--text);">' + (r.pairScoreTotal >= 0 ? "+" : "") + r.pairScoreTotal + '</strong></div>' +
+    schemeLine +
+    creativityLine +
+    '<div style="margin-top:12px;font-size:16px;font-weight:900;color:' + totalColor + ';">' + scoreTitle + ': +' + result.total + '</div>' +
     '</div>';
 }
 
@@ -886,9 +999,11 @@ function finishPoem() {
   var quadraText = state.lines.map(function (l) { return l.verse; }).join("\n");
   ui.quadra.textContent = quadraText;
 
-  // Analisa rimas
-  var rhyme = analyzeRhyme(state.lines);
+  // Analisa rimas, forma e criatividade
+  var scoreBreakdown = calculateChallengeScore(state.lines);
+  var rhyme = scoreBreakdown.rhyme;
   state.rhyme = rhyme;
+  state.scoreBreakdown = scoreBreakdown;
   
   // Detecção de rima (V2)
   state.scheme = detectRhymeScheme(state.lines);
@@ -896,20 +1011,23 @@ function finishPoem() {
     ui.contextDetected.textContent = "Esquema detectado: " + state.scheme;
   }
 
-  // Aplica pontos de rima no modo desafio
+  // Aplica a nova pontuação estrutural no modo desafio
   if (state.modeChallenge) {
-    state.points = Math.max(0, state.points + rhyme.totalRhymePoints);
+    state.points = scoreBreakdown.total;
     ui.points.textContent = String(state.points);
+  } else {
+    state.points = 0;
+    ui.points.textContent = "0";
   }
 
-  // Exibe feedback visual de rima abaixo do poema
+  // Exibe feedback visual da pontuação abaixo do poema
   var feedbackEl = document.getElementById("rhymeFeedback");
   if (!feedbackEl) {
     feedbackEl = document.createElement("div");
     feedbackEl.id = "rhymeFeedback";
     ui.poemSection.appendChild(feedbackEl);
   }
-  feedbackEl.innerHTML = rhymeFeedbackHTML(rhyme);
+  feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge);
 
   ui.poemSection.classList.add("visible");
   updateRoundStatus();
@@ -982,6 +1100,15 @@ function renderPlacarItems(data) {
     const ptsA = typeof a.pontos === "number" ? a.pontos : parseInt(a.pontos, 10) || 0;
     const ptsB = typeof b.pontos === "number" ? b.pontos : parseInt(b.pontos, 10) || 0;
     if (ptsB !== ptsA) return ptsB - ptsA;
+    const rhymeA = typeof a.pontosRima === "number" ? a.pontosRima : parseInt(a.pontosRima, 10) || 0;
+    const rhymeB = typeof b.pontosRima === "number" ? b.pontosRima : parseInt(b.pontosRima, 10) || 0;
+    if (rhymeB !== rhymeA) return rhymeB - rhymeA;
+    const creativeA = typeof a.pontosCriatividade === "number" ? a.pontosCriatividade : parseInt(a.pontosCriatividade, 10) || 0;
+    const creativeB = typeof b.pontosCriatividade === "number" ? b.pontosCriatividade : parseInt(b.pontosCriatividade, 10) || 0;
+    if (creativeB !== creativeA) return creativeB - creativeA;
+    const formA = typeof a.pontosForma === "number" ? a.pontosForma : parseInt(a.pontosForma, 10) || 0;
+    const formB = typeof b.pontosForma === "number" ? b.pontosForma : parseInt(b.pontosForma, 10) || 0;
+    if (formB !== formA) return formB - formA;
     return toTimestamp(b.timestamp) - toTimestamp(a.timestamp);
   });
 
@@ -1002,7 +1129,7 @@ function renderPlacarItems(data) {
       div.innerHTML = `
         <div class="placar-header" style="display:flex; justify-content:space-between; align-items:center;">
           <span class="placar-pos" style="font-size:15px; font-weight:bold;">${medal}${i + 1}º</span>
-          <span class="placar-pontos" style="font-size:11px; font-weight:800; background:rgba(249,115,22,0.15); color:var(--primary); padding:2px 8px; border-radius:99px;">${item.pontos ? item.pontos + ' pts' : '0 pts'}</span>
+          <span class="placar-pontos" style="font-size:11px; font-weight:800; background:rgba(249,115,22,0.15); color:var(--primary); padding:2px 8px; border-radius:99px;">${(Number(item.pontos) || 0) + ' pts'}</span>
         </div>
         <div class="placar-autor" style="font-weight:600; margin-top:4px;">${escapeHtml(item.autor)}</div>
         <div class="placar-verso" style="font-size:13px; color:var(--muted); font-style:italic; margin-top:2px;">"${escapeHtml(item.verso)}"</div>
@@ -1069,7 +1196,10 @@ ui.btnSubmitPoem.addEventListener("click", () => {
     modo: state.modeChallenge ? "Desafio" : "Didático",
     pontos: state.points,
     esquemaRima: state.rhyme ? state.rhyme.label : "—",
-    pontosRima: state.rhyme ? state.rhyme.totalRhymePoints : 0
+    pontosRima: state.scoreBreakdown ? state.scoreBreakdown.rhyme.pairScoreTotal : 0,
+    pontosForma: state.scoreBreakdown ? state.scoreBreakdown.structure.points : 0,
+    pontosCriatividade: state.scoreBreakdown ? state.scoreBreakdown.creativity.bonus : 0,
+    bonusEsquema: state.scoreBreakdown ? state.scoreBreakdown.rhyme.schemeBonus : 0
   };
 
   fetch(WEB_APP_URL, {
