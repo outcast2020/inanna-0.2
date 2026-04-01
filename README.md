@@ -1,104 +1,277 @@
-# 🌵 Inanna — Proto-IA Educativa (Cordel 2.0)
+# Inanna - Proto-IA Educativa (Cordel 2.0)
 
-Laboratório de compreensão da Inteligência Artificial. 
-Inanna Proto-IA é um aplicativo educativo interativo que simula de forma transparente como sistemas de Inteligência Artificial preveem a próxima palavra em um texto. O app permite que usuários escrevam o início de um verso e observem como uma proto-IA pedagógica sugere possíveis continuidades com probabilidades associadas.
+Inanna e um app educativo que junta escrita de cordel, rima em quadras e letramento digital em IA.
 
-A experiência combina:
-- Criatividade literária
-- Cultura do Cordel
-- Aprendizado sobre modelos de linguagem
-- Compreensão crítica da Inteligência Artificial
+Hoje o projeto trabalha com dois objetivos pedagogicos centrais:
 
-O projeto é também uma homenagem à Inanna, representada no app pelo asset `emoji.png`, símbolo da união entre afeto, cuidado e tecnologia educativa. Ao longo do jogo, Inanna interage com o jogador por meio de avatares carismáticos na interface.
+1. Aprender a rimar quadras.
+2. Entender como um sistema preditivo organiza palavras, pesos e probabilidades.
 
-## 🎯 Objetivo Pedagógico
+O app nao tenta esconder o processo. Ele foi desenhado para mostrar, de forma acessivel, como uma "proto-IA" escolhe palavras a partir de contexto, rima e distribuicao de chances.
 
-O aplicativo foi criado para ensinar como funcionam os modelos de linguagem (como os usados em IA generativa) de maneira acessível. Ele demonstra conceitos fundamentais:
-- Previsão de próxima palavra (token)
-- Probabilidade linguística
-- Escolha entre alternativas possíveis
-- Diferença entre criatividade humana e previsão algorítmica
+## Visao geral
 
-**A Inanna não é uma IA real.** Ela é uma *proto-IA* pedagógica que permite visualizar os princípios básicos da tecnologia.
+Na pratica, a experiencia funciona assim:
 
-### Público-alvo (12 anos ou mais)
-- Escolas e Universidades
-- Oficinas de tecnologia e Laboratórios de escrita criativa
-- Cursos de letramento digital
-- Introdução à Inteligência Artificial
+1. A pessoa escolhe uma trilha tematica.
+2. Escreve o verso sem a ultima palavra.
+3. A lacuna final fica fixa como `___`.
+4. A Inanna sugere palavras para fechar o verso.
+5. Cada sugestao mostra uma probabilidade.
+6. O usuario pode escolher uma sugestao ou inventar sua propria palavra.
+7. Depois de 4 versos, a quadra fecha de forma explicita.
+8. Se quiser, a pessoa pode abrir outra quadra de 4 versos, com a contagem zerada.
 
-## ⚙️ Como Funciona o Jogo
+## Proposito pedagogico
 
-O fluxo do aplicativo simula o uso de modelos de linguagem:
+O app foi pensado como laboratorio de compreensao da IA, nao como "IA magica".
 
-1. **Escolha de Contexto (Tema):** O jogador define o "Corpus" inicial, com temas variados que vão de *Nordeste* e *Festa Junina* até *Shopping* e *Tecnologia*.
-2. **Entrada de Texto:** O usuário escreve o início de um verso usando uma lacuna (`___`). (Ex: "No sertão eu vi a ___")
-3. **Predição e Escolha:** A Inanna aciona sua engine de probabilidade simulada e sugere continuações, separando rigorosamente listas de *substantivos*, *adjetivos* e *verbos*, e oferecendo também a possibilidade de o jogador inventar sua própria palavra (superando a máquina).
-4. **Construção e Placar:** Ao finalizar uma quadra (4 versos), o jogador envia sua obra. 
+Ele ajuda a visualizar:
 
-### Modos de Jogo:
-- **Modo Desafio:** O desafio pode ser alternado entre `[ ON ]` e `[ OFF ]`. 
-  - Quando **ON**, a pontuação é ativa, rimas complexas são valorizadas, e a quadra completa pode ser enviada ao Placar Top 10 online para os melhores cordéis.
-  - Quando **OFF**, o jogo corre de forma livre para experimentação e aprendizado pedagógico, sem envios ou ranqueamento competitivo.
+- previsao de proxima palavra;
+- probabilidade linguistica;
+- diferenca entre escolha humana e sugestao algoritimica;
+- construcao de sentido por relacoes numericas;
+- limite entre criatividade humana e reorganizacao estatistica.
 
+Observacao importante:
 
-## 🧠 Motor de Rimas (V2)
+**A Inanna nao usa embeddings reais de um grande modelo treinado.**
 
-A Inanna agora incorpora um **Motor de Previsão V2** mais inteligente, que vai além das simulações de tokens, realizando:
-- **Previsão contextual:** A escolha de palavras considera o tema ativo, o verso anterior e a lógica da quadra.
-- **Análise fonética:** O algoritmo detecta rimas comparando sons finais (as últimas 1, 2 ou 3 letras) da última palavra do verso, priorizando terminações idênticas.
-- **Banco Lexical:** A IA consulta uma base dedicada de rimas populares para guiar o fechamento de estrofes de maneira harmônica.
+Ela usa um **vetor pedagogico simplificado**, criado para ensinar o principio geral: palavra vira numero, numeros recebem pesos, e a soma gera uma distribuicao de probabilidades.
 
-## 📖 Estrutura de Quadra
+## Fluxo atual do jogo
 
-Para garantir uma vivência literária autêntica de Cordel, a IA aprendeu a orientar o jogador sugerindo estruturas clássicas ao longo da criação:
-- **AABB (Rima em parândo):** Verso 1 rima com Verso 2; Verso 3 rima com Verso 4.
-- **ABAB (Rima alternada):** Verso 1 rima com Verso 3; Verso 2 rima com Verso 4.
+### Etapa 1 - trilha
 
-Essa sugestão não bloqueia a criatividade: serve como guia de onde a IA tentará focar suas previsões poéticas.
+O usuario escolhe um tema, como praia, pet, rua, tecnologia, cultura popular ou aniversario.
 
-## 📚 Banco de Palavras
+### Etapa 2 - verso com lacuna final
 
-A inteligência da Inanna está amparada em um grande **Corpus de Rimas** customizado. Como projetos reais de Machine Learning utilizam datasets curados, nossa engine utiliza o `cordel_rhyme_bank.js`.
-Este banco lexical contém **800 palavras** organizadas por terminações fonéticas (`-ão`, `-ar`, `-or`, `-eiro`, `-ia`, `-ade`, `-ente`, `-im`). O vocabulário eleva o regionalismo e foca em temas da cultura popular nortestina, sertão, cotidiano, sentimentos e festa junina.
+O usuario escreve o verso sem a ultima palavra. O sistema obriga a lacuna final, para que a rima fique concentrada no fechamento do verso.
 
-## 🚀 Tecnologias Utilizadas e Integração
+Exemplo:
 
-O frontend é flexível e projetado para fácil uso em instituições educacionais:
-- **HTML, CSS (Vanilla) e Javascript**
-- **Github Pages** para hospedagem estática direta.
+```text
+No calor eu gosto de mergulhar no ___
+```
 
-O backend e banco de dados é gerido via:
-- **Google Apps Script & Google Sheets:** Todas as submissões de quadras e exibição de placares são transferidas diretamente para uma planilha na nuvem via API RESTful simples (`/doPost` e `/doGet`). Este formato dispensa servidores pesados, não contém problemas de CORS Preflight perigosos graças à transmissão limpa, e armazena até os modos de partida.
+### Etapa 3 - sugestoes e vetor
 
-### Estrutura do projeto
+Na tela principal aparecem apenas:
+
+- as palavras sugeridas;
+- a probabilidade de cada uma;
+- o campo para digitar uma palavra propria.
+
+Cada sugestao tem o botao `Ver vetor`, que abre um modal com:
+
+- o vetor pedagogico da palavra;
+- os pesos usados na rodada;
+- a soma ponderada;
+- a distribuicao probabilistica entre as candidatas;
+- uma explicacao em linguagem simples sobre a dimensao estocastica.
+
+### Fechamento da quadra
+
+Quando o quarto verso termina, o app entra em estado de "quadra pronta". O usuario ve a quadra concluida, a leitura de rima e a pontuacao do modo desafio.
+
+## Motor preditivo pedagogico
+
+O motor atual fica em [prediction_engine_v2.js](C:/Users/Carlos/Documents/ai%20BOT/Lab/Inanna/inanna-main/prediction_engine_v2.js) e trabalha com 5 dimensoes.
+
+Cada palavra candidata recebe um vetor pedagogico com notas de 0 a 1 nestes eixos:
+
+1. Tema da trilha
+2. Rima esperada
+3. Pista sintatica
+4. Coerencia da quadra
+5. Frequencia no mini-corpus
+
+Depois, cada eixo recebe um peso. A configuracao atual e:
+
+```text
+Tema da trilha        0.20
+Rima esperada         0.34
+Pista sintatica       0.18
+Coerencia da quadra   0.14
+Frequencia corpus     0.14
+```
+
+A soma ponderada dessas cinco dimensoes gera a forca total da palavra na rodada. Em seguida, o sistema normaliza as candidatas do topo para construir a probabilidade mostrada na interface.
+
+Formula simplificada:
+
+```text
+palavra -> vetor -> pesos -> soma -> probabilidade
+```
+
+## Mini-aula de vetores
+
+O modal pedagogico do app tambem apresenta uma camada conceitual inspirada no ensino de embeddings:
+
+- linguagem como espaco vetorial;
+- palavras como posicoes numericas;
+- semantica como relacao e diferenca;
+- exemplo classico `Rei - Homem + Mulher ~= Rainha`;
+- ideia de que a IA nao "entende" como humano, mas opera sobre relacoes matematicas.
+
+O texto-base dessa mini-aula foi incorporado ao frontend para apoiar oficinas, aulas e conversas sobre letramento digital em IA.
+
+## Aprendizagem de rima
+
+O app foi reorganizado para favorecer a aprendizagem de quadras:
+
+- a ultima palavra do verso fica sempre em aberto;
+- a rima passa a ser decidida no fechamento do verso;
+- o fim da quadra fica explicito;
+- a interface sugere continuidade para nova quadra, nao para "verso infinito";
+- o modo desafio valoriza mais a qualidade formal da quadra.
+
+Esquemas trabalhados:
+
+- `AABB`
+- `ABAB`
+- `ABBA`
+
+## Pontuacao atual do modo desafio
+
+O modo desafio usa uma regra mais formal e pedagogica.
+
+### Forma da quadra
+
+- `+2` se os 4 versos estiverem bem fechados e com leitura clara.
+- `+1` se ao menos 3 versos estiverem bem fechados.
+
+### Rima final
+
+Cada par de rima recebe:
+
+- `+3` para rima forte;
+- `+2` para rima boa;
+- `+1` para aproximacao fraca;
+- `-1` quando a rima falha.
+
+### Bonus de esquema
+
+- `+2` quando os dois pares do esquema escolhido ficam com rima boa ou forte.
+
+### Criatividade autoral
+
+- `+1` por palavra digitada fora das sugestoes que ainda sustente a rima;
+- maximo de `+2`.
+
+### Maximo
+
+- `12 pontos`
+
+## Placar
+
+O placar online mostra o Top 10 do modo desafio.
+
+Regras de ordenacao:
+
+1. maior pontuacao;
+2. em caso de empate, vence o registro mais recente.
+
+O frontend mostra Top 3 na lateral e abre o Top 10 completo em modal.
+
+## Registro e backend
+
+O backend fica em [Auto_Inanna.gs](C:/Users/Carlos/Documents/ai%20BOT/Lab/Inanna/inanna-main/Auto_Inanna.gs) e usa Google Apps Script com Google Sheets.
+
+Hoje ele:
+
+- recebe quadras via `doPost`;
+- recalcula a pontuacao no servidor;
+- atualiza o placar;
+- entrega o placar via `doGet?action=getPlacar`;
+- faz backup antes de resetar registros e placar;
+- reconstrui o ranking historico quando necessario.
+
+Funcoes uteis do Apps Script:
+
+- `setupInicial()`
+- `reconstruirPlacar()`
+- `resetPlacarERegistrosComBackup()`
+- `instalarTriggersDoPlacar()`
+
+Observacao:
+
+Mesmo sem depender totalmente de trigger, o `doGet` do placar tambem sincroniza o ranking antes de devolver os dados, para reduzir risco de desatualizacao.
+
+## Estrutura do projeto
 
 ```text
 inanna-main/
-├── index.html         # Template principal da aplicação com as Etapas do Jogo
-├── styles.css         # UI moderna, responsiva, glassmorphism e animações 2D/3D (float)
-├── app.js             # Motor da Proto-IA, estado do jogo, Modais e Fetch Actions
-├── apps_script.gs     # Lógica Back-End do Google Apps Script
-├── emoji.png          # Avatar principal da Inanna na interface
-└── README.md          # Documentação do projeto
+|-- index.html                # estrutura principal da experiencia
+|-- styles.css                # estilos da interface e dos modais pedagogicos
+|-- app.js                    # fluxo do jogo, UI, envio, placar e modais
+|-- prediction_engine_v2.js   # motor preditivo pedagogico de 5 dimensoes
+|-- cordel_rhyme_bank.js      # banco lexical de rimas
+|-- Auto_Inanna.gs            # backend Google Apps Script + Google Sheets
+|-- iframe MODELO.txt         # snippet/apoio de embed e textos relacionados
+|-- emoji.png                 # avatar principal da Inanna
+`-- README.md                 # documentacao do projeto
 ```
 
-## 🛠️ Como Executar Localmente
+## Como executar localmente
 
-Você pode simplesmente abrir o arquivo `index.html` em qualquer navegador, e o projeto funcionará com dados pré-programados (*Mock Data/Library*) até estabelecer uma rede ao Google Apps. 
+Voce pode abrir [index.html](C:/Users/Carlos/Documents/ai%20BOT/Lab/Inanna/inanna-main/index.html) direto no navegador para testar a interface.
 
-Para rodar de forma perfeitamente em torno de uma visualização host, inicie um servidor web local em sua pasta.
+Se quiser um ambiente local simples:
+
 ```bash
-# Via Node.js (npx)
 npx http-server ./ -p 8080
+```
 
-# OU Via Python
+ou:
+
+```bash
 python -m http.server 8080
 ```
-E acesse `http://localhost:8080` de seu navegador.
 
-## 📜 Licença e Direitos Autorais
+Depois, abra:
 
-**"Inanna e Cordel 2.0" by Celeste Farias e Carlos Vidal é protegido por direitos de autor sob CC BY-ND 4.0.**
+```text
+http://localhost:8080
+```
 
-Este aplicativo faz parte do ecossistema educativo do **Projeto Cordel 2.0** — dedicado a explorar relações entre cultura popular, criatividade, educação e tecnologias emergentes.
+## Configuracao da integracao online
+
+No frontend, a URL do Apps Script fica em [app.js](C:/Users/Carlos/Documents/ai%20BOT/Lab/Inanna/inanna-main/app.js), na constante `WEB_APP_URL`.
+
+Quando uma nova versao do Web App for publicada no Google Apps Script, essa URL precisa ser atualizada no frontend.
+
+## Estado atual do projeto
+
+Neste momento, o app ja incorpora:
+
+- lacuna final obrigatoria;
+- fechamento explicito da quadra;
+- nova quadra com reset de pontos;
+- placar Top 10 online;
+- pontuacao formal por rima, forma e criatividade;
+- visualizacao de vetor pedagogico;
+- mini-aula sobre embeddings e estocastica.
+
+Pontos ainda abertos para futuras iteracoes:
+
+- refinamento fino das regras de pontuacao;
+- evolucao do modulo pedagogico de vetores;
+- possivel ampliacao do corpus e das explicacoes comparativas.
+
+## Creditos
+
+Projeto ligado ao ecossistema educativo do Cordel 2.0.
+
+Identidade e concepcao:
+
+- Celeste Farias
+- Carlos Vidal
+
+A Inanna aparece no projeto como figura afetiva e pedagogica do laboratorio.
+
+## Licenca e direitos
+
+`Inanna e Cordel 2.0`, de Celeste Farias e Carlos Vidal, esta protegido por direitos de autor sob `CC BY-ND 4.0`.
