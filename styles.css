@@ -1456,6 +1456,125 @@ select:focus-visible,
   line-height: 1.7;
 }
 
+.pedagogy-inline-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 42%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.pedagogy-inline-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.pedagogy-inline-copy {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.vector-pipeline-box {
+  margin-bottom: 18px;
+}
+
+.vector-pipeline-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.vector-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.vector-arrow {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.vector-math-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.vector-math-card,
+.pedagogy-panel {
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.vector-card-kicker {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.vector-code,
+.pedagogy-math {
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.75;
+  color: #d8f3ff;
+  white-space: pre-wrap;
+}
+
+.vector-card-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.vector-equation-box,
+.stochastic-box {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.vector-equation {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text);
+}
+
 .vector-dimensions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1512,6 +1631,172 @@ select:focus-visible,
   font-size: 13px;
   color: var(--text);
   line-height: 1.55;
+}
+
+.stochastic-head {
+  margin-bottom: 12px;
+}
+
+.stochastic-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.stochastic-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stochastic-item {
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stochastic-item.is-highlighted {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.15) inset;
+}
+
+.stochastic-item-head,
+.stochastic-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.stochastic-item-head {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.stochastic-item-head span,
+.stochastic-item-meta span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stochastic-item-meta {
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.stochastic-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.stochastic-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+}
+
+.vector-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.pedagogy-modal {
+  max-width: 920px;
+}
+
+.pedagogy-panel + .pedagogy-panel {
+  margin-top: 14px;
+}
+
+.pedagogy-panel h4 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.pedagogy-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.pipeline-strip {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #d1fae5;
+}
+
+.pedagogy-grid {
+  margin-top: 14px;
+}
+
+.pedagogy-table-wrap {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.pedagogy-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+  font-size: 13px;
+}
+
+.pedagogy-table th,
+.pedagogy-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.pedagogy-table th {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.pedagogy-table td {
+  color: var(--muted);
+}
+
+.pedagogy-quote {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-left: 4px solid var(--accent);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.stochastic-list-compact .stochastic-item {
+  padding: 12px 14px;
+}
+
+@media (max-width: 700px) {
+  .pedagogy-inline-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vector-modal-actions {
+    justify-content: stretch;
+  }
+
+  .vector-modal-actions .btn,
+  .pedagogy-inline-card .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* Footer */

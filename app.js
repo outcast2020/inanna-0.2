@@ -58,6 +58,7 @@ const ui = {
   bars: $("bars"),
   contextDetected: $("contextDetected"),
   explainBox: $("explainBox"),
+  openPedagogy: $("openPedagogy"),
   customInput: $("customInput"),
   btnCustom: $("btnCustom"),
   btnBack: $("btnBack"),
@@ -83,7 +84,21 @@ const ui = {
   vectorWordTitle: $("vectorWordTitle"),
   vectorProbability: $("vectorProbability"),
   vectorSummary: $("vectorSummary"),
+  vectorContextStory: $("vectorContextStory"),
+  vectorWordArray: $("vectorWordArray"),
+  vectorWeightsArray: $("vectorWeightsArray"),
+  vectorContributionArray: $("vectorContributionArray"),
+  vectorEquation: $("vectorEquation"),
   vectorDimensions: $("vectorDimensions"),
+  stochasticSummary: $("stochasticSummary"),
+  stochasticList: $("stochasticList"),
+  openPedagogyFromVector: $("openPedagogyFromVector"),
+
+  // modal pedagógico
+  pedagogyModal: $("pedagogyModal"),
+  closePedagogy: $("closePedagogy"),
+  pedagogyLiveDistribution: $("pedagogyLiveDistribution"),
+  pedagogyLiveList: $("pedagogyLiveList"),
 };
 
 // ── Estado do jogo ───────────────────────────────────────────────────
@@ -484,6 +499,9 @@ function resetQuadraState(options) {
   if (ui.vectorModal && ui.vectorModal.open) {
     ui.vectorModal.close();
   }
+  if (ui.pedagogyModal && ui.pedagogyModal.open) {
+    ui.pedagogyModal.close();
+  }
 
   ui.confidence.textContent = "—";
   ui.verseInput.value = "";
@@ -505,6 +523,102 @@ function resetQuadraState(options) {
   updateRoundStatus();
 }
 
+function formatVectorArray(values) {
+  return `[${(values || []).map((value) => Number(value || 0).toFixed(2)).join(", ")}]`;
+}
+
+function buildWeightedEquation(detail) {
+  if (!detail || !Array.isArray(detail.dimensions)) return "—";
+  const terms = detail.dimensions.map((dimension) => `${dimension.score.toFixed(2)}×${dimension.weight.toFixed(2)}`);
+  return `${terms.join(" + ")} = ${detail.totalScore.toFixed(2)}`;
+}
+
+function getSortedPredictionDetails(pred) {
+  if (!pred || !Array.isArray(pred.details)) return [];
+  return [...pred.details].sort((a, b) => {
+    if (b.probability !== a.probability) return b.probability - a.probability;
+    return b.totalScore - a.totalScore;
+  });
+}
+
+function buildStochasticSummary(pred, focusDetail) {
+  const sortedDetails = getSortedPredictionDetails(pred);
+  if (sortedDetails.length < 2) {
+    return "A distribuição estocástica aparece quando o sistema compara várias palavras e distribui chances entre elas.";
+  }
+
+  const first = sortedDetails[0];
+  const second = sortedDetails[1];
+  const gap = Math.abs(first.probability - second.probability);
+
+  if (focusDetail && focusDetail.normalized === first.normalized) {
+    return gap < 0.05
+      ? `Esta palavra lidera por pouco. A estocástica fica visível porque a segunda opção quase empata na soma dos pesos.`
+      : `Esta palavra lidera com folga. A soma ponderada dela ficou mais forte do que a das outras candidatas nesta rodada.`;
+  }
+
+  return gap < 0.05
+    ? `As duas primeiras candidatas estão quase empatadas. Isso mostra que a IA não “sabe” uma única resposta: ela distribui chances entre opções próximas.`
+    : `A melhor candidata abriu vantagem, mas as outras continuam no campo do possível. Probabilidade é graduação de chance, não certeza absoluta.`;
+}
+
+function renderStochasticList(container, pred, highlightedWord) {
+  if (!container) return;
+  container.innerHTML = "";
+
+  const sortedDetails = getSortedPredictionDetails(pred);
+  if (!sortedDetails.length) {
+    container.innerHTML = `<p class="vector-card-note">As distribuições aparecem quando há uma predição ativa.</p>`;
+    return;
+  }
+
+  sortedDetails.forEach((detail, index) => {
+    const item = document.createElement("article");
+    item.className = "stochastic-item";
+    if (highlightedWord && detail.normalized === highlightedWord) {
+      item.classList.add("is-highlighted");
+    }
+
+    item.innerHTML = `
+      <div class="stochastic-item-head">
+        <strong>${index + 1}. ${escapeHtml(detail.word)}</strong>
+        <span>${formatPct(detail.probability)}</span>
+      </div>
+      <div class="stochastic-bar">
+        <span class="stochastic-fill" style="width:${Math.max(8, Math.round(detail.probability * 100))}%"></span>
+      </div>
+      <div class="stochastic-item-meta">
+        <span>Soma ${detail.totalScore.toFixed(2)}</span>
+        <span>Vetor ${formatVectorArray(detail.dimensions.map((dimension) => dimension.score))}</span>
+      </div>
+    `;
+
+    container.appendChild(item);
+  });
+}
+
+function refreshPedagogyModalContent() {
+  const pred = state.current.pred;
+  if (!ui.pedagogyLiveDistribution) return;
+
+  const context = pred && pred.contextSummary
+    ? `No verso "${pred.contextSummary.beforeBlank} ___", a pista dominante desta rodada foi "${pred.contextSummary.expectationLabel}". Depois da soma dos vetores, a IA distribuiu as chances assim:`
+    : "A IA não guarda uma única resposta pronta. Ela distribui chances entre palavras próximas e escolhe a que fica mais forte naquele contexto.";
+
+  ui.pedagogyLiveDistribution.textContent = context;
+  renderStochasticList(ui.pedagogyLiveList, pred, null);
+}
+
+function openPedagogyModal() {
+  if (!ui.pedagogyModal) return;
+  if (ui.vectorModal && ui.vectorModal.open) {
+    ui.vectorModal.close();
+  }
+  refreshPedagogyModalContent();
+  if (ui.pedagogyModal.open) return;
+  ui.pedagogyModal.showModal();
+}
+
 function openVectorModal(index) {
   const detail = state.current.pred && state.current.pred.details ? state.current.pred.details[index] : null;
   if (!detail || !ui.vectorModal) return;
@@ -519,6 +633,30 @@ function openVectorModal(index) {
     `Maior força: ${strongest.label} (${strongest.contribution.toFixed(2)}). ` +
     `Menor força: ${weakest.label} (${weakest.contribution.toFixed(2)}). ` +
     `A soma ponderada foi ${detail.totalScore.toFixed(2)} e depois foi normalizada entre as candidatas para gerar a probabilidade final.`;
+
+  if (ui.vectorContextStory) {
+    const context = state.current.pred && state.current.pred.contextSummary ? state.current.pred.contextSummary : null;
+    const beforeBlank = context && context.beforeBlank ? context.beforeBlank : "verso em montagem";
+    const expectationLabel = context && context.expectationLabel ? context.expectationLabel : "pista de contexto";
+    ui.vectorContextStory.textContent =
+      `Pergunta atual: "${beforeBlank} ___". A palavra "${detail.word}" vira um vetor pedagógico de 5 números. Nesta rodada, a pista mais forte do contexto foi "${expectationLabel}", e depois a IA comparou essa palavra com as outras candidatas.`;
+  }
+
+  if (ui.vectorWordArray) {
+    ui.vectorWordArray.textContent = formatVectorArray(detail.dimensions.map((dimension) => dimension.score));
+  }
+
+  if (ui.vectorWeightsArray) {
+    ui.vectorWeightsArray.textContent = formatVectorArray(detail.dimensions.map((dimension) => dimension.weight));
+  }
+
+  if (ui.vectorContributionArray) {
+    ui.vectorContributionArray.textContent = formatVectorArray(detail.dimensions.map((dimension) => dimension.contribution));
+  }
+
+  if (ui.vectorEquation) {
+    ui.vectorEquation.textContent = buildWeightedEquation(detail);
+  }
 
   ui.vectorDimensions.innerHTML = "";
   detail.dimensions.forEach((dimension) => {
@@ -540,6 +678,12 @@ function openVectorModal(index) {
     `;
     ui.vectorDimensions.appendChild(item);
   });
+
+  if (ui.stochasticSummary) {
+    ui.stochasticSummary.textContent = buildStochasticSummary(state.current.pred, detail);
+  }
+  renderStochasticList(ui.stochasticList, state.current.pred, detail.normalized);
+  refreshPedagogyModalContent();
 
   ui.vectorModal.showModal();
 }
@@ -693,8 +837,9 @@ function renderStep3() {
 
   // Explicação
   setExplain(
-    `As probabilidades aparecem na lista principal. Abra o vetor de qualquer palavra para ver as 5 dimensões ponderadas.`
+    `As probabilidades aparecem na lista principal. Abra o vetor de qualquer palavra ou a mini-aula para ver como a IA organiza números, pesos e chances.`
   );
+  refreshPedagogyModalContent();
 }
 
 // ── Escolha do token ──────────────────────────────────────────────────
@@ -1362,6 +1507,29 @@ if (ui.closeVector && ui.vectorModal) {
   ui.vectorModal.addEventListener("click", (event) => {
     if (event.target === ui.vectorModal) {
       ui.vectorModal.close();
+    }
+  });
+}
+
+if (ui.openPedagogy) {
+  ui.openPedagogy.addEventListener("click", () => {
+    openPedagogyModal();
+  });
+}
+
+if (ui.openPedagogyFromVector) {
+  ui.openPedagogyFromVector.addEventListener("click", () => {
+    openPedagogyModal();
+  });
+}
+
+if (ui.closePedagogy && ui.pedagogyModal) {
+  ui.closePedagogy.addEventListener("click", () => {
+    ui.pedagogyModal.close();
+  });
+  ui.pedagogyModal.addEventListener("click", (event) => {
+    if (event.target === ui.pedagogyModal) {
+      ui.pedagogyModal.close();
     }
   });
 }

@@ -244,6 +244,13 @@
               </div>
 
               <p id="explainBox" class="prediction-note">Clique em <strong>Ver vetor</strong> para abrir a explicação da palavra escolhida.</p>
+              <div class="pedagogy-inline-card">
+                <div>
+                  <p class="pedagogy-inline-kicker">Letramento em IA</p>
+                  <p class="pedagogy-inline-copy">Veja como a Inanna transforma palavras em vetores, soma pesos e distribui probabilidades.</p>
+                </div>
+                <button id="openPedagogy" class="btn btn-secondary" type="button">Como isso funciona?</button>
+              </div>
             </div>
           </div>
 
@@ -321,7 +328,162 @@
         <div class="vector-probability">Probabilidade: <strong id="vectorProbability">—</strong></div>
         <p id="vectorSummary" class="vector-summary"></p>
       </div>
+      <div class="vector-summary-box vector-pipeline-box">
+        <div class="vector-pipeline-row">
+          <span class="vector-chip">Pergunta</span>
+          <span class="vector-arrow">→</span>
+          <span class="vector-chip">Vetor</span>
+          <span class="vector-arrow">→</span>
+          <span class="vector-chip">Pesos</span>
+          <span class="vector-arrow">→</span>
+          <span class="vector-chip">Soma</span>
+          <span class="vector-arrow">→</span>
+          <span class="vector-chip">Probabilidade</span>
+        </div>
+        <p id="vectorContextStory" class="vector-summary"></p>
+      </div>
+      <div class="vector-math-grid">
+        <article class="vector-math-card">
+          <p class="vector-card-kicker">Vetor da palavra</p>
+          <pre id="vectorWordArray" class="vector-code">[—]</pre>
+          <p class="vector-card-note">Ordem: tema, rima, sintaxe, coerência, corpus.</p>
+        </article>
+        <article class="vector-math-card">
+          <p class="vector-card-kicker">Pesos do modelo</p>
+          <pre id="vectorWeightsArray" class="vector-code">[—]</pre>
+          <p class="vector-card-note">Os pesos dizem quanto cada dimensão conta nesta rodada.</p>
+        </article>
+        <article class="vector-math-card">
+          <p class="vector-card-kicker">Vetor ponderado</p>
+          <pre id="vectorContributionArray" class="vector-code">[—]</pre>
+          <p class="vector-card-note">Aqui cada posição já foi multiplicada pelo seu peso.</p>
+        </article>
+      </div>
+      <div class="vector-equation-box">
+        <p class="vector-card-kicker">Soma ponderada desta palavra</p>
+        <p id="vectorEquation" class="vector-equation">—</p>
+      </div>
       <div id="vectorDimensions" class="vector-dimensions"></div>
+      <div class="stochastic-box">
+        <div class="stochastic-head">
+          <p class="vector-card-kicker">Dimensão estocástica</p>
+          <p id="stochasticSummary" class="stochastic-summary"></p>
+        </div>
+        <div id="stochasticList" class="stochastic-list"></div>
+      </div>
+      <div class="vector-modal-actions">
+        <button id="openPedagogyFromVector" class="btn btn-ghost" type="button">Abrir mini-aula sobre vetores</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="pedagogyModal" class="rules-modal pedagogy-modal">
+    <div class="rules-content">
+      <div class="vector-modal-head">
+        <div>
+          <p class="vector-modal-kicker">Letramento em IA</p>
+          <h3>Como a Inanna organiza vetores</h3>
+        </div>
+        <button id="closePedagogy" class="btn btn-secondary" type="button">Fechar</button>
+      </div>
+      <section class="pedagogy-panel">
+        <h4>1. Ideia central</h4>
+        <p><strong>Transformer = pergunta → resposta.</strong> No app, a pergunta é o verso com lacuna; a resposta é a palavra prevista como fechamento mais provável.</p>
+      </section>
+      <section class="pedagogy-panel">
+        <h4>2. Palavra vira vetor</h4>
+        <p><strong>Word embeddings</strong> são palavras convertidas em números. Aqui usamos uma versão pedagógica: cada palavra recebe um vetor de 5 dimensões ligado ao contexto da trilha e da quadra.</p>
+        <div class="pipeline-strip">Palavra → vetor → pesos → soma → probabilidade → palavra mais próxima</div>
+      </section>
+      <section class="pedagogy-panel">
+        <h4>3. Exemplo simplificado</h4>
+        <p>Imagine a palavra <strong>rei</strong> como um vetor de características:</p>
+        <div class="vector-math-grid pedagogy-grid">
+          <article class="vector-math-card">
+            <p class="vector-card-kicker">Vetor da palavra</p>
+            <pre class="vector-code">rei ≈ [1, 0, 1, 1]</pre>
+            <p class="vector-card-note">autoridade = 1, tem coroa = 0, rico = 1, gênero = masculino</p>
+          </article>
+          <article class="vector-math-card">
+            <p class="vector-card-kicker">Leitura conceitual</p>
+            <p class="vector-card-note">A palavra deixa de ser só texto e passa a ocupar uma posição num espaço numérico.</p>
+          </article>
+        </div>
+        <div class="pedagogy-table-wrap">
+          <table class="pedagogy-table">
+            <thead>
+              <tr>
+                <th>Atributo</th>
+                <th>Rei</th>
+                <th>Homem</th>
+                <th>Rainha</th>
+                <th>Mulher</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Autoridade</td>
+                <td>1</td>
+                <td>0.2</td>
+                <td>1</td>
+                <td>0.2</td>
+              </tr>
+              <tr>
+                <td>Evento</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>Tem coroa</td>
+                <td>0</td>
+                <td>0</td>
+                <td>1</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>Rico</td>
+                <td>1</td>
+                <td>0.3</td>
+                <td>1</td>
+                <td>0.3</td>
+              </tr>
+              <tr>
+                <td>Gênero</td>
+                <td>1</td>
+                <td>1</td>
+                <td>-1</td>
+                <td>-1</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="pedagogy-panel">
+        <h4>4. Operação semântica</h4>
+        <p class="vector-equation">Rei - Homem + Mulher ≈ Rainha</p>
+        <pre class="pedagogy-math">Rei = [1, 0, 0, 1, 1]
+Homem = [0.2, 0, 0, 0.3, 1]
+Mulher = [0.2, 0, 0, 0.3, -1]
+
+Rei - Homem = [0.8, 0, 0, 0.7, 0]
++ Mulher = [1, 0, 0, 1, -1]</pre>
+        <p class="vector-card-note">O vetor resultante se aproxima de <strong>rainha</strong> porque fica mais perto dela no espaço vetorial.</p>
+      </section>
+      <section class="pedagogy-panel">
+        <h4>5. Estocástica com leveza</h4>
+        <p id="pedagogyLiveDistribution" class="vector-card-note">A IA não guarda uma única resposta pronta. Ela distribui chances entre palavras próximas e escolhe a que fica mais forte naquele contexto.</p>
+        <div id="pedagogyLiveList" class="stochastic-list stochastic-list-compact"></div>
+      </section>
+      <section class="pedagogy-panel">
+        <h4>6. Nem toda aproximação é perfeita</h4>
+        <p><strong>Mulher + luta = ?</strong> Em alguns espaços vetoriais, a aproximação pode cair numa palavra estranha ou ambígua. Isso é importante: a IA reorganiza relações numéricas, mas não produz sentido pleno sozinha.</p>
+      </section>
+      <section class="pedagogy-panel">
+        <h4>7. O insight mais forte</h4>
+        <blockquote class="pedagogy-quote">A IA não produz sentido; ela reorganiza relações já existentes no espaço simbólico.</blockquote>
+        <p class="vector-card-note">Nos modelos baseados em embeddings, o significado não mora na palavra isolada, mas nas relações matemáticas entre seus atributos.</p>
+      </section>
     </div>
   </dialog>
   <script src="cordel_rhyme_bank.js"></script>
