@@ -102,6 +102,3 @@ E acesse `http://localhost:8080` de seu navegador.
 **"Inanna e Cordel 2.0" by Celeste Farias e Carlos Vidal é protegido por direitos de autor sob CC BY-ND 4.0.**
 
 Este aplicativo faz parte do ecossistema educativo do **Projeto Cordel 2.0** — dedicado a explorar relações entre cultura popular, criatividade, educação e tecnologias emergentes.
-
-
-Use, cite, nos conte sua experiência para coolaborarmos: contato@cordel2pontozero.com / coordenacaopedagogica@cordel2pontozero.com

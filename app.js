@@ -1,4 +1,4 @@
-// =====================================================================
+﻿// =====================================================================
 // Inanna — Proto-IA Educativa (Cordel 2.0)
 // Novo fluxo de jogo:
 //  ETAPA 1: Usuário escolhe um contexto (tema)
@@ -46,11 +46,14 @@ const ui = {
   // etapa 2
   selectedThemeName: $("selectedThemeName"),
   verseInput: $("verseInput"),
+  verseBlankPreview: $("verseBlankPreview"),
+  step2Progress: $("step2Progress"),
   btnAnalyze: $("btnAnalyze"),
   verseHint: $("verseHint"),
 
   // etapa 3
   versePreview: $("versePreview"),
+  step3Progress: $("step3Progress"),
   predList: $("predList"),
   bars: $("bars"),
   contextDetected: $("contextDetected"),
@@ -63,6 +66,7 @@ const ui = {
   currentLine: $("currentLine"),
   quadra: $("quadra"),
   copyQuadra: $("copyQuadra"),
+  btnContinueQuadra: $("btnContinueQuadra"),
   btnNewPoem: $("btnNewPoem"),
   poemSection: $("poemSection"),
   history: $("history"),
@@ -72,6 +76,14 @@ const ui = {
   modeChallenge: $("modeChallenge"),
   confidence: $("confidence"),
   points: $("points"),
+
+  // modal do vetor
+  vectorModal: $("vectorModal"),
+  closeVector: $("closeVector"),
+  vectorWordTitle: $("vectorWordTitle"),
+  vectorProbability: $("vectorProbability"),
+  vectorSummary: $("vectorSummary"),
+  vectorDimensions: $("vectorDimensions"),
 };
 
 // ── Estado do jogo ───────────────────────────────────────────────────
@@ -87,6 +99,7 @@ const state = {
   points: 0,
   scheme: "Livre",
   modeChallenge: false,
+  rhyme: null,
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
@@ -371,6 +384,164 @@ function setStartHint(msg, color) {
   ui.startHint.style.color = color || "var(--muted)";
 }
 
+function normalizeSpaces(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function stripTrailingVersePunctuation(value) {
+  return String(value || "").replace(/[.,;:!?]+$/g, "").trim();
+}
+
+function parseVerseStem(rawValue) {
+  const raw = normalizeSpaces(rawValue);
+  if (!raw) {
+    return { ok: false, error: "✋ Escreva o começo do verso antes de continuar." };
+  }
+
+  const blanks = raw.match(/___/g) || [];
+  if (blanks.length > 1) {
+    return { ok: false, error: "Use apenas uma lacuna, sempre no fim do verso." };
+  }
+
+  if (blanks.length === 1 && !/___$/.test(raw)) {
+    return { ok: false, error: "A lacuna precisa ficar na última palavra do verso." };
+  }
+
+  const cleaned = stripTrailingVersePunctuation(raw.replace(/___$/, ""));
+  if (!cleaned) {
+    return { ok: false, error: "Escreva algum contexto antes da lacuna final." };
+  }
+
+  return { ok: true, stem: cleaned };
+}
+
+function buildRawVerse(stem) {
+  return `${normalizeSpaces(stem)} ___`;
+}
+
+function updateVerseBlankPreview() {
+  if (!ui.verseBlankPreview) return;
+
+  const parsed = parseVerseStem(ui.verseInput.value || "");
+  if (!parsed.ok) {
+    ui.verseBlankPreview.innerHTML = `
+      <span class="preview-muted">Seu verso aparecerá assim:</span>
+      <span class="preview-stem">...</span>
+      <span class="blank-placeholder fixed">___</span>
+    `;
+    return;
+  }
+
+  ui.verseBlankPreview.innerHTML = `
+    <span class="preview-muted">Seu verso ficará assim:</span>
+    <span class="preview-stem">${escapeHtml(parsed.stem)}</span>
+    <span class="blank-placeholder fixed">___</span>
+  `;
+}
+
+function updateRoundStatus() {
+  const currentVerse = Math.min(4, state.lines.length + 1);
+  const remaining = Math.max(0, 4 - state.lines.length);
+  const schemeText = state.scheme || "Livre";
+
+  if (ui.step2Progress) {
+    if (state.lines.length >= 4) {
+      ui.step2Progress.textContent = "Quadra concluída. Escolha se quer começar uma nova quadra ou um novo poema.";
+    } else {
+      ui.step2Progress.textContent = `Verso ${currentVerse} de 4. Faltam ${remaining} versos para fechar a quadra em ${schemeText}.`;
+    }
+  }
+
+  if (ui.step3Progress) {
+    ui.step3Progress.textContent = `Agora escolha a palavra final do verso ${currentVerse} de 4.`;
+  }
+
+  if (ui.currentLine) {
+    ui.currentLine.textContent = `Verso ${currentVerse} de 4`;
+  }
+}
+
+function refreshSuggestedScheme() {
+  state.scheme = Math.random() < 0.5 ? "AABB" : "ABAB";
+  const schemeSpan = document.getElementById("suggestedScheme");
+  if (schemeSpan) schemeSpan.textContent = state.scheme;
+}
+
+function resetQuadraState(options) {
+  const settings = Object.assign({ resetPoints: true }, options);
+
+  state.lines = [];
+  state.current = { rawVerse: "", pred: null };
+  state.rhyme = null;
+
+  if (settings.resetPoints) {
+    state.points = 0;
+    ui.points.textContent = "0";
+  }
+
+  if (ui.vectorModal && ui.vectorModal.open) {
+    ui.vectorModal.close();
+  }
+
+  ui.confidence.textContent = "—";
+  ui.verseInput.value = "";
+  ui.customInput.value = "";
+  ui.quadra.textContent = "";
+  ui.history.innerHTML = "";
+  ui.poemSection.classList.remove("visible");
+  ui.submitResponse.style.display = "none";
+  ui.submitResponse.textContent = "";
+  ui.submitResponse.style.color = "var(--text)";
+  ui.btnSubmitPoem.disabled = false;
+  ui.btnSubmitPoem.textContent = "🚀 Enviar Quadra";
+
+  const feedbackEl = document.getElementById("rhymeFeedback");
+  if (feedbackEl) feedbackEl.innerHTML = "";
+
+  setExplain("");
+  updateVerseBlankPreview();
+  updateRoundStatus();
+}
+
+function openVectorModal(index) {
+  const detail = state.current.pred && state.current.pred.details ? state.current.pred.details[index] : null;
+  if (!detail || !ui.vectorModal) return;
+
+  ui.vectorWordTitle.textContent = detail.word;
+  ui.vectorProbability.textContent = formatPct(detail.probability);
+
+  const strongest = detail.dimensions.reduce((best, current) => current.contribution > best.contribution ? current : best, detail.dimensions[0]);
+  const weakest = detail.dimensions.reduce((best, current) => current.contribution < best.contribution ? current : best, detail.dimensions[0]);
+
+  ui.vectorSummary.textContent =
+    `Maior força: ${strongest.label} (${strongest.contribution.toFixed(2)}). ` +
+    `Menor força: ${weakest.label} (${weakest.contribution.toFixed(2)}). ` +
+    `A soma ponderada foi ${detail.totalScore.toFixed(2)} e depois foi normalizada entre as candidatas para gerar a probabilidade final.`;
+
+  ui.vectorDimensions.innerHTML = "";
+  detail.dimensions.forEach((dimension) => {
+    const item = document.createElement("article");
+    item.className = "vector-dimension";
+    item.innerHTML = `
+      <div class="vector-dimension-head">
+        <strong>${escapeHtml(dimension.label)}</strong>
+        <span>Peso ${dimension.weight.toFixed(2)}</span>
+      </div>
+      <div class="vector-dimension-bar">
+        <span class="vector-dimension-fill" style="width:${Math.max(8, Math.round(dimension.score * 100))}%"></span>
+      </div>
+      <div class="vector-dimension-meta">
+        <span>Nota ${dimension.score.toFixed(2)}</span>
+        <span>Contribuição ${dimension.contribution.toFixed(2)}</span>
+      </div>
+      <p class="vector-dimension-reason">${escapeHtml(dimension.reason)}</p>
+    `;
+    ui.vectorDimensions.appendChild(item);
+  });
+
+  ui.vectorModal.showModal();
+}
+
 // ── Etapa 1 — montar grade de temas ──────────────────────────────────
 function buildThemeGrid() {
   ui.themeGrid.innerHTML = "";
@@ -391,41 +562,39 @@ function buildThemeGrid() {
 function selectTheme(theme) {
   state.chosenTheme = theme;
   ui.selectedThemeName.textContent = `${theme.emoji} ${theme.name}`;
-
-  state.scheme = Math.random() < 0.5 ? "AABB" : "ABAB";
-  const schemeSpan = document.getElementById("suggestedScheme");
-  if (schemeSpan) schemeSpan.textContent = state.scheme;
+  refreshSuggestedScheme();
+  resetQuadraState({ resetPoints: true });
 
   // Define o placeholder instigante (armadilha) usando o trap example do objeto
   if (theme.trap) {
-    ui.verseInput.placeholder = theme.trap;
+    ui.verseInput.placeholder = theme.trap.replace(/\s*___\s*$/, "");
   } else {
-    ui.verseInput.placeholder = "Ex.: Escreva seu verso com ___ aqui";
+    ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
   }
-
-  // Limpa valor antigo
-  ui.verseInput.value = "";
+  updateVerseBlankPreview();
 
   goToPhase(2);
 }
 
 // ── Etapa 2 — entrada do verso incompleto ────────────────────────────
 function onAnalyze() {
-  const raw = (ui.verseInput.value || "").trim();
-  if (!raw) {
-    ui.verseHint.textContent = "✋ Escreva um verso antes de continuar.";
+  const parsed = parseVerseStem(ui.verseInput.value || "");
+  if (!parsed.ok) {
+    ui.verseHint.textContent = parsed.error;
     ui.verseHint.style.color = "#f97316";
     return;
   }
-  if (!raw.includes("___")) {
-    ui.verseHint.textContent = "💡 Use ___ para marcar onde a IA vai prever (ex: No sertão eu vi ___)";
-    ui.verseHint.style.color = "#f97316";
-    return;
-  }
-  ui.verseHint.textContent = "";
 
+  ui.verseInput.value = parsed.stem;
+  ui.verseHint.textContent = "A lacuna final será prevista pela Inanna a partir desse contexto.";
+  ui.verseHint.style.color = "var(--muted)";
+  updateVerseBlankPreview();
+
+  const raw = buildRawVerse(parsed.stem);
   state.current.rawVerse = raw;
-  state.current.pred = (typeof buildPredictionsV2 === "function") ? buildPredictionsV2(raw, state.chosenTheme, state.lines, state.scheme) : buildPredictions(raw, state.chosenTheme);
+  state.current.pred = (typeof buildPredictionsV2 === "function")
+    ? buildPredictionsV2(raw, state.chosenTheme, state.lines, state.scheme)
+    : buildPredictions(raw, state.chosenTheme);
   renderStep3();
   goToPhase(3);
 }
@@ -493,8 +662,10 @@ function renderStep3() {
   // Preview do verso com lacuna destacada
   const highlighted = escapeHtml(rawVerse).replace("___", `<span class="blank-placeholder">___</span>`);
   ui.versePreview.innerHTML = highlighted;
-  ui.contextDetected.textContent = `${theme.emoji} ${theme.name}`;
+  const rhymeHint = pred && pred.targetRhymeWord ? ` · rima esperada com "${pred.targetRhymeWord}"` : "";
+  ui.contextDetected.textContent = `${theme.emoji} ${theme.name}${rhymeHint}`;
   ui.confidence.textContent = formatPct(pred.confidence);
+  updateRoundStatus();
 
   // Atualizar pontos no modo desafio
   if (state.modeChallenge && pred.confidence < 0.42) {
@@ -504,40 +675,29 @@ function renderStep3() {
 
   // Lista de candidatos
   ui.predList.innerHTML = "";
-  ui.bars.innerHTML = "";
-
   pred.candidates.forEach((tok, i) => {
     const p = pred.probs[i];
 
-    const btn = document.createElement("button");
-    btn.className = "predBtn";
-    btn.type = "button";
-    btn.innerHTML = `
-      <span class="pred-token">${escapeHtml(tok)}</span>
-      <span class="pred-pct">${formatPct(p)}</span>
+    const option = document.createElement("div");
+    option.className = "predOption";
+    option.innerHTML = `
+      <button class="predBtn" type="button">
+        <span class="pred-token">${escapeHtml(tok)}</span>
+        <span class="pred-pct">${formatPct(p)}</span>
+      </button>
+      <button class="vectorBtn" type="button">Ver vetor</button>
     `;
-    btn.addEventListener("click", () => chooseToken(tok, i, "ia"));
-    ui.predList.appendChild(btn);
 
-    // Barra de probabilidade
-    const row = document.createElement("div");
-    row.className = "barRow";
-    row.innerHTML = `
-      <div class="bar-label">${escapeHtml(tok)}</div>
-      <div class="bar"><div class="barFill" style="width:0%"></div></div>
-      <div class="bar-pct">${formatPct(p)}</div>
-    `;
-    ui.bars.appendChild(row);
-    setTimeout(() => {
-      const fill = row.querySelector(".barFill");
-      if (fill) fill.style.width = `${Math.max(2, Math.round(p * 100))}%`;
-    }, 80 + i * 120);
+    const chooseBtn = option.querySelector(".predBtn");
+    const vectorBtn = option.querySelector(".vectorBtn");
+    chooseBtn.addEventListener("click", () => chooseToken(tok, i, "ia"));
+    vectorBtn.addEventListener("click", () => openVectorModal(i));
+    ui.predList.appendChild(option);
   });
 
   // Explicação
   setExplain(
-    `A Inanna analisou o contexto "${theme.name}", rimas, probabilidade e gerou os candidatos. ` +
-    `Isso simula como um modelo de linguagem faz "previsão de próximo token" no processamento de texto!`
+    `As probabilidades aparecem na lista principal. Abra o vetor de qualquer palavra para ver as 5 dimensões ponderadas.`
   );
 }
 
@@ -546,6 +706,7 @@ function chooseToken(token, index, source) {
   const { rawVerse, pred } = state.current;
   const completed = rawVerse.replace("___", token);
   const p = pred ? pred.probs[index] : null;
+  const detail = pred && pred.details && index >= 0 ? pred.details[index] : null;
 
   state.lines.push({
     verse: completed,
@@ -553,25 +714,32 @@ function chooseToken(token, index, source) {
     source,       // "ia" | "custom"
     pct: p ? formatPct(p) : "—",
     themeName: state.chosenTheme.name,
+    vector: detail ? detail.dimensions : null,
   });
+
+  if (ui.vectorModal && ui.vectorModal.open) {
+    ui.vectorModal.close();
+  }
 
   if (source === "ia") {
     setExplain(
-      `✅ Você escolheu "${token}" (${formatPct(p)}) — a IA sugeriu usando o motor de predição V2.`
+      `✅ Você escolheu "${token}" (${formatPct(p)}).`
     );
   } else if (source === "custom") {
     setExplain(
-      `✍️ Você inventou "${token}"! O humano sempre pode surpreender o algoritmo — é isso que nos torna únicos.`
+      `✍️ Você inventou "${token}". A palavra entrou como escolha humana fora do ranking sugerido.`
     );
   }
 
   updatePoem();
+  updateRoundStatus();
 
   if (state.lines.length >= 4) {
     finishPoem();
   } else {
     // Volta para etapa 2 para o próximo verso
     ui.verseInput.value = "";
+    updateVerseBlankPreview();
     ui.verseHint.textContent = `Verso ${state.lines.length + 1} de 4. Continue a quadra!`;
     ui.verseHint.style.color = "var(--muted)";
     goToPhase(2);
@@ -579,8 +747,14 @@ function chooseToken(token, index, source) {
 }
 
 function onCustomChoice() {
-  const word = (ui.customInput.value || "").trim();
+  const word = normalizeSpaces(ui.customInput.value || "");
   if (!word) {
+    setExplain("Digite uma palavra para fechar a lacuna final.");
+    ui.customInput.focus();
+    return;
+  }
+  if (/\s/.test(word) || word.includes("___")) {
+    setExplain("Use apenas uma palavra na lacuna final.");
     ui.customInput.focus();
     return;
   }
@@ -596,7 +770,7 @@ function updatePoem() {
     el.className = `histItem ${item.source === "custom" ? "custom" : ""}`;
     el.innerHTML = `
       <div class="hist-meta">
-        <span>${item.themeName}</span>
+        <span>Verso ${idx + 1} · ${item.themeName}</span>
         <span class="hist-source">${item.source === "custom" ? "✍️ sua palavra" : `🤖 IA — ${item.pct}`}</span>
       </div>
       <div class="hist-line">${escapeHtml(item.verse)}</div>
@@ -738,12 +912,14 @@ function finishPoem() {
   feedbackEl.innerHTML = rhymeFeedbackHTML(rhyme);
 
   ui.poemSection.classList.add("visible");
+  updateRoundStatus();
+  goToPhase(4, { scrollTop: false });
   ui.poemSection.scrollIntoView({ behavior: "smooth" });
-  goToPhase(3);
 }
 
 // ── Navegação entre etapas ────────────────────────────────────────────
-function goToPhase(n) {
+function goToPhase(n, options) {
+  const settings = Object.assign({ scrollTop: true }, options);
   state.phase = n;
   [ui.step0, ui.step1, ui.step2, ui.step3].forEach((el, i) => {
     if (!el) return;
@@ -754,7 +930,9 @@ function goToPhase(n) {
     ind.classList.toggle("done", stepNum > -1 && stepNum < n);
     ind.classList.toggle("current", stepNum === n);
   });
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (settings.scrollTop) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 
 // ── Início (Step 0) ───────────────────────────────────────────────────
@@ -877,8 +1055,8 @@ ui.btnSubmitPoem.addEventListener("click", () => {
   if (WEB_APP_URL.includes("URL_DO_SEU_APPS_SCRIPT_AQUI")) {
     setTimeout(() => {
       ui.submitResponse.style.color = "var(--primary)";
-      ui.submitResponse.textContent = "Simulado: verso enviado com sucesso! (Configure Apps Script para registrar).";
-      ui.btnSubmitPoem.textContent = "🚀 Enviar Verso";
+      ui.submitResponse.textContent = "Simulado: quadra enviada com sucesso! (Configure Apps Script para registrar).";
+      ui.btnSubmitPoem.textContent = "🚀 Enviar Quadra";
     }, 1000);
     return;
   }
@@ -906,8 +1084,8 @@ ui.btnSubmitPoem.addEventListener("click", () => {
     .then((res) => {
       if (res && res.status === "error") throw new Error(res.message);
       ui.submitResponse.style.color = "var(--accent)";
-      ui.submitResponse.textContent = "✅ Verso enviado para a planilha!";
-      ui.btnSubmitPoem.textContent = "🚀 Verso Enviado";
+      ui.submitResponse.textContent = "✅ Quadra enviada para a planilha!";
+      ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
     }).catch((err) => {
       console.error(err);
       ui.submitResponse.style.color = "var(--danger)";
@@ -978,21 +1156,18 @@ async function onCopyQuadra() {
 }
 
 // ── Novo poema / reiniciar ────────────────────────────────────────────
+function onContinueQuadra() {
+  refreshSuggestedScheme();
+  resetQuadraState({ resetPoints: true });
+  goToPhase(2);
+}
+
 function onNewPoem() {
-  state.phase = 1;
   state.chosenTheme = null;
-  state.lines = [];
-  state.current = { rawVerse: "", pred: null };
-  if (!state.modeChallenge) {
-    state.points = 0;
-    ui.points.textContent = "0";
-  }
-  ui.confidence.textContent = "—";
-  ui.verseInput.value = "";
-  ui.quadra.textContent = "";
-  ui.history.innerHTML = "";
-  ui.poemSection.classList.remove("visible");
-  setExplain("");
+  state.scheme = "Livre";
+  ui.selectedThemeName.textContent = "—";
+  ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
+  resetQuadraState({ resetPoints: true });
   buildThemeGrid();
   goToPhase(1);
 }
@@ -1013,10 +1188,12 @@ function syncModes() {
 // ── Eventos ───────────────────────────────────────────────────────────
 ui.btnAnalyze.addEventListener("click", onAnalyze);
 ui.verseInput.addEventListener("keydown", e => { if (e.key === "Enter") onAnalyze(); });
+ui.verseInput.addEventListener("input", updateVerseBlankPreview);
 ui.btnCustom.addEventListener("click", onCustomChoice);
 ui.customInput.addEventListener("keydown", e => { if (e.key === "Enter") onCustomChoice(); });
 ui.btnBack.addEventListener("click", () => goToPhase(2));
 ui.copyQuadra.addEventListener("click", onCopyQuadra);
+ui.btnContinueQuadra.addEventListener("click", onContinueQuadra);
 ui.btnNewPoem.addEventListener("click", onNewPoem);
 ui.modeChallenge.addEventListener("change", syncModes);
 
@@ -1056,9 +1233,22 @@ if (ui.closePlacar && ui.placarModal) {
   });
 }
 
+if (ui.closeVector && ui.vectorModal) {
+  ui.closeVector.addEventListener("click", () => {
+    ui.vectorModal.close();
+  });
+  ui.vectorModal.addEventListener("click", (event) => {
+    if (event.target === ui.vectorModal) {
+      ui.vectorModal.close();
+    }
+  });
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 syncModes();
 buildThemeGrid();
+updateVerseBlankPreview();
+updateRoundStatus();
 if (!state.playerData) {
   goToPhase(0);
 } else {

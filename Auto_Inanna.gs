@@ -49,12 +49,14 @@ function atualizarPlacar(ss, mainSheet) {
   // Ignora o cabeçalho (i=1)
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
+    var timestamp = row[0];
     var modo = row[5];
     var pontos = Number(row[6]) || 0;
     
     // row[1] = Nome, row[4] = Verso
     if (modo === "Desafio") {
       records.push({
+        timestamp: timestamp,
         autor: row[1],
         verso: row[4],
         pontos: pontos
@@ -62,9 +64,10 @@ function atualizarPlacar(ss, mainSheet) {
     }
   }
   
-  // Ordenar decrescente por pontos
+  // Ordenar por pontos; em empate, vence o registro mais recente
   records.sort(function(a, b) {
-    return b.pontos - a.pontos;
+    if (b.pontos !== a.pontos) return b.pontos - a.pontos;
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
   });
   
   // Manter o placar completo ordenado para o app exibir Top 10 e modal completo
@@ -77,8 +80,8 @@ function atualizarPlacar(ss, mainSheet) {
   
   // Limpar a aba placar e recriar o cabeçalho
   placarSheet.clear();
-  placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos"]);
-  placarSheet.getRange("A1:D1").setFontWeight("bold").setBackground("#fff2cc");
+  placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos", "Timestamp"]);
+  placarSheet.getRange("A1:E1").setFontWeight("bold").setBackground("#fff2cc");
   
   // Inserir todos os registros ranqueados
   for (var j = 0; j < rankedRecords.length; j++) {
@@ -87,7 +90,8 @@ function atualizarPlacar(ss, mainSheet) {
       pos,
       rankedRecords[j].autor,
       rankedRecords[j].verso,
-      rankedRecords[j].pontos
+      rankedRecords[j].pontos,
+      rankedRecords[j].timestamp
     ]);
   }
 }
@@ -114,7 +118,8 @@ function doGet(e) {
             posicao: row[0],
             autor: row[1],
             verso: row[2],
-            pontos: row[3] || 0
+            pontos: row[3] || 0,
+            timestamp: row[4] || ""
             });
         }
       }
@@ -149,9 +154,17 @@ function setupInicial() {
     placarSheet = ss.insertSheet("placar");
   }
   if (placarSheet.getLastRow() === 0) {
-    placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos"]);
-    placarSheet.getRange("A1:D1").setFontWeight("bold").setBackground("#fff2cc");
+    placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos", "Timestamp"]);
+    placarSheet.getRange("A1:E1").setFontWeight("bold").setBackground("#fff2cc");
   }
   
   Logger.log("Configuração concluída! Suas abas 'Página1' e 'placar' estão prontas.");
+}
+
+function reconstruirPlacar() {
+  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+  var ss = SpreadsheetApp.openById(sheetId);
+  var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+  atualizarPlacar(ss, formSheet);
+  Logger.log("Placar reconstruído com todos os registros de modo Desafio.");
 }

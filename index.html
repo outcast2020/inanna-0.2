@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-br">
 
 <head>
@@ -130,6 +130,11 @@
         <div class="step-num">3</div>
         <div class="step-lbl">Complete com IA</div>
       </div>
+      <div class="steps-connector"></div>
+      <div class="step-indicator" data-step="4">
+        <div class="step-num">4</div>
+        <div class="step-lbl">Quadra Pronta</div>
+      </div>
     </nav>
 
     <!-- ── MENU DIVISÃO LAYOUT ────────────────────────────────────── -->
@@ -183,28 +188,30 @@
               Tema selecionado: <strong id="selectedThemeName">—</strong>
             </p>
             <p class="step-desc">
-              Use <code>___</code> (três underlines) para marcar onde a IA deve completar. Exemplo:
-              <em>"No sertão eu vi uma ___"</em> ou <em>"A caatinga tem o estrondo do ___"</em>
+              Escreva o verso <strong>sem a última palavra</strong>. A lacuna <code>___</code> ficará sempre no fim para
+              você testar a rima e a previsão da Inanna.
             </p>
           </div>
 
           <!-- Progresso da quadra -->
           <div id="history" class="history-inline"></div>
+          <div id="step2Progress" class="round-status"></div>
 
           <div id="schemeHint" class="scheme-hint" style="background: rgba(249,115,22,0.1); color: var(--primary); padding: 8px 12px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; border: 1px solid rgba(249,115,22,0.3); font-size: 13px;">
              💡 Esquema sugerido: <span id="suggestedScheme">Livre</span>
           </div>
 
           <div class="verse-input-area">
-            <label class="field-label" for="verseInput">Verso com lacuna <code>___</code></label>
+            <label class="field-label" for="verseInput">Verso sem a última palavra</label>
             <div class="input-row">
-              <input id="verseInput" type="text" maxlength="160" placeholder='Ex.: No São João eu vi a ___'
+              <input id="verseInput" type="text" maxlength="160" placeholder='Ex.: No São João eu vi a'
                 autocomplete="off" />
               <button id="btnAnalyze" class="btn btn-primary" type="button">
                 🔮 Prever
               </button>
             </div>
-            <p id="verseHint" class="verse-hint">Use ___ para indicar a lacuna que a IA vai completar.</p>
+            <div id="verseBlankPreview" class="verse-build-preview" aria-live="polite"></div>
+            <p id="verseHint" class="verse-hint">A Inanna vai completar apenas a última palavra do verso.</p>
           </div>
         </section>
 
@@ -213,9 +220,10 @@
           <div class="step-header">
             <img src="emoji.png" alt="Inanna" class="inanna-avatar" />
             <h2>🤖 Previsões da Proto-IA</h2>
-            <p class="step-desc">Escolha uma das previsões abaixo <strong>ou</strong> invente sua própria palavra para
-              completar o verso.</p>
+            <p class="step-desc">Escolha uma palavra sugerida para fechar o verso ou digite a sua própria. Se quiser,
+              abra o vetor para ver como cada dimensão pesou na probabilidade.</p>
           </div>
+          <div id="step3Progress" class="round-status"></div>
 
           <!-- Verso com lacuna -->
           <div class="verse-preview-box">
@@ -224,26 +232,19 @@
             <div class="context-tag">Contexto detectado: <span id="contextDetected">—</span></div>
           </div>
 
-          <div class="predictions-grid">
-
-            <!-- Coluna Esquerda: Botões de seleção -->
+          <div class="predictions-grid simple">
             <div class="pred-column">
-              <h3 class="col-title">🎯 Top 4 Opções da IA</h3>
+              <h3 class="col-title">🎯 Sugestões para a lacuna final</h3>
               <div id="predList" class="predList"></div>
 
-              <div class="custom-divider"><span>ou crie a sua própria</span></div>
+              <div class="custom-divider"><span>ou escreva a sua última palavra</span></div>
 
               <div class="custom-input-row">
-                <input id="customInput" type="text" placeholder='Digite sua palavra aqui...' maxlength="40" />
+                <input id="customInput" type="text" placeholder='Digite apenas uma palavra...' maxlength="40" />
                 <button id="btnCustom" class="btn btn-custom" type="button">✍️ Usar</button>
               </div>
-            </div>
 
-            <!-- Coluna Direita: Probabilidades e explicação -->
-            <div class="pred-column">
-              <h3 class="col-title">📊 Por dentro do Algoritmo</h3>
-              <div id="bars" class="bars"></div>
-              <div id="explainBox" class="explain-text"></div>
+              <p id="explainBox" class="prediction-note">Clique em <strong>Ver vetor</strong> para abrir a explicação da palavra escolhida.</p>
             </div>
           </div>
 
@@ -264,7 +265,8 @@
           <div id="currentLine" class="sr-only"></div>
           <div class="poem-actions">
             <button id="copyQuadra" class="btn btn-secondary" type="button">📋 Copiar Quadra</button>
-            <button id="btnSubmitPoem" class="btn btn-custom" type="button">🚀 Enviar Verso</button>
+            <button id="btnSubmitPoem" class="btn btn-custom" type="button">🚀 Enviar Quadra</button>
+            <button id="btnContinueQuadra" class="btn btn-ghost" type="button">➕ Nova Quadra (zera os pontos)</button>
             <button id="btnNewPoem" class="btn btn-primary" type="button">🔄 Novo Poema</button>
           </div>
           <p id="submitResponse" style="text-align:center; display:none; margin-top:10px; font-weight: bold;"></p>
@@ -307,6 +309,22 @@
 </footer>
   </main>
 
+  <dialog id="vectorModal" class="rules-modal vector-modal">
+    <div class="rules-content">
+      <div class="vector-modal-head">
+        <div>
+          <p class="vector-modal-kicker">Vetor pedagógico</p>
+          <h3 id="vectorWordTitle">Palavra</h3>
+        </div>
+        <button id="closeVector" class="btn btn-secondary" type="button">Fechar</button>
+      </div>
+      <div class="vector-summary-box">
+        <div class="vector-probability">Probabilidade: <strong id="vectorProbability">—</strong></div>
+        <p id="vectorSummary" class="vector-summary"></p>
+      </div>
+      <div id="vectorDimensions" class="vector-dimensions"></div>
+    </div>
+  </dialog>
   <script src="cordel_rhyme_bank.js"></script>
   <script src="prediction_engine_v2.js"></script>
   <script src="app.js"></script>
