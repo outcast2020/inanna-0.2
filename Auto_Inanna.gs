@@ -303,3 +303,71 @@ function reconstruirPlacar() {
   atualizarPlacar(ss, formSheet);
   Logger.log("Placar reconstruído com a nova regra de pontuação.");
 }
+
+function buildBackupTimestamp_() {
+  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  return Utilities.formatDate(new Date(), tz, "yyyyMMdd_HHmmss");
+}
+
+function buildUniqueBackupSheetName_(ss, baseName) {
+  var safeBase = String(baseName || "backup").slice(0, 85);
+  var candidate = safeBase;
+  var suffix = 1;
+
+  while (ss.getSheetByName(candidate)) {
+    candidate = safeBase.slice(0, 80) + "_" + suffix;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+function backupSheetBeforeReset_(ss, sourceSheet, backupPrefix) {
+  if (!sourceSheet) return null;
+  var stamp = buildBackupTimestamp_();
+  var backupName = buildUniqueBackupSheetName_(ss, backupPrefix + "_" + stamp);
+  var backupSheet = sourceSheet.copyTo(ss).setName(backupName);
+  backupSheet.activate();
+  ss.moveActiveSheet(ss.getNumSheets());
+  backupSheet.getRange(1, 1).setNote("Backup automático criado antes do reset em " + stamp + ".");
+  return backupName;
+}
+
+function resetSheetWithHeaders_(sheet, headers, headerColor) {
+  if (!sheet) return;
+  sheet.clear();
+  sheet.appendRow(headers);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground(headerColor || "#ffffff");
+}
+
+function resetPlacarERegistrosComBackup() {
+  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+  var ss = SpreadsheetApp.openById(sheetId);
+  var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+  var placarSheet = ss.getSheetByName("placar");
+  var backups = [];
+
+  if (formSheet && formSheet.getLastRow() > 0) {
+    backups.push(backupSheetBeforeReset_(ss, formSheet, "backup_registros"));
+  }
+  if (placarSheet && placarSheet.getLastRow() > 0) {
+    backups.push(backupSheetBeforeReset_(ss, placarSheet, "backup_placar"));
+  }
+
+  resetSheetWithHeaders_(
+    formSheet,
+    ["Carimbo de data/hora", "Nome", "Email", "Tipo de Participante", "Verso", "Modo", "Pontos", "Esquema de Rima", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema"],
+    "#d9ead3"
+  );
+
+  if (!placarSheet) {
+    placarSheet = ss.insertSheet("placar");
+  }
+  resetSheetWithHeaders_(
+    placarSheet,
+    ["Posição", "Autor", "Verso", "Pontos", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema", "Timestamp"],
+    "#fff2cc"
+  );
+
+  Logger.log("Reset concluído com backup. Abas criadas: " + backups.filter(function(name) { return !!name; }).join(", "));
+}
