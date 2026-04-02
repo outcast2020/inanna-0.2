@@ -697,6 +697,39 @@ select:focus-visible,
   text-align: center;
 }
 
+.start-identity {
+  min-height: 72px;
+}
+
+.start-identity__card {
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.start-identity__card strong {
+  color: #fff7ed;
+}
+
+.start-identity__meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.start-identity__card--success {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.start-identity__card--warning {
+  border-color: rgba(249, 115, 22, 0.32);
+  background: rgba(249, 115, 22, 0.08);
+}
+
 .verse-build-preview {
   display: flex;
   flex-wrap: wrap;

@@ -23,6 +23,8 @@ const ui = {
   playerName: $("playerName"),
   playerEmail: $("playerEmail"),
   playerType: $("playerType"),
+  verifyCheckinBtn: $("verifyCheckinBtn"),
+  welcomeIdentity: $("welcomeIdentity"),
   startHint: $("startHint"),
   btnSubmitPoem: $("btnSubmitPoem"),
   submitResponse: $("submitResponse"),
@@ -105,6 +107,18 @@ const ui = {
 const state = {
   phase: 0,           // 0 | 1 | 2 | 3
   playerData: null,
+  name: "",
+  email: "",
+  municipio: "",
+  estadoUF: "",
+  origem: "",
+  participantId: "",
+  checkinUserId: "",
+  checkinMatchStatus: "",
+  checkinMatchMethod: "",
+  teacherGroup: "",
+  checkinLookupStatus: "idle", // idle | loading | matched | unmatched | ambiguous | error
+  checkinLookupMessage: "",
   chosenTheme: null,  // objeto THEMES
   lines: [],          // versos completos
   current: {
@@ -119,7 +133,8 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzs8Ed2Y42NaPIviqVN7eVsLyIcANZ641sM-KEx7OtUkkoZTEC_1l13hIqMHyPCvxMM/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbypYkJuBH5DE5yhlr49OFB1cMMWKtB0lZC7H6_UBvfrPgu_IpsANhBTBnfZwLTBR2tw/exec";
+const APP_VARIANT = "inanna-main";
 
 // ── Banco de Curadoria Local (Fallback/Library Pré-Programado) ────────
 // Caso a planilha não esteja conectada, o administrador pode adicionar 
@@ -398,6 +413,265 @@ function setStartHint(msg, color) {
   if (!ui.startHint) return;
   ui.startHint.textContent = msg || "";
   ui.startHint.style.color = color || "var(--muted)";
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function normalizeUFOrInternational(value) {
+  const ufs = [
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+  ];
+  const text = String(value || "").trim().toUpperCase();
+  if (!text) return "";
+  if (text.includes("INTERNAC") || text === "INT" || text === "INTL") return "INTERNACIONAL";
+  const letters = text.replace(/[^A-Z]/g, "").slice(0, 2);
+  if (ufs.includes(letters)) return letters;
+  if (ufs.includes(text)) return text;
+  return "INTERNACIONAL";
+}
+
+function normalizeOrigem(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text.includes("oficina") || text.includes("cordel")) return "Oficina Cordel 2.0";
+  if (text.includes("part") || text.includes("priv")) return "Particular";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function clearResolvedCheckinIdentity(nextEmail = "") {
+  state.email = String(nextEmail || "").trim();
+  state.name = "";
+  state.municipio = "";
+  state.estadoUF = "";
+  state.origem = "";
+  state.participantId = "";
+  state.checkinUserId = "";
+  state.checkinMatchStatus = "";
+  state.checkinMatchMethod = "";
+  state.teacherGroup = "";
+  state.checkinLookupStatus = "idle";
+  state.checkinLookupMessage = "";
+}
+
+function applyResolvedCheckinIdentity(identity) {
+  state.name = String(identity?.name || "").trim();
+  state.email = String(identity?.email || state.email || "").trim();
+  state.municipio = String(identity?.municipio || "").trim();
+  state.estadoUF = normalizeUFOrInternational(identity?.estado || "");
+  state.origem = normalizeOrigem(identity?.origem || "");
+  state.participantId = String(identity?.participantId || "").trim();
+  state.checkinUserId = String(identity?.checkinUserId || "").trim();
+  state.checkinMatchStatus = String(identity?.status || "matched").trim() || "matched";
+  state.checkinMatchMethod = String(identity?.matchMethod || "email").trim() || "email";
+  state.teacherGroup = String(identity?.teacherGroup || "").trim();
+  state.checkinLookupStatus = "matched";
+  state.checkinLookupMessage = "";
+}
+
+function renderWelcomeIdentityStatus() {
+  const status = String(state.checkinLookupStatus || "idle");
+
+  if (status === "loading") {
+    return `
+      <div class="start-identity__card">
+        <strong>Verificando seu e-mail no check-in...</strong>
+        <div class="start-identity__meta">Aguarde um instante antes de começar.</div>
+      </div>
+    `;
+  }
+
+  if (status === "matched") {
+    const details = [
+      state.municipio ? `Município: ${escapeHtml(state.municipio)}` : "",
+      state.estadoUF ? `Estado: ${escapeHtml(state.estadoUF)}` : "",
+      state.teacherGroup ? `Turma/oficina: ${escapeHtml(state.teacherGroup)}` : ""
+    ].filter(Boolean);
+
+    return `
+      <div class="start-identity__card start-identity__card--success">
+        <strong>Cadastro confirmado.</strong><br>
+        ${escapeHtml(state.name || "Participante")}<br>
+        <span class="start-identity__meta">${escapeHtml(state.email)}</span>
+        ${details.length ? `<div class="start-identity__meta">${details.join(" · ")}</div>` : ""}
+      </div>
+    `;
+  }
+
+  if (status === "unmatched") {
+    return `
+      <div class="start-identity__card start-identity__card--warning">
+        <strong>E-mail não encontrado.</strong>
+        <div class="start-identity__meta">Nesta fase, a jornada só é liberada para e-mails já registrados no check-in.</div>
+      </div>
+    `;
+  }
+
+  if (status === "ambiguous") {
+    return `
+      <div class="start-identity__card start-identity__card--warning">
+        <strong>Cadastro ambíguo.</strong>
+        <div class="start-identity__meta">Encontrei mais de um registro com esse e-mail. Vale revisar o check-in antes de seguir.</div>
+      </div>
+    `;
+  }
+
+  if (status === "error") {
+    return `
+      <div class="start-identity__card start-identity__card--warning">
+        <strong>Não consegui validar agora.</strong>
+        <div class="start-identity__meta">${escapeHtml(state.checkinLookupMessage || "Tente novamente em instantes.")}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="start-identity__card">
+      <strong>Digite o e-mail do check-in.</strong>
+      <div class="start-identity__meta">Seu nome será preenchido automaticamente quando o cadastro for encontrado.</div>
+    </div>
+  `;
+}
+
+function updateWelcomeIdentityUI() {
+  if (ui.welcomeIdentity) {
+    ui.welcomeIdentity.innerHTML = renderWelcomeIdentityStatus();
+  }
+
+  if (ui.verifyCheckinBtn) {
+    ui.verifyCheckinBtn.disabled = state.checkinLookupStatus === "loading" || !isValidEmail(ui.playerEmail?.value || "");
+    ui.verifyCheckinBtn.textContent = state.checkinLookupStatus === "loading" ? "Verificando..." : "Verificar e-mail";
+  }
+
+  if (ui.btnStart) {
+    ui.btnStart.disabled = !(state.checkinLookupStatus === "matched" && state.name && state.participantId && state.checkinUserId);
+  }
+}
+
+function requestCheckinIdentityViaJsonp(email) {
+  return new Promise((resolve) => {
+    const callbackName =
+      "__inannaCheckinCb_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    const params = new URLSearchParams({
+      action: "checkin_lookup",
+      callback: callbackName,
+      email: String(email || "").trim()
+    });
+    const script = document.createElement("script");
+    const mountNode = document.body || document.head || document.documentElement;
+    let timer = null;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (script.parentNode) script.parentNode.removeChild(script);
+      try {
+        delete window[callbackName];
+      } catch (_) {
+        window[callbackName] = undefined;
+      }
+    };
+
+    window[callbackName] = (data) => {
+      cleanup();
+      resolve(data || { ok: false, status: "error", error: "empty_response" });
+    };
+
+    script.onerror = () => {
+      cleanup();
+      resolve({ ok: false, status: "error", error: "network" });
+    };
+
+    timer = window.setTimeout(() => {
+      cleanup();
+      resolve({ ok: false, status: "error", error: "timeout" });
+    }, 15000);
+
+    script.src = `${WEB_APP_URL}?${params.toString()}`;
+    mountNode.appendChild(script);
+  });
+}
+
+async function verifyCheckinEmail() {
+  const typedEmail = ui.playerEmail?.value.trim() || "";
+
+  if (!isValidEmail(typedEmail)) {
+    setStartHint("Digite um e-mail válido para consultar o check-in.", "var(--primary)");
+    clearResolvedCheckinIdentity(typedEmail);
+    updateWelcomeIdentityUI();
+    return;
+  }
+
+  clearResolvedCheckinIdentity(typedEmail);
+  state.checkinLookupStatus = "loading";
+  state.checkinLookupMessage = "";
+  setStartHint("");
+  updateWelcomeIdentityUI();
+
+  const response = await requestCheckinIdentityViaJsonp(typedEmail);
+
+  if (response?.ok && response?.status === "matched") {
+    applyResolvedCheckinIdentity(response);
+    updateWelcomeIdentityUI();
+    if (ui.btnStart) ui.btnStart.focus();
+    return;
+  }
+
+  clearResolvedCheckinIdentity(typedEmail);
+  state.checkinLookupStatus =
+    response?.status === "ambiguous"
+      ? "ambiguous"
+      : response?.status === "unmatched"
+        ? "unmatched"
+        : "error";
+
+  const lookupMessageMap = {
+    invalid_email: "Digite um e-mail válido para consultar o check-in.",
+    ambiguous_email: "Encontrei mais de um cadastro com esse e-mail no check-in.",
+    email_not_found: "Este e-mail não está registrado no check-in oficial.",
+    timeout: "A consulta demorou demais. Tente novamente.",
+    network: "Não consegui acessar o check-in agora. Tente novamente em instantes."
+  };
+  state.checkinLookupMessage = lookupMessageMap[response?.error] || String(response?.error || "");
+  setStartHint(state.checkinLookupStatus === "error" ? state.checkinLookupMessage : "", "var(--primary)");
+  updateWelcomeIdentityUI();
+}
+
+function handleStartJourney() {
+  state.email = ui.playerEmail?.value.trim() || "";
+
+  if (!isValidEmail(state.email)) {
+    setStartHint("Digite um e-mail válido para consultar o check-in.", "var(--primary)");
+    updateWelcomeIdentityUI();
+    return;
+  }
+
+  if (state.checkinLookupStatus !== "matched" || !state.name || !state.participantId || !state.checkinUserId) {
+    setStartHint("Verifique um e-mail já registrado no check-in antes de começar.", "var(--primary)");
+    updateWelcomeIdentityUI();
+    return;
+  }
+
+  setStartHint("");
+  state.playerData = {
+    nome: state.name,
+    email: state.email,
+    tipoAcesso: state.origem || state.teacherGroup || "Oficina Cordel 2.0",
+    participantId: state.participantId,
+    checkinUserId: state.checkinUserId,
+    checkinMatchStatus: state.checkinMatchStatus || "matched",
+    checkinMatchMethod: state.checkinMatchMethod || "email",
+    teacherGroup: state.teacherGroup,
+    municipio: state.municipio,
+    estado: state.estadoUF,
+    origem: state.origem
+  };
+  goToPhase(1);
 }
 
 function normalizeSpaces(value) {
@@ -1199,29 +1473,31 @@ function goToPhase(n, options) {
 }
 
 // ── Início (Step 0) ───────────────────────────────────────────────────
-ui.btnStart.addEventListener("click", () => {
-  const nome = ui.playerName.value.trim();
-  const email = ui.playerEmail.value.trim();
-  const tipoAcesso = ui.playerType.value;
+if (ui.btnStart) {
+  ui.btnStart.addEventListener("click", handleStartJourney);
+}
 
-  if (!nome || !email || !tipoAcesso) {
-    setStartHint("Preencha nome, email e tipo para iniciar.", "var(--primary)");
-    if (!nome) ui.playerName.focus();
-    else if (!email) ui.playerEmail.focus();
-    else ui.playerType.focus();
-    return;
-  }
+if (ui.verifyCheckinBtn) {
+  ui.verifyCheckinBtn.addEventListener("click", verifyCheckinEmail);
+}
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    setStartHint("Use um email valido para continuar.", "var(--primary)");
-    ui.playerEmail.focus();
-    return;
-  }
+if (ui.playerEmail) {
+  ui.playerEmail.addEventListener("input", () => {
+    const typedEmail = ui.playerEmail.value.trim();
+    if (normalizeEmail(typedEmail) !== normalizeEmail(state.email)) {
+      clearResolvedCheckinIdentity(typedEmail);
+    }
+    setStartHint("");
+    updateWelcomeIdentityUI();
+  });
 
-  setStartHint("");
-  state.playerData = { nome, email, tipoAcesso };
-  goToPhase(1);
-});
+  ui.playerEmail.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      verifyCheckinEmail();
+    }
+  });
+}
 
 // ── Placar e Envio ───────────────────────────────────────────────────
 function renderPlacarItems(data) {
@@ -1325,9 +1601,19 @@ ui.btnSubmitPoem.addEventListener("click", () => {
   }
 
   const payload = {
-    nome: state.playerData.nome,
-    email: state.playerData.email,
+    appVariant: APP_VARIANT,
+    nome: state.name || state.playerData.nome,
+    name: state.name || state.playerData.nome,
+    email: state.email || state.playerData.email,
     tipoAcesso: state.playerData.tipoAcesso,
+    participantId: state.participantId || state.playerData.participantId || "",
+    checkinUserId: state.checkinUserId || state.playerData.checkinUserId || "",
+    checkinMatchStatus: state.checkinMatchStatus || state.playerData.checkinMatchStatus || "",
+    checkinMatchMethod: state.checkinMatchMethod || state.playerData.checkinMatchMethod || "",
+    teacherGroup: state.teacherGroup || state.playerData.teacherGroup || "",
+    municipio: state.municipio || state.playerData.municipio || "",
+    estado: state.estadoUF || state.playerData.estado || "",
+    origem: state.origem || state.playerData.origem || "",
     verso: textoQuada,
     modo: state.modeChallenge ? "Desafio" : "Didático",
     pontos: state.points,
@@ -1544,4 +1830,5 @@ if (!state.playerData) {
 } else {
   goToPhase(1);
 }
+updateWelcomeIdentityUI();
 loadPlacar();

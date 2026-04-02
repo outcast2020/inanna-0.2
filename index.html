@@ -146,24 +146,17 @@
           <div class="step-header">
             <img src="emoji.png" alt="Inanna" class="inanna-avatar" />
             <h2>👋 Bem-vindo ao Cordel 2.0</h2>
-            <p class="step-desc">Identifique-se para começarmos a criar.</p>
+            <p class="step-desc">Verifique seu e-mail de check-in para liberar a jornada.</p>
           </div>
           <div class="verse-input-area" style="max-width: 400px; margin: 0 auto; gap: 16px;">
-            <label class="field-label" for="playerName">Nome</label>
-            <input type="text" id="playerName" placeholder="Nome" class="input-row"
-              style="width: 100%; padding: 14px 18px; border-radius: var(--r-md); background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.12);" />
             <label class="field-label" for="playerEmail">Email</label>
             <input type="email" id="playerEmail" placeholder="Email" class="input-row"
               style="width: 100%; padding: 14px 18px; border-radius: var(--r-md); background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.12);" />
-            <label class="field-label" for="playerType">Tipo de participante</label>
-            <select id="playerType" class="input-row"
-              style="width: 100%; padding: 14px 18px; border-radius: var(--r-md); background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.12); appearance: none;">
-              <option value="" disabled selected>Selecione seu tipo</option>
-              <option value="Oficina Cordel 2.0" style="color: #000;">Oficina Cordel 2.0</option>
-              <option value="Participante geral" style="color: #000;">Participante geral</option>
-            </select>
-            <button id="btnStart" class="btn btn-primary" style="width: 100%; justify-content: center;">🚀 Iniciar
-              Jogo</button>
+            <button id="verifyCheckinBtn" class="btn"
+              style="width: 100%; justify-content: center;">Verificar e-mail</button>
+            <div id="welcomeIdentity" class="start-identity" aria-live="polite"></div>
+            <button id="btnStart" class="btn btn-primary" style="width: 100%; justify-content: center;" disabled>🚀
+              Começar jornada</button>
             <p id="startHint" class="verse-hint form-hint" aria-live="polite"></p>
           </div>
         </section>

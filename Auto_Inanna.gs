@@ -1,3 +1,43 @@
+var DEFAULT_REGISTRY_SPREADSHEET_ID = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+var DEFAULT_REGISTRY_SHEET_NAME = "Página1";
+var DEFAULT_CHECKIN_SPREADSHEET_ID = "130CvfT6mwv0gzYQgmrylg4Q0T5xRI918dms8A4yzqO8";
+var DEFAULT_CHECKIN_SHEET_NAME = "USERS";
+var DEFAULT_APP_VARIANT = "inanna-main";
+var FORM_HEADERS = [
+  "Carimbo de data/hora",
+  "Nome",
+  "Email",
+  "Tipo de Participante",
+  "Verso",
+  "Modo",
+  "Pontos",
+  "Esquema de Rima",
+  "Pts Rima",
+  "Pts Forma",
+  "Pts Criatividade",
+  "Bônus Esquema",
+  "PARTICIPANT_ID",
+  "CHECKIN_USER_ID",
+  "CHECKIN_MATCH_STATUS",
+  "CHECKIN_MATCH_METHOD",
+  "TEACHER_GROUP",
+  "MUNICIPIO",
+  "ESTADO",
+  "ORIGEM",
+  "APP_VARIANT"
+];
+var PLACAR_HEADERS = [
+  "Posição",
+  "Autor",
+  "Verso",
+  "Pontos",
+  "Pts Rima",
+  "Pts Forma",
+  "Pts Criatividade",
+  "Bônus Esquema",
+  "Timestamp"
+];
+
 function doPost(e) {
   return registrarVerso(e);
 }
@@ -135,29 +175,80 @@ function calculateChallengeScoreFromVerse(verseText, creativityBonus) {
 
 function registrarVerso(e) {
   try {
-    var data = JSON.parse(e.postData.contents);
-    var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
-    var ss = SpreadsheetApp.openById(sheetId);
-    var sheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+    var data = JSON.parse((e && e.postData && e.postData.contents) || "{}");
+    var sheet = getRecordsSheet_();
+    var headerMap = ensureHeaders_(sheet, FORM_HEADERS);
+
+    var nomeRaw = String(data.nome || data.name || "").trim();
+    var emailRaw = String(data.email || "").trim();
+    var municipioRaw = String(data.municipio || data.city || "").trim();
+    var estadoRaw = String(data.estado || data.state || data.stateUF || "").trim();
+    var origemRaw = String(data.origem || data.source || data.tipoAcesso || "").trim();
+    var teacherGroupRaw = String(data.teacherGroup || data.cohort || data.workshop || "").trim();
+    var checkinMatch = resolveCheckinMatch_({
+      name: nomeRaw,
+      email: emailRaw,
+      municipio: municipioRaw,
+      estado: estadoRaw,
+      origem: origemRaw,
+      cohort: teacherGroupRaw
+    });
+
+    var nome = String(nomeRaw || checkinMatch.name || "").trim();
+    var email = String(emailRaw || checkinMatch.email || "").trim();
+    var municipio = String(municipioRaw || checkinMatch.city || "").trim();
+    var estado = normalizeUFOrInternational_(estadoRaw || checkinMatch.estado || "");
+    var origem = normalizeOrigem_(origemRaw || checkinMatch.origem || "");
+    var teacherGroup = String(teacherGroupRaw || checkinMatch.teacherGroup || "").trim();
+    var checkinUserId = String(data.checkinUserId || checkinMatch.checkinUserId || "").trim();
+    var matchStatus = String(data.checkinMatchStatus || checkinMatch.status || "").trim() || (checkinUserId ? "matched" : "unmatched");
+    var matchMethod = String(data.checkinMatchMethod || checkinMatch.method || "").trim() || (checkinUserId ? "email" : "none");
+    var participantId = String(
+      data.participantId ||
+      buildParticipantId_({
+        name: nome,
+        email: email,
+        municipio: municipio,
+        estado: estado,
+        origem: origem,
+        checkinMatch: {
+          status: matchStatus,
+          checkinUserId: checkinUserId
+        }
+      })
+    ).trim();
+    var tipoParticipante = String(data.tipoAcesso || teacherGroup || origem || "").trim();
     var modoStr = data.modo || "Didático";
     var score = calculateChallengeScoreFromVerse(data.verso, data.pontosCriatividade);
     var pontosNum = modoStr === "Desafio" ? score.total : 0;
+    var width = Math.max(sheet.getLastColumn(), FORM_HEADERS.length);
+    var row = buildBlankRow_(width);
 
-    sheet.appendRow([
-      new Date(),
-      data.nome,
-      data.email,
-      data.tipoAcesso,
-      data.verso,
-      modoStr,
-      pontosNum,
-      score.scheme || "—",
-      score.pontosRima || 0,
-      score.pontosForma || 0,
-      score.pontosCriatividade || 0,
-      score.bonusEsquema || 0
-    ]);
+    setRowValue_(row, headerMap, "Carimbo de data/hora", new Date());
+    setRowValue_(row, headerMap, "Nome", nome);
+    setRowValue_(row, headerMap, "Email", email);
+    setRowValue_(row, headerMap, "Tipo de Participante", tipoParticipante);
+    setRowValue_(row, headerMap, "Verso", data.verso || "");
+    setRowValue_(row, headerMap, "Modo", modoStr);
+    setRowValue_(row, headerMap, "Pontos", pontosNum);
+    setRowValue_(row, headerMap, "Esquema de Rima", score.scheme || "—");
+    setRowValue_(row, headerMap, "Pts Rima", score.pontosRima || 0);
+    setRowValue_(row, headerMap, "Pts Forma", score.pontosForma || 0);
+    setRowValue_(row, headerMap, "Pts Criatividade", score.pontosCriatividade || 0);
+    setRowValue_(row, headerMap, "Bônus Esquema", score.bonusEsquema || 0);
+    setRowValue_(row, headerMap, "PARTICIPANT_ID", participantId);
+    setRowValue_(row, headerMap, "CHECKIN_USER_ID", checkinUserId);
+    setRowValue_(row, headerMap, "CHECKIN_MATCH_STATUS", matchStatus);
+    setRowValue_(row, headerMap, "CHECKIN_MATCH_METHOD", matchMethod);
+    setRowValue_(row, headerMap, "TEACHER_GROUP", teacherGroup);
+    setRowValue_(row, headerMap, "MUNICIPIO", municipio);
+    setRowValue_(row, headerMap, "ESTADO", estado);
+    setRowValue_(row, headerMap, "ORIGEM", origem);
+    setRowValue_(row, headerMap, "APP_VARIANT", String(data.appVariant || DEFAULT_APP_VARIANT).trim() || DEFAULT_APP_VARIANT);
 
+    sheet.appendRow(row);
+
+    var ss = sheet.getParent();
     if (modoStr === "Desafio") {
       atualizarPlacar(ss, sheet);
     }
@@ -210,7 +301,7 @@ function atualizarPlacar(ss, mainSheet) {
   }
 
   placarSheet.clear();
-  placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema", "Timestamp"]);
+  placarSheet.appendRow(PLACAR_HEADERS);
   placarSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#fff2cc");
 
   for (var j = 0; j < rankedRecords.length; j++) {
@@ -230,10 +321,14 @@ function atualizarPlacar(ss, mainSheet) {
 
 function doGet(e) {
   try {
-    if (e.parameter.action === "getPlacar") {
-      var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
-      var ss = SpreadsheetApp.openById(sheetId);
-      var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+    var action = String((e && e.parameter && e.parameter.action) || "").trim().toLowerCase();
+    if (action === "checkin_lookup") {
+      return handleCheckinLookup_(e);
+    }
+
+    if (action === "getplacar") {
+      var ss = getRegistrySpreadsheet_();
+      var formSheet = getRecordsSheet_();
       atualizarPlacar(ss, formSheet);
       var sheet = ss.getSheetByName("placar");
 
@@ -274,25 +369,400 @@ function doGet(e) {
   }
 }
 
+function getRegistrySpreadsheet_() {
+  return SpreadsheetApp.openById(DEFAULT_REGISTRY_SPREADSHEET_ID);
+}
+
+function getRecordsSheet_() {
+  var ss = getRegistrySpreadsheet_();
+  return ss.getSheetByName(DEFAULT_REGISTRY_SHEET_NAME) || ss.getSheets()[0];
+}
+
+function getCheckinSheet_() {
+  var props = PropertiesService.getScriptProperties();
+  var spreadsheetId = String(props.getProperty("IZA_CHECKIN_SPREADSHEET_ID") || DEFAULT_CHECKIN_SPREADSHEET_ID).trim();
+  var sheetName = String(props.getProperty("IZA_CHECKIN_SHEET_NAME") || DEFAULT_CHECKIN_SHEET_NAME).trim();
+  var ss = openSpreadsheetSafely_(spreadsheetId);
+  if (!ss) return null;
+
+  if (sheetName) {
+    return (
+      ss.getSheetByName(sheetName) ||
+      ss.getSheetByName("USERS") ||
+      ss.getSheetByName("Users") ||
+      ss.getSheetByName("users") ||
+      ss.getSheets()[0]
+    );
+  }
+
+  return (
+    ss.getSheetByName("USERS") ||
+    ss.getSheetByName("Users") ||
+    ss.getSheetByName("users") ||
+    ss.getSheets()[0]
+  );
+}
+
+function openSpreadsheetSafely_(spreadsheetId) {
+  if (!spreadsheetId) return null;
+  try {
+    return SpreadsheetApp.openById(spreadsheetId);
+  } catch (error) {
+    return null;
+  }
+}
+
+function handleCheckinLookup_(e) {
+  var callback = sanitizeJsonpCallback_((e && e.parameter && e.parameter.callback) || "");
+  var payload = JSON.stringify(buildCheckinLookupResult_({
+    email: (e && e.parameter && e.parameter.email) || ""
+  }));
+
+  return ContentService
+    .createTextOutput(callback + "(" + payload + ");")
+    .setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+function buildCheckinLookupResult_(input) {
+  var email = normalizeEmail_(input && input.email);
+  if (!email || email.indexOf("@") === -1) {
+    return {
+      ok: false,
+      status: "error",
+      error: "invalid_email"
+    };
+  }
+
+  var match = resolveCheckinMatch_({ email: email });
+  if (match.status !== "matched") {
+    return {
+      ok: false,
+      status: match.status || "unmatched",
+      error: match.status === "ambiguous" ? "ambiguous_email" : "email_not_found"
+    };
+  }
+
+  return {
+    ok: true,
+    status: "matched",
+    email: match.email || email,
+    name: match.name || "",
+    municipio: match.city || "",
+    estado: match.estado || "",
+    origem: normalizeOrigem_(match.origem || ""),
+    teacherGroup: match.teacherGroup || "",
+    checkinUserId: match.checkinUserId || "",
+    matchMethod: match.method || "email",
+    participantId: buildParticipantId_({
+      email: match.email || email,
+      name: match.name || "",
+      municipio: match.city || "",
+      estado: match.estado || "",
+      origem: match.origem || "",
+      checkinMatch: match
+    })
+  };
+}
+
+function resolveCheckinMatch_(input) {
+  var sheet = getCheckinSheet_();
+  if (!sheet) {
+    return { status: "unmatched", method: "none", checkinUserId: "", rowNumber: 0 };
+  }
+
+  var values = sheet.getDataRange().getDisplayValues();
+  if (!values || values.length < 2) {
+    return { status: "unmatched", method: "none", checkinUserId: "", rowNumber: 0 };
+  }
+
+  var headerMap = buildHeaderMapFromRow_(values[0]);
+  var emailNorm = normalizeEmail_(input && input.email);
+  var nameNorm = normalizePersonName_(input && input.name);
+  var cityNorm = normalizeLooseText_(input && input.municipio);
+  var cohortNorm = normalizeLooseText_(input && input.cohort);
+  var records = [];
+
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    var record = extractCheckinRecord_(headerMap, row, i + 1);
+    if (record.emailNorm || record.nameNorm) records.push(record);
+  }
+
+  if (emailNorm) {
+    var emailMatches = records.filter(function (record) {
+      return record.emailNorm && record.emailNorm === emailNorm;
+    });
+    var emailResult = buildCheckinMatchResult_(emailMatches, "email");
+    if (emailResult.status !== "unmatched") return emailResult;
+  }
+
+  if (nameNorm && cohortNorm) {
+    var cohortMatches = records.filter(function (record) {
+      return record.nameNorm === nameNorm && record.cohortNorm && record.cohortNorm === cohortNorm;
+    });
+    var cohortResult = buildCheckinMatchResult_(cohortMatches, "name_cohort");
+    if (cohortResult.status !== "unmatched") return cohortResult;
+  }
+
+  if (nameNorm && cityNorm) {
+    var cityMatches = records.filter(function (record) {
+      return record.nameNorm === nameNorm && record.cityNorm && record.cityNorm === cityNorm;
+    });
+    var cityResult = buildCheckinMatchResult_(cityMatches, "name_city");
+    if (cityResult.status !== "unmatched") return cityResult;
+  }
+
+  return { status: "unmatched", method: "none", checkinUserId: "", rowNumber: 0 };
+}
+
+function extractCheckinRecord_(headerMap, row, rowNumber) {
+  var email = readRowValueByHeaders_(headerMap, row, ["EMAIL", "E-MAIL", "MAIL"]);
+  var name = readRowValueByHeaders_(headerMap, row, ["NOME", "NOME COMPLETO", "NOME DO ALUNO", "ESCRITOR/A"]);
+  var city = readRowValueByHeaders_(headerMap, row, ["MUNICIPIO", "CIDADE", "CITY"]);
+  var cohort = readRowValueByHeaders_(headerMap, row, ["OFICINAS_CORDEL", "COORTE", "COHORT", "TURMA", "OFICINA", "WORKSHOP", "GRUPO"]);
+  var estado = readRowValueByHeaders_(headerMap, row, ["ESTADO", "UF", "STATE"]);
+  var origem = readRowValueByHeaders_(headerMap, row, ["ORIGEM", "FONTE", "SOURCE", "TIPO"]);
+  var rawId = readRowValueByHeaders_(headerMap, row, ["USER_ID", "CHECKIN_USER_ID", "ID", "IDENTIFICADOR", "INSCRICAO", "MATRICULA"]);
+
+  return {
+    rowNumber: rowNumber,
+    checkinUserId: String(rawId || "").trim() || ("row-" + rowNumber),
+    email: email,
+    emailNorm: normalizeEmail_(email),
+    name: name,
+    nameNorm: normalizePersonName_(name),
+    city: city,
+    cityNorm: normalizeLooseText_(city),
+    cohort: cohort,
+    cohortNorm: normalizeLooseText_(cohort),
+    estado: estado,
+    origem: origem,
+    teacherGroup: cohort
+  };
+}
+
+function buildCheckinMatchResult_(matches, method) {
+  if (!matches || !matches.length) {
+    return { status: "unmatched", method: "none", checkinUserId: "", rowNumber: 0 };
+  }
+  if (matches.length > 1) {
+    return { status: "ambiguous", method: method, checkinUserId: "", rowNumber: 0 };
+  }
+
+  return {
+    status: "matched",
+    method: method,
+    checkinUserId: matches[0].checkinUserId,
+    rowNumber: matches[0].rowNumber,
+    name: matches[0].name || "",
+    email: matches[0].email || "",
+    city: matches[0].city || "",
+    estado: matches[0].estado || "",
+    origem: matches[0].origem || "",
+    teacherGroup: matches[0].teacherGroup || ""
+  };
+}
+
+function buildParticipantId_(input) {
+  var match = input && input.checkinMatch;
+  if (match && match.status === "matched" && match.checkinUserId) {
+    return buildStableId_("participant", ["checkin", match.checkinUserId]);
+  }
+
+  var emailNorm = normalizeEmail_(input && input.email);
+  if (emailNorm) {
+    return buildStableId_("participant", ["email", emailNorm]);
+  }
+
+  return buildStableId_("participant", [
+    "name",
+    normalizePersonName_(input && input.name),
+    normalizeLooseText_(input && input.municipio),
+    normalizeLooseText_(input && input.estado),
+    normalizeLooseText_(input && input.origem)
+  ]);
+}
+
+function buildStableId_(prefix, parts) {
+  var source = (parts || []).map(function (part) {
+    return String(part || "").trim().toLowerCase();
+  }).join("|");
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, source);
+  return String(prefix || "id") + "_" + bytesToHex_(bytes).slice(0, 16);
+}
+
+function bytesToHex_(bytes) {
+  return (bytes || []).map(function (value) {
+    var hex = (value < 0 ? value + 256 : value).toString(16);
+    return hex.length === 1 ? "0" + hex : hex;
+  }).join("");
+}
+
+function debugCheckinSheetInfo() {
+  var sheet = getCheckinSheet_();
+  if (!sheet) {
+    var missingOutput = JSON.stringify({ ok: false, error: "checkin_sheet_not_found" }, null, 2);
+    Logger.log(missingOutput);
+    return missingOutput;
+  }
+
+  var lastColumn = Math.max(sheet.getLastColumn(), 1);
+  var headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+  var output = JSON.stringify({
+    ok: true,
+    spreadsheetId: sheet.getParent().getId(),
+    sheetName: sheet.getName(),
+    headers: headers
+  }, null, 2);
+  Logger.log(output);
+  return output;
+}
+
+function debugCheckinLookupByEmail() {
+  var email = String(PropertiesService.getScriptProperties().getProperty("IZA_DEBUG_CHECKIN_EMAIL") || "").trim();
+  var output = JSON.stringify({
+    ok: !!email,
+    email: email,
+    result: email ? buildCheckinLookupResult_({ email: email }) : { ok: false, error: "missing_IZA_DEBUG_CHECKIN_EMAIL" }
+  }, null, 2);
+  Logger.log(output);
+  return output;
+}
+
+function ensureHeaders_(sheet, headers) {
+  var width = Math.max(sheet.getLastColumn(), headers.length, 1);
+  var currentHeaders = sheet.getRange(1, 1, 1, width).getValues()[0];
+  var existingMap = buildHeaderMapFromRow_(currentHeaders);
+  var changed = sheet.getLastRow() === 0;
+
+  for (var i = 0; i < headers.length; i++) {
+    var header = headers[i];
+    var key = normalizeHeaderKey_(header);
+    if (!existingMap[key]) {
+      currentHeaders[i] = header;
+      existingMap[key] = i + 1;
+      changed = true;
+    } else if (!currentHeaders[existingMap[key] - 1]) {
+      currentHeaders[existingMap[key] - 1] = header;
+      changed = true;
+    }
+  }
+
+  while (currentHeaders.length < width) currentHeaders.push("");
+
+  if (changed || !String(currentHeaders[0] || "").trim()) {
+    sheet.getRange(1, 1, 1, width).setValues([currentHeaders]);
+  }
+
+  sheet.setFrozenRows(1);
+  return buildHeaderMapFromRow_(sheet.getRange(1, 1, 1, width).getValues()[0]);
+}
+
+function buildHeaderMapFromRow_(headers) {
+  var map = {};
+  for (var i = 0; i < headers.length; i++) {
+    var key = normalizeHeaderKey_(headers[i]);
+    if (key) map[key] = i + 1;
+  }
+  return map;
+}
+
+function findHeaderIndex_(headerMap, candidates) {
+  for (var i = 0; i < candidates.length; i++) {
+    var key = normalizeHeaderKey_(candidates[i]);
+    if (headerMap[key]) return headerMap[key];
+  }
+  return 0;
+}
+
+function normalizeHeaderKey_(value) {
+  return normalizeText_(value).replace(/[^a-z0-9]+/g, " ").trim().toUpperCase();
+}
+
+function buildBlankRow_(width) {
+  var row = [];
+  for (var i = 0; i < width; i++) row.push("");
+  return row;
+}
+
+function setRowValue_(row, headerMap, header, value) {
+  var index = headerMap[normalizeHeaderKey_(header)];
+  if (!index) return;
+  row[index - 1] = value;
+}
+
+function readRowValueByHeaders_(headerMap, row, headers) {
+  var index = findHeaderIndex_(headerMap, headers);
+  if (!index) return "";
+  return String(row[index - 1] || "").trim();
+}
+
+function normalizeEmail_(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizePersonName_(value) {
+  return normalizeLooseText_(value).replace(/\s+/g, " ").trim();
+}
+
+function normalizeLooseText_(value) {
+  return normalizeText_(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizeText_(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizeUFOrInternational_(value) {
+  var ufs = [
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+  ];
+  var text = String(value || "").trim().toUpperCase();
+  if (!text) return "";
+  if (text.indexOf("INTERNAC") !== -1 || text === "INT" || text === "INTL") return "INTERNACIONAL";
+
+  var letters = text.replace(/[^A-Z]/g, "").slice(0, 2);
+  if (ufs.indexOf(letters) !== -1) return letters;
+  if (ufs.indexOf(text) !== -1) return text;
+  return "INTERNACIONAL";
+}
+
+function normalizeOrigem_(value) {
+  var text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text.indexOf("oficina") !== -1 || text.indexOf("cordel") !== -1) return "Oficina Cordel 2.0";
+  if (text.indexOf("part") !== -1 || text.indexOf("priv") !== -1) return "Particular";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function sanitizeJsonpCallback_(callback) {
+  var clean = String(callback || "").trim();
+  if (!/^[A-Za-z0-9_.$]+$/.test(clean)) {
+    throw new Error("Callback invalido");
+  }
+  return clean;
+}
+
 function setupInicial() {
-  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
-  var ss = SpreadsheetApp.openById(sheetId);
+  var ss = getRegistrySpreadsheet_();
 
   var formSheet = ss.getSheetByName("Página1");
   if (!formSheet) {
     formSheet = ss.insertSheet("Página1");
   }
-  if (formSheet.getLastRow() === 0) {
-    formSheet.appendRow(["Carimbo de data/hora", "Nome", "Email", "Tipo de Participante", "Verso", "Modo", "Pontos", "Esquema de Rima", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema"]);
-    formSheet.getRange("A1:L1").setFontWeight("bold").setBackground("#d9ead3");
-  }
+  ensureHeaders_(formSheet, FORM_HEADERS);
+  formSheet.getRange(1, 1, 1, FORM_HEADERS.length).setFontWeight("bold").setBackground("#d9ead3");
 
   var placarSheet = ss.getSheetByName("placar");
   if (!placarSheet) {
     placarSheet = ss.insertSheet("placar");
   }
   if (placarSheet.getLastRow() === 0) {
-    placarSheet.appendRow(["Posição", "Autor", "Verso", "Pontos", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema", "Timestamp"]);
+    placarSheet.appendRow(PLACAR_HEADERS);
     placarSheet.getRange("A1:I1").setFontWeight("bold").setBackground("#fff2cc");
   }
   garantirTriggersDoPlacar_();
@@ -301,18 +771,16 @@ function setupInicial() {
 }
 
 function reconstruirPlacar() {
-  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
-  var ss = SpreadsheetApp.openById(sheetId);
-  var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+  var ss = getRegistrySpreadsheet_();
+  var formSheet = getRecordsSheet_();
   atualizarPlacar(ss, formSheet);
   garantirTriggersDoPlacar_();
   Logger.log("Placar reconstruído com a nova regra de pontuação.");
 }
 
 function sincronizarPlacar_() {
-  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
-  var ss = SpreadsheetApp.openById(sheetId);
-  var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
+  var ss = getRegistrySpreadsheet_();
+  var formSheet = getRecordsSheet_();
   atualizarPlacar(ss, formSheet);
 }
 
@@ -365,16 +833,15 @@ function garantirTriggersDoPlacar_() {
 }
 
 function instalarTriggersDoPlacar() {
-  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
   limparTriggersDoPlacar();
 
   ScriptApp.newTrigger("aoNovoRegistroAtualizarPlacar")
-    .forSpreadsheet(sheetId)
+    .forSpreadsheet(DEFAULT_REGISTRY_SPREADSHEET_ID)
     .onFormSubmit()
     .create();
 
   ScriptApp.newTrigger("aoEditarRegistroAtualizarPlacar")
-    .forSpreadsheet(sheetId)
+    .forSpreadsheet(DEFAULT_REGISTRY_SPREADSHEET_ID)
     .onEdit()
     .create();
 
@@ -418,8 +885,7 @@ function resetSheetWithHeaders_(sheet, headers, headerColor) {
 }
 
 function resetPlacarERegistrosComBackup() {
-  var sheetId = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
-  var ss = SpreadsheetApp.openById(sheetId);
+  var ss = getRegistrySpreadsheet_();
   var formSheet = ss.getSheetByName("Página1") || ss.getSheets()[0];
   var placarSheet = ss.getSheetByName("placar");
   var backups = [];
@@ -433,7 +899,7 @@ function resetPlacarERegistrosComBackup() {
 
   resetSheetWithHeaders_(
     formSheet,
-    ["Carimbo de data/hora", "Nome", "Email", "Tipo de Participante", "Verso", "Modo", "Pontos", "Esquema de Rima", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema"],
+    FORM_HEADERS,
     "#d9ead3"
   );
 
@@ -442,7 +908,7 @@ function resetPlacarERegistrosComBackup() {
   }
   resetSheetWithHeaders_(
     placarSheet,
-    ["Posição", "Autor", "Verso", "Pontos", "Pts Rima", "Pts Forma", "Pts Criatividade", "Bônus Esquema", "Timestamp"],
+    PLACAR_HEADERS,
     "#fff2cc"
   );
 
