@@ -137,7 +137,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxIiiNybMC4UI7BgDrtEeCF64bFK6F_I6CV-W69HCeVH9O_bU2da_ovzzUigLFirq4H/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzOgEHPchn-0MKvrUrBXEeqIoXgHyiK4b7X1xFd8wsaIp_cO6saUTq4OoeoWdWpLjCW/exec";
 const APP_VARIANT = "inanna-main";
 
 // ── Banco de Curadoria Local (Fallback/Library Pré-Programado) ────────
@@ -1701,11 +1701,20 @@ function loadPlacar() {
   fetch(WEB_APP_URL + "?action=getPlacar&t=" + new Date().getTime())
     .then(r => r.json())
     .then(data => {
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        if (data.status === "error") {
+          throw new Error(data.message || "Erro no backend do placar.");
+        }
+        if (data.error) {
+          throw new Error(data.error);
+        }
+      }
       renderPlacarItems(data);
     })
     .catch(err => {
       console.error(err);
-      ui.placarList.innerHTML = "<p style='text-align: center; color: var(--danger); margin-top:20px;'>Erro ao conectar com a planilha.</p>";
+      const message = err && err.message ? err.message : "Erro ao conectar com a planilha.";
+      ui.placarList.innerHTML = `<p style='text-align: center; color: var(--danger); margin-top:20px;'>${escapeHtml(message)}</p>`;
     });
 }
 ui.btnRefreshPlacar.addEventListener("click", loadPlacar);
