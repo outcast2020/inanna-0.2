@@ -405,6 +405,68 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
 }
 
+function splitQuadraLines(verseText) {
+  return String(verseText || "")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n+/)
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function splitVerseEnding(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed) {
+    return { body: "", ending: "", punctuation: "" };
+  }
+
+  const tokenMatch = trimmed.match(/^(.*?)(\S+)$/);
+  const rawBody = tokenMatch ? tokenMatch[1].trimEnd() : "";
+  const rawEnding = tokenMatch ? tokenMatch[2] : trimmed;
+  const punctuationMatch = rawEnding.match(/^(.+?)([.,;:!?…]+)$/);
+
+  return {
+    body: rawBody,
+    ending: punctuationMatch ? punctuationMatch[1] : rawEnding,
+    punctuation: punctuationMatch ? punctuationMatch[2] : "",
+  };
+}
+
+function renderQuadraVerses(verseText) {
+  const lines = splitQuadraLines(verseText);
+
+  if (!lines.length) {
+    return `<div class="placar-quadra placar-quadra-empty">Quadra indisponível.</div>`;
+  }
+
+  return `
+    <div class="placar-quadra" role="group" aria-label="Quadra em ${lines.length} versos">
+      ${lines.map((line, index) => {
+        const parts = splitVerseEnding(line);
+        const bodyMarkup = parts.body
+          ? `<span class="placar-line-body">${escapeHtml(parts.body)}</span>`
+          : (parts.ending ? `<span class="placar-line-body"></span>` : `<span class="placar-line-body placar-line-body-empty">—</span>`);
+        const endingMarkup = parts.ending
+          ? `<span class="placar-line-ending">${escapeHtml(parts.ending)}</span>`
+          : "";
+        const punctuationMarkup = parts.punctuation
+          ? `<span class="placar-line-punctuation">${escapeHtml(parts.punctuation)}</span>`
+          : "";
+
+        return `
+          <div class="placar-line">
+            <span class="placar-line-num">${index + 1}</span>
+            ${bodyMarkup}
+            <span class="placar-line-rhyme">
+              ${endingMarkup}${punctuationMarkup}
+            </span>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function setExplain(msg) {
   if (ui.explainBox) ui.explainBox.textContent = msg || "";
 }
@@ -1539,12 +1601,12 @@ function renderPlacarItems(data) {
       const div = document.createElement("div");
       div.className = "placar-item";
       div.innerHTML = `
-        <div class="placar-header" style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="placar-pos" style="font-size:15px; font-weight:bold;">${medal}${i + 1}º</span>
-          <span class="placar-pontos" style="font-size:11px; font-weight:800; background:rgba(249,115,22,0.15); color:var(--primary); padding:2px 8px; border-radius:99px;">${(Number(item.pontos) || 0) + ' pts'}</span>
+        <div class="placar-header">
+          <span class="placar-pos">${medal}${i + 1}º</span>
+          <span class="placar-pontos">${(Number(item.pontos) || 0) + ' pts'}</span>
         </div>
-        <div class="placar-autor" style="font-weight:600; margin-top:4px;">${escapeHtml(item.autor)}</div>
-        <div class="placar-verso" style="font-size:13px; color:var(--muted); font-style:italic; margin-top:2px;">"${escapeHtml(item.verso)}"</div>
+        <div class="placar-autor">${escapeHtml(item.autor)}</div>
+        <div class="placar-verso">${renderQuadraVerses(item.verso)}</div>
       `;
       container.appendChild(div);
     });
