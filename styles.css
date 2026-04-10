@@ -296,6 +296,15 @@ h1 {
   font-weight: 800;
 }
 
+.metric-time {
+  min-width: 132px;
+}
+
+.metric-time span {
+  font-size: 18px;
+  letter-spacing: 0.4px;
+}
+
 .metric-mini small {
   font-size: 11px;
   text-transform: uppercase;

@@ -77,7 +77,7 @@ const ui = {
   // modo
   challengeStatus: $("challengeStatus"),
   modeChallenge: $("modeChallenge"),
-  confidence: $("confidence"),
+  writeTimer: $("writeTimer"),
   points: $("points"),
 
   // modal do vetor
@@ -130,10 +130,14 @@ const state = {
   modeChallenge: false,
   rhyme: null,
   scoreBreakdown: null,
+  writingStartedAt: 0,
+  writingElapsedMs: 0,
+  writingTimerId: null,
+  writingTimerRunning: false,
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbypYkJuBH5DE5yhlr49OFB1cMMWKtB0lZC7H6_UBvfrPgu_IpsANhBTBnfZwLTBR2tw/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxIiiNybMC4UI7BgDrtEeCF64bFK6F_I6CV-W69HCeVH9O_bU2da_ovzzUigLFirq4H/exec";
 const APP_VARIANT = "inanna-main";
 
 // ── Banco de Curadoria Local (Fallback/Library Pré-Programado) ────────
@@ -401,8 +405,72 @@ function norm(s) {
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 function formatPct(x) { return `${Math.round(x * 100)}%`; }
 
+function padClockUnit(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatElapsedClock(ms) {
+  const totalSeconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${padClockUnit(hours)}:${padClockUnit(minutes)}:${padClockUnit(seconds)}`;
+  }
+
+  return `${padClockUnit(minutes)}:${padClockUnit(seconds)}`;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+}
+
+function getWritingElapsedMs() {
+  if (state.writingTimerRunning && state.writingStartedAt) {
+    return Math.max(0, Date.now() - state.writingStartedAt);
+  }
+  return Math.max(0, state.writingElapsedMs || 0);
+}
+
+function refreshWritingTimerUI() {
+  if (!ui.writeTimer) return;
+  ui.writeTimer.textContent = formatElapsedClock(getWritingElapsedMs());
+}
+
+function stopWritingTimer() {
+  if (state.writingTimerRunning) {
+    state.writingElapsedMs = getWritingElapsedMs();
+    state.writingStartedAt = 0;
+    state.writingTimerRunning = false;
+  }
+
+  if (state.writingTimerId) {
+    window.clearInterval(state.writingTimerId);
+    state.writingTimerId = null;
+  }
+
+  refreshWritingTimerUI();
+}
+
+function startWritingTimer() {
+  stopWritingTimer();
+  state.writingElapsedMs = 0;
+  state.writingStartedAt = Date.now();
+  state.writingTimerRunning = true;
+  refreshWritingTimerUI();
+  state.writingTimerId = window.setInterval(refreshWritingTimerUI, 1000);
+}
+
+function resetWritingTimer(options) {
+  const settings = Object.assign({ autostart: false }, options);
+  stopWritingTimer();
+  state.writingStartedAt = 0;
+  state.writingElapsedMs = 0;
+  refreshWritingTimerUI();
+  if (settings.autostart) {
+    startWritingTimer();
+  }
 }
 
 function splitQuadraLines(verseText) {
@@ -820,7 +888,7 @@ function refreshSuggestedScheme() {
 }
 
 function resetQuadraState(options) {
-  const settings = Object.assign({ resetPoints: true }, options);
+  const settings = Object.assign({ resetPoints: true, restartTimer: false }, options);
 
   state.lines = [];
   state.current = { rawVerse: "", pred: null };
@@ -839,7 +907,7 @@ function resetQuadraState(options) {
     ui.pedagogyModal.close();
   }
 
-  ui.confidence.textContent = "—";
+  resetWritingTimer({ autostart: settings.restartTimer });
   ui.verseInput.value = "";
   ui.customInput.value = "";
   ui.quadra.textContent = "";
@@ -1045,7 +1113,7 @@ function selectTheme(theme) {
   state.chosenTheme = theme;
   ui.selectedThemeName.textContent = `${theme.emoji} ${theme.name}`;
   refreshSuggestedScheme();
-  resetQuadraState({ resetPoints: true });
+  resetQuadraState({ resetPoints: true, restartTimer: true });
 
   // Define o placeholder instigante (armadilha) usando o trap example do objeto
   if (theme.trap) {
@@ -1146,7 +1214,6 @@ function renderStep3() {
   ui.versePreview.innerHTML = highlighted;
   const rhymeHint = pred && pred.targetRhymeWord ? ` · rima esperada com "${pred.targetRhymeWord}"` : "";
   ui.contextDetected.textContent = `${theme.emoji} ${theme.name}${rhymeHint}`;
-  ui.confidence.textContent = formatPct(pred.confidence);
   updateRoundStatus();
 
   // Lista de candidatos
@@ -1477,6 +1544,7 @@ function detectRhymeScheme(lines){
 
 // ── Finalizar quadra ──────────────────────────────────────────────────
 function finishPoem() {
+  stopWritingTimer();
   var quadraText = state.lines.map(function (l) { return l.verse; }).join("\n");
   ui.quadra.textContent = quadraText;
 
@@ -1662,6 +1730,7 @@ ui.btnSubmitPoem.addEventListener("click", () => {
     return;
   }
 
+  const tempoEscritaMs = getWritingElapsedMs();
   const payload = {
     appVariant: APP_VARIANT,
     nome: state.name || state.playerData.nome,
@@ -1683,7 +1752,9 @@ ui.btnSubmitPoem.addEventListener("click", () => {
     pontosRima: state.scoreBreakdown ? state.scoreBreakdown.rhyme.pairScoreTotal : 0,
     pontosForma: state.scoreBreakdown ? state.scoreBreakdown.structure.points : 0,
     pontosCriatividade: state.scoreBreakdown ? state.scoreBreakdown.creativity.bonus : 0,
-    bonusEsquema: state.scoreBreakdown ? state.scoreBreakdown.rhyme.schemeBonus : 0
+    bonusEsquema: state.scoreBreakdown ? state.scoreBreakdown.rhyme.schemeBonus : 0,
+    tempoEscritaMs,
+    tempoEscritaFormatado: formatElapsedClock(tempoEscritaMs)
   };
 
   fetch(WEB_APP_URL, {
@@ -1773,7 +1844,7 @@ async function onCopyQuadra() {
 // ── Novo poema / reiniciar ────────────────────────────────────────────
 function onContinueQuadra() {
   refreshSuggestedScheme();
-  resetQuadraState({ resetPoints: true });
+  resetQuadraState({ resetPoints: true, restartTimer: true });
   goToPhase(2);
 }
 
@@ -1782,7 +1853,7 @@ function onNewPoem() {
   state.scheme = "Livre";
   ui.selectedThemeName.textContent = "—";
   ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
-  resetQuadraState({ resetPoints: true });
+  resetQuadraState({ resetPoints: true, restartTimer: false });
   buildThemeGrid();
   goToPhase(1);
 }
@@ -1887,6 +1958,7 @@ syncModes();
 buildThemeGrid();
 updateVerseBlankPreview();
 updateRoundStatus();
+refreshWritingTimerUI();
 if (!state.playerData) {
   goToPhase(0);
 } else {

@@ -150,6 +150,8 @@ No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar d
 - `Tipo de Participante`
 - `Verso`
 - `Modo`
+- `Tempo Escrita (ms)`
+- `Tempo Escrita`
 - `Pontos`
 - `Esquema de Rima`
 - `Pts Rima`
@@ -165,6 +167,8 @@ No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar d
 - `ESTADO`
 - `ORIGEM`
 - `APP_VARIANT`
+
+No frontend, o cronometro de escrita substitui a antiga medida visual de confianca. O cliente envia ao backend os campos `tempoEscritaMs` e `tempoEscritaFormatado`, para registro sem efeito na pontuacao.
 
 ### Placar
 
