@@ -1661,6 +1661,20 @@ function toIsoString_(value) {
   return date.toISOString();
 }
 
+function coerceNumericCell_(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (value instanceof Date) return 0;
+  if (typeof value === "number") {
+    return isNaN(value) ? 0 : value;
+  }
+
+  var normalized = String(value)
+    .replace(/\s+/g, "")
+    .replace(",", ".");
+  var parsed = Number(normalized);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 function toBoolean_(value) {
   if (value === true || value === false) return value;
   var normalized = normalizeLooseText_(value);
