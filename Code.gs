@@ -472,6 +472,9 @@ function doGet(e) {
     if (action === "get_text_versions") {
       return jsonOutput_(handleGetTextVersions_((e && e.parameter) || {}));
     }
+    if (action === "get_firebase_custom_token") {
+      return jsonOutput_(handleGetFirebaseCustomToken_((e && e.parameter) || {}));
+    }
 
     return ContentService.createTextOutput("Endpoint GET pronto.")
       .setMimeType(ContentService.MimeType.TEXT);
@@ -970,12 +973,14 @@ function handleSaveTextVersion_(payload) {
     versionNumber: versionNumber,
     status: status
   });
+  var aiFeedback = generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, indicators);
 
   return {
     ok: true,
     status: "success",
     text: mapTextDetail_(textRecord, versionRecord, versionNumber),
-    version: mapVersionRecord_(versionRecord)
+    version: mapVersionRecord_(versionRecord),
+    aiFeedback: aiFeedback
   };
 }
 
@@ -1029,6 +1034,222 @@ function ensureSextilhaInfrastructure_() {
   getSextilhaSheet_(TEXT_VERSIONS_SHEET_NAME);
   getSextilhaSheet_(TEXT_FEEDBACK_SHEET_NAME);
   getSextilhaSheet_(TEXT_ACTIVITY_LOG_SHEET_NAME);
+}
+
+function handleGetFirebaseCustomToken_(payload) {
+  ensureSextilhaInfrastructure_();
+  var identity = resolveAuthorizedParticipant_(payload);
+  upsertUsersCacheRecord_(identity);
+
+  return createFirebaseCustomToken_(identity);
+}
+
+function createFirebaseCustomToken_(identity) {
+  var props = PropertiesService.getScriptProperties();
+  var serviceAccountEmail = String(
+    props.getProperty("INANNA_FIREBASE_SERVICE_ACCOUNT_EMAIL") ||
+    props.getProperty("FIREBASE_SERVICE_ACCOUNT_EMAIL") ||
+    ""
+  ).trim();
+  var serviceAccountPrivateKey = normalizePrivateKey_(
+    props.getProperty("INANNA_FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ||
+    props.getProperty("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ||
+    ""
+  );
+  var projectId = String(
+    props.getProperty("INANNA_FIREBASE_PROJECT_ID") ||
+    props.getProperty("FIREBASE_PROJECT_ID") ||
+    ""
+  ).trim();
+
+  if (!serviceAccountEmail || !serviceAccountPrivateKey || !projectId) {
+    throw new Error("Firebase ainda nao foi configurado no Apps Script. Defina SERVICE_ACCOUNT_EMAIL, SERVICE_ACCOUNT_PRIVATE_KEY e PROJECT_ID.");
+  }
+
+  var nowInSeconds = Math.floor(Date.now() / 1000);
+  var expiresAtSeconds = nowInSeconds + 3600;
+  var header = {
+    alg: "RS256",
+    typ: "JWT"
+  };
+  var payload = {
+    iss: serviceAccountEmail,
+    sub: serviceAccountEmail,
+    aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
+    iat: nowInSeconds,
+    exp: expiresAtSeconds,
+    uid: String(identity.checkinUserId || identity.participantId || "").trim(),
+    claims: {
+      participantId: identity.participantId,
+      checkinUserId: identity.checkinUserId,
+      teacherGroup: identity.teacherGroup || "",
+      appVariant: identity.appVariant || DEFAULT_APP_VARIANT
+    }
+  };
+
+  var encodedHeader = Utilities.base64EncodeWebSafe(JSON.stringify(header), Utilities.Charset.UTF_8).replace(/=+$/g, "");
+  var encodedPayload = Utilities.base64EncodeWebSafe(JSON.stringify(payload), Utilities.Charset.UTF_8).replace(/=+$/g, "");
+  var unsignedToken = encodedHeader + "." + encodedPayload;
+  var signatureBytes = Utilities.computeRsaSha256Signature(unsignedToken, serviceAccountPrivateKey);
+  var encodedSignature = Utilities.base64EncodeWebSafe(signatureBytes).replace(/=+$/g, "");
+
+  return {
+    status: "success",
+    provider: "firestore",
+    customToken: unsignedToken + "." + encodedSignature,
+    expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
+    projectId: projectId,
+    uid: payload.uid
+  };
+}
+
+function normalizePrivateKey_(value) {
+  return String(value || "").replace(/\\n/g, "\n").trim();
+}
+
+function generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, indicators) {
+  var props = PropertiesService.getScriptProperties();
+  var enabled = normalizeLooseText_(props.getProperty("INANNA_AI_FEEDBACK_ENABLED") || "");
+  if (enabled !== "true" && enabled !== "1" && enabled !== "sim") {
+    return null;
+  }
+
+  var apiKey = String(
+    props.getProperty("INANNA_GEMINI_API_KEY") ||
+    props.getProperty("GEMINI_API_KEY") ||
+    ""
+  ).trim();
+  if (!apiKey) {
+    return null;
+  }
+
+  try {
+    var prompt = buildInannaFeedbackPrompt_(identity, textRecord, versionRecord, indicators);
+    var response = requestGeminiFeedback_(apiKey, prompt, props);
+    var feedbackText = extractGeminiText_(response);
+    if (!feedbackText) {
+      return null;
+    }
+
+    var record = {
+      FEEDBACK_ID: buildEntityId_("feedback"),
+      TEXT_ID: String(versionRecord.TEXT_ID || "").trim(),
+      VERSION_ID: String(versionRecord.VERSION_ID || "").trim(),
+      PARTICIPANT_ID: identity.participantId,
+      EDUCATOR_ID: "INANNA_GEMINI",
+      COMENTARIO: feedbackText,
+      CATEGORIA: "auto_ai_feedback",
+      CREATED_AT: new Date()
+    };
+
+    appendRecordToSheet_(getSextilhaSheet_(TEXT_FEEDBACK_SHEET_NAME), TEXT_FEEDBACK_HEADERS, record);
+
+    return {
+      source: "gemini",
+      tone: "success",
+      message: feedbackText
+    };
+  } catch (error) {
+    logTextActivity_(identity.participantId, String(versionRecord.TEXT_ID || "").trim(), "ai_feedback_error", {
+      message: error && error.message ? error.message : String(error)
+    });
+    return {
+      source: "gemini",
+      tone: "error",
+      message: "O texto foi salvo, mas a devolutiva da Inanna nao ficou disponivel neste momento."
+    };
+  }
+}
+
+function buildInannaFeedbackPrompt_(identity, textRecord, versionRecord, indicators) {
+  var verses = extractVersesFromVersionRecord_(versionRecord).filter(function (item) {
+    return !!String(item || "").trim();
+  });
+  var theme = String(versionRecord.TEMA || textRecord.TEMA || "").trim();
+  var title = String(versionRecord.TITULO || textRecord.TITULO || "").trim();
+  var note = String(versionRecord.OBSERVACAO || textRecord.OBSERVACAO || "").trim();
+
+  return [
+    "Atue como Inanna, uma educadora de literatura de cordel.",
+    "Escreva em portugues do Brasil.",
+    "Dê uma devolutiva em no maximo 2 frases curtas, calorosas e praticas.",
+    "Nunca escreva versos novos para o aluno e nunca reescreva o poema por ele.",
+    "Valorize a autoria humana e use tom encorajador.",
+    "Se houver algum ponto a revisar, indique apenas um proximo passo simples.",
+    "",
+    "Dados do aluno:",
+    "Nome: " + String(identity.name || "").trim(),
+    "Tema: " + theme,
+    "Titulo: " + title,
+    "Observacao inicial: " + note,
+    "",
+    "Sextilha atual:",
+    verses.length ? verses.join("\n") : "Sem versos preenchidos.",
+    "",
+    "Indicadores heurísticos do sistema:",
+    "- Completude: " + String(indicators.completude || ""),
+    "- Fechamento: " + String(indicators.fechamento || ""),
+    "- Rima: " + String(indicators.rimaStatus || ""),
+    "- Coerencia tematica: " + String(indicators.coerenciaTematica || ""),
+    "- Repeticao lexical: " + String(indicators.repeticaoLexical || ""),
+    "- Maturacao: " + String(indicators.maturacao || ""),
+    "",
+    "Objetivo do retorno:",
+    "1. Comece reconhecendo uma qualidade real do texto.",
+    "2. Se necessario, aponte um unico ajuste de forma simples.",
+    "3. Nao use linguagem competitiva nem fale em pontuacao.",
+    "4. Mencione rima ou variacao lexical somente se isso realmente aparecer nos indicadores."
+  ].join("\n");
+}
+
+function requestGeminiFeedback_(apiKey, prompt, props) {
+  var modelName = String(props.getProperty("INANNA_GEMINI_MODEL") || "gemini-2.5-flash").trim();
+  var url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(modelName) + ":generateContent";
+  var response = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      "x-goog-api-key": apiKey
+    },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 120
+      }
+    })
+  });
+
+  var responseCode = response.getResponseCode();
+  var body = response.getContentText() || "{}";
+  if (responseCode >= 400) {
+    throw new Error("Gemini respondeu com erro " + responseCode + ": " + body);
+  }
+
+  return JSON.parse(body);
+}
+
+function extractGeminiText_(response) {
+  var candidates = response && response.candidates;
+  if (!candidates || !candidates.length) return "";
+  var parts = candidates[0].content && candidates[0].content.parts;
+  if (!parts || !parts.length) return "";
+
+  var text = parts.map(function (part) {
+    return String(part && part.text || "").trim();
+  }).join(" ").replace(/\s+/g, " ").trim();
+
+  return text;
 }
 
 function resolveAuthorizedParticipant_(input) {

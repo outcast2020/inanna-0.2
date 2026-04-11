@@ -7,7 +7,7 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - Frontend: `index.html`, `styles.css`, `app.js`.
 - Motor de previsao: `prediction_engine_v2.js`.
 - Banco lexical de rimas: `cordel_rhyme_bank.js`.
-- Backend e placar: `Auto_Inanna.gs`.
+- Backend e placar: `Code.gs`.
 - Midias e embeds: imagens, video e snippet de footer na propria pasta.
 
 ## Objetivo pedagogico
@@ -133,13 +133,20 @@ No frontend, a quadra e pontuada apos o quarto verso.
 
 No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar dependencia do calculo do cliente.
 
-## Backend em `Auto_Inanna.gs`
+## Backend em `Code.gs`
 
 ### Endpoints
 
 - `doPost(e)`: recebe a quadra e grava o registro.
 - `doGet(e)` com `action=getPlacar`: devolve o placar em JSON.
 - `doGet(e)` com `action=checkin_lookup`: devolve identidade por JSONP.
+- `doGet(e)` com `action=get_user_dashboard`: devolve o resumo do caderno de sextilhas.
+- `doGet(e)` com `action=get_text`: devolve um texto da trilha de sextilhas.
+- `doGet(e)` com `action=get_text_versions`: devolve o historico de versoes.
+- `doGet(e)` com `action=get_firebase_custom_token`: devolve um custom token para autenticar o frontend no Firebase.
+- `doPost(e)` com `action=create_text`: cria um novo rascunho de sextilha.
+- `doPost(e)` com `action=save_text_version`: salva uma nova versao e pode gerar devolutiva curta da Inanna via Gemini.
+- `doPost(e)` com `action=archive_text`: arquiva um texto sem apagar seu historico.
 
 ### Planilha principal
 
@@ -240,11 +247,89 @@ python -m http.server 8080
 
 ## Deploy recomendado
 
-1. Atualize `Auto_Inanna.gs` no Apps Script.
-2. Rode `setupInicial()` na primeira configuracao.
+1. Atualize `Code.gs` no Apps Script.
+2. Rode `setupInicial()` e `reconfigurarPlanilhaInanna()` na primeira configuracao.
 3. Rode `instalarTriggersDoPlacar()` se precisar reinstalar os gatilhos.
 4. Publique o Web App.
 5. Atualize `WEB_APP_URL` em `app.js` se a URL mudar.
+
+## Caderno de sextilhas
+
+O frontend agora tem uma camada de dados unica para a trilha de sextilhas.
+
+- Se `window.INANNA_FIREBASE_OPTIONS.mode` estiver como `apps-script`, o caderno continua lendo e gravando pelo Web App.
+- Se `window.INANNA_FIREBASE_OPTIONS.mode` estiver como `firestore` e o Firebase estiver configurado, o app tenta autenticar no Firebase com custom token e passa a ler e gravar o caderno direto no Firestore.
+- Em caso de falha na camada Firebase, o frontend faz fallback automatico para o Apps Script.
+
+Arquivos novos dessa fase:
+
+- `firebase-config.js`: chave de configuracao local da camada Firebase.
+- `firebase-sextilhas.js`: ponte do frontend para Firestore.
+
+## Fase 1: feedback leve com Gemini
+
+O `save_text_version` pode gerar uma devolutiva curta da Inanna usando os indicadores ja calculados pelo proprio backend.
+
+Propriedades esperadas no Apps Script:
+
+- `INANNA_AI_FEEDBACK_ENABLED=true`
+- `INANNA_GEMINI_API_KEY=...`
+- `INANNA_GEMINI_MODEL=gemini-2.5-flash`
+
+Com isso ativo, cada salvamento relevante:
+
+- registra a nova versao na aba `TEXT_VERSIONS`;
+- salva a devolutiva gerada na aba `TEXT_FEEDBACK`;
+- devolve `aiFeedback` no JSON para o frontend mostrar no editor.
+
+## Fase 2: preparo para Firestore
+
+O fluxo seguro recomendado e:
+
+1. O aluno valida o e-mail pelo Apps Script.
+2. O frontend pede `action=get_firebase_custom_token`.
+3. O Apps Script verifica `participantId`, `checkinUserId` e e-mail.
+4. O Apps Script assina um custom token do Firebase com claims como `participantId`.
+5. O frontend usa esse token para autenticar no Firebase e acessar apenas `/participants/{participantId}/texts/...`.
+
+Propriedades esperadas no Apps Script para o token:
+
+- `INANNA_FIREBASE_PROJECT_ID`
+- `INANNA_FIREBASE_SERVICE_ACCOUNT_EMAIL`
+- `INANNA_FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY`
+
+No frontend, preencha `window.INANNA_FIREBASE_CONFIG` com os dados publicos do app Web do Firebase e troque `mode` para `firestore`.
+
+## Regras sugeridas do Firestore
+
+```txt
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(participantId) {
+      return request.auth != null
+        && request.auth.token.participantId == participantId;
+    }
+
+    match /participants/{participantId}/texts/{textId} {
+      allow read, create, update: if isOwner(participantId);
+      allow delete: if false;
+
+      match /versions/{versionId} {
+        allow read, create: if isOwner(participantId);
+        allow update, delete: if false;
+      }
+    }
+  }
+}
+```
+
+## UX imediata
+
+Mesmo antes da virada ao Firestore, o caderno ja recebeu dois ganhos locais:
+
+- skeleton loaders no dashboard e no historico de versoes;
+- menos round-trips apos `save_text_version`, porque o editor reaproveita o retorno do proprio salvamento em vez de consultar tudo de novo.
 
 ## Observacoes
 
