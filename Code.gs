@@ -1,10 +1,11 @@
 ﻿var DEFAULT_REGISTRY_SPREADSHEET_ID = "";
 var DEFAULT_REGISTRY_SHEET_NAME = "Página1";
 var DEFAULT_CHECKIN_SPREADSHEET_ID = "";
-var DEFAULT_CHECKIN_SHEET_NAME = "USERS";
+var DEFAULT_CHECKIN_SHEET_NAME = "USERS_checkin";
 var DEFAULT_APP_VARIANT = "inanna-main";
 var FALLBACK_REGISTRY_SPREADSHEET_ID = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
 var REGISTRY_SHEET_ALIASES = ["Página1", "PÃ¡gina1", "Pagina1"];
+var CHECKIN_SHEET_ALIASES = ["USERS_checkin", "USERS", "Users", "users", "checkin", "CHECKIN"];
 var PLACAR_SHEET_NAME = "placar";
 var USERS_CACHE_SHEET_NAME = "USERS_CACHE";
 var TEXTS_SHEET_NAME = "TEXTS";
@@ -571,12 +572,29 @@ function getSextilhaSheet_(sheetName) {
 
 function getCheckinSheet_() {
   var props = PropertiesService.getScriptProperties();
-  var spreadsheetId = String(props.getProperty("IZA_CHECKIN_SPREADSHEET_ID") || DEFAULT_CHECKIN_SPREADSHEET_ID).trim();
-  var sheetName = String(props.getProperty("IZA_CHECKIN_SHEET_NAME") || DEFAULT_CHECKIN_SHEET_NAME).trim();
+  var spreadsheetId = String(
+    props.getProperty("INANNA_CHECKIN_SPREADSHEET_ID") ||
+    props.getProperty("IZA_CHECKIN_SPREADSHEET_ID") ||
+    DEFAULT_CHECKIN_SPREADSHEET_ID
+  ).trim();
+  var sheetName = String(
+    props.getProperty("INANNA_CHECKIN_SHEET_NAME") ||
+    props.getProperty("IZA_CHECKIN_SHEET_NAME") ||
+    DEFAULT_CHECKIN_SHEET_NAME
+  ).trim();
   var ss = openSpreadsheetSafely_(spreadsheetId);
+
+  if (!ss) {
+    try {
+      ss = getRegistrySpreadsheet_();
+    } catch (error) {
+      ss = null;
+    }
+  }
   if (!ss) return null;
 
-  return getSheetByAliases_(ss, [sheetName, DEFAULT_CHECKIN_SHEET_NAME, "Users", "users"]) || ss.getSheets()[0];
+  var aliases = [sheetName].concat(CHECKIN_SHEET_ALIASES);
+  return getSheetByAliases_(ss, aliases) || ss.getSheets()[0];
 }
 
 function openSpreadsheetSafely_(spreadsheetId) {
