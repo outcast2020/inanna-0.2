@@ -124,6 +124,7 @@ const ui = {
   modeChallenge: $("modeChallenge"),
   writeTimer: $("writeTimer"),
   points: $("points"),
+  btnStopGameSession: $("btnStopGameSession"),
 
   // modal do vetor
   vectorModal: $("vectorModal"),
@@ -1250,6 +1251,31 @@ function startGameTrack() {
   resetQuadraState({ resetPoints: true, restartTimer: false });
   buildThemeGrid();
   goToPhase(1);
+}
+
+function stopGameSessionAndReturnToMenu() {
+  const confirmed = window.confirm("Parar a sessao atual de quadras e voltar ao menu principal?");
+  if (!confirmed) return;
+
+  state.chosenTheme = null;
+  state.scheme = "Livre";
+
+  if (ui.selectedThemeName) ui.selectedThemeName.textContent = "—";
+  if (ui.verseInput) {
+    ui.verseInput.value = "";
+    ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
+  }
+  if (ui.modeChallenge) {
+    ui.modeChallenge.checked = false;
+    syncModes();
+  }
+  if (ui.rulesModal?.open) ui.rulesModal.close();
+  if (ui.placarModal?.open) ui.placarModal.close();
+
+  resetQuadraState({ resetPoints: true, restartTimer: false });
+  setExplain("");
+  buildThemeGrid();
+  showTrackChooser();
 }
 
 function getSextilhaDraft() {
@@ -3038,6 +3064,9 @@ ui.verseInput.addEventListener("input", updateVerseBlankPreview);
 ui.btnCustom.addEventListener("click", onCustomChoice);
 ui.customInput.addEventListener("keydown", e => { if (e.key === "Enter") onCustomChoice(); });
 ui.btnBack.addEventListener("click", () => goToPhase(2));
+if (ui.btnStopGameSession) {
+  ui.btnStopGameSession.addEventListener("click", stopGameSessionAndReturnToMenu);
+}
 ui.copyQuadra.addEventListener("click", onCopyQuadra);
 ui.btnContinueQuadra.addEventListener("click", onContinueQuadra);
 ui.btnNewPoem.addEventListener("click", onNewPoem);

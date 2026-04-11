@@ -191,6 +191,11 @@ h1 {
   gap: 12px;
 }
 
+.header-session-btn {
+  min-width: 170px;
+  justify-content: center;
+}
+
 /* Toggles */
 .glass-pill {
   display: flex;
@@ -1818,6 +1823,10 @@ select:focus-visible,
 
   .header-right {
     align-items: stretch;
+    width: 100%;
+  }
+
+  .header-session-btn {
     width: 100%;
   }
 
