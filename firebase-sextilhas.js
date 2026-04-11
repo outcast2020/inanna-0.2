@@ -187,21 +187,47 @@
 
   async function initializeSession(input) {
     const { customToken, identity } = input || {};
-    if (!customToken) throw new Error("Custom token do Firebase ausente.");
-
     const { firebase, auth } = await ensureClients();
+    if (typeof auth.authStateReady === "function") {
+      await auth.authStateReady();
+    }
+
+    const participantId = String(identity?.participantId || "").trim();
+    if (auth.currentUser && session.currentParticipantId === participantId) {
+      return {
+        status: "success",
+        provider: "firestore",
+        uid: String(auth.currentUser?.uid || "").trim(),
+      };
+    }
+
+    if (auth.currentUser && session.currentParticipantId && session.currentParticipantId !== participantId) {
+      await firebase.signOut(auth);
+      session.lastCustomToken = "";
+      session.currentParticipantId = "";
+    }
+
+    if (!customToken) throw new Error("Custom token do Firebase ausente.");
     if (!auth.currentUser || session.lastCustomToken !== customToken) {
       await firebase.signInWithCustomToken(auth, customToken);
       session.lastCustomToken = customToken;
     }
 
-    session.currentParticipantId = String(identity?.participantId || "").trim();
+    session.currentParticipantId = participantId;
 
     return {
       status: "success",
       provider: "firestore",
       uid: String(auth.currentUser?.uid || "").trim(),
     };
+  }
+
+  function hasActiveSession(participantId) {
+    const currentParticipantId = String(participantId || "").trim();
+    const hasUser = !!session.auth?.currentUser;
+    if (!hasUser) return false;
+    if (!currentParticipantId) return true;
+    return session.currentParticipantId === currentParticipantId;
   }
 
   async function getUserDashboard(identity) {
@@ -373,21 +399,6 @@
       updatedAt,
     });
 
-    if (nextTextRecord.latestVersion) {
-      nextTextRecord.latestVersion = Object.assign({}, nextTextRecord.latestVersion, {
-        status: nextStatus,
-      });
-      await firebase.setDoc(
-        firebase.doc(
-          db,
-          ...getVersionCollectionPath(identity.participantId, textId),
-          nextTextRecord.latestVersion.versionId
-        ),
-        nextTextRecord.latestVersion,
-        { merge: true }
-      );
-    }
-
     await firebase.setDoc(textRef, nextTextRecord, { merge: true });
 
     return {
@@ -405,6 +416,7 @@
     getMode() {
       return String(getOptions().mode || "apps-script").trim().toLowerCase();
     },
+    hasActiveSession,
     initializeSession,
     getUserDashboard,
     createText,

@@ -72,6 +72,7 @@ const ui = {
   editorLastSaved: $("editorLastSaved"),
   versionHistorySection: $("versionHistorySection"),
   versionHistoryTitle: $("versionHistoryTitle"),
+  versionComparePanel: $("versionComparePanel"),
   versionHistoryList: $("versionHistoryList"),
   btnBackToEditor: $("btnBackToEditor"),
   btnBackToDashboardFromVersions: $("btnBackToDashboardFromVersions"),
@@ -186,10 +187,10 @@ const state = {
   activeTextId: "",
   activeText: null,
   activeTextVersions: [],
+  versionCompareSelection: [],
   draftVersionSource: null,
   sextilhaStoreStatus: "idle",
   firebaseSessionReady: false,
-  firebaseTokenExpiresAt: "",
   lastAiFeedback: null,
 };
 
@@ -789,6 +790,9 @@ function renderDashboardLoadingSkeleton() {
 }
 
 function renderVersionHistoryLoadingSkeleton() {
+  if (ui.versionComparePanel) {
+    ui.versionComparePanel.innerHTML = "";
+  }
   if (!ui.versionHistoryList) return;
   ui.versionHistoryList.innerHTML = `
     <div class="workspace-empty workspace-empty--skeleton">
@@ -842,24 +846,53 @@ function upsertTextInDashboardState(text) {
   state.userDashboard = buildDashboardPayloadFromState();
 }
 
+function beginSaveDraftProgressiveFeedback() {
+  if (!ui.btnSaveTextVersion) {
+    return () => {};
+  }
+
+  ui.btnSaveTextVersion.disabled = true;
+  ui.btnSaveTextVersion.textContent = "Salvando rascunho...";
+
+  const shouldAnnounceAiReview = getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE;
+  const followUpTimer = shouldAnnounceAiReview
+    ? window.setTimeout(() => {
+      if (!ui.btnSaveTextVersion?.disabled) return;
+      ui.btnSaveTextVersion.textContent = "Inanna esta lendo...";
+      setEditorFeedback("Estamos salvando seu rascunho. A Inanna esta preparando uma devolutiva breve.", "muted");
+    }, 2000)
+    : null;
+
+  return () => {
+    if (followUpTimer) {
+      window.clearTimeout(followUpTimer);
+    }
+    if (ui.btnSaveTextVersion) {
+      ui.btnSaveTextVersion.disabled = false;
+      ui.btnSaveTextVersion.textContent = "Salvar rascunho";
+    }
+  };
+}
+
 async function ensureFirebaseSextilhaSession() {
   if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
     return { provider: "apps-script" };
   }
 
-  const expiresAt = state.firebaseTokenExpiresAt ? new Date(state.firebaseTokenExpiresAt).getTime() : 0;
-  if (state.firebaseSessionReady && expiresAt > Date.now() + 60000) {
+  const identity = buildIdentityPayload();
+  if (window.InannaFirebaseBridge?.hasActiveSession?.(identity.participantId)) {
+    state.firebaseSessionReady = true;
+    state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
     return { provider: FIREBASE_SEXTILHA_MODE };
   }
 
-  const tokenPayload = await fetchAppGet("get_firebase_custom_token", buildIdentityPayload());
+  const tokenPayload = await fetchAppGet("get_firebase_custom_token", identity);
   await window.InannaFirebaseBridge.initializeSession({
     customToken: tokenPayload?.customToken,
-    identity: buildIdentityPayload(),
+    identity,
   });
 
   state.firebaseSessionReady = true;
-  state.firebaseTokenExpiresAt = tokenPayload?.expiresAt || "";
   state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
 
   return tokenPayload;
@@ -966,7 +999,6 @@ function clearResolvedCheckinIdentity(nextEmail = "") {
   state.checkinLookupStatus = "idle";
   state.checkinLookupMessage = "";
   state.firebaseSessionReady = false;
-  state.firebaseTokenExpiresAt = "";
   state.lastAiFeedback = null;
 }
 
@@ -1190,6 +1222,7 @@ function resetSextilhaState() {
   state.activeTextId = "";
   state.activeText = null;
   state.activeTextVersions = [];
+  state.versionCompareSelection = [];
   state.draftVersionSource = null;
   state.lastAiFeedback = null;
   state.sextilhaStoreStatus = "idle";
@@ -2210,7 +2243,7 @@ function fillSextilhaEditor(text, draftVersion = null) {
   });
 
   if (ui.editorStatusSelect) {
-    ui.editorStatusSelect.value = normalizeStatusValue(source.status || text?.status || "rascunho");
+    ui.editorStatusSelect.value = normalizeStatusValue(text?.status || source.status || "rascunho");
   }
   if (ui.editorSharedWithEducator) {
     ui.editorSharedWithEducator.checked = !!source.sharedWithEducator;
@@ -2241,10 +2274,7 @@ async function saveCurrentTextVersion() {
     return;
   }
 
-  if (ui.btnSaveTextVersion) {
-    ui.btnSaveTextVersion.disabled = true;
-    ui.btnSaveTextVersion.textContent = "Salvando...";
-  }
+  const finishSaveFeedback = beginSaveDraftProgressiveFeedback();
 
   try {
     const nextRevisionCount = Number(state.activeText?.versionCount || 0) + 1;
@@ -2279,10 +2309,7 @@ async function saveCurrentTextVersion() {
       });
     }
   } finally {
-    if (ui.btnSaveTextVersion) {
-      ui.btnSaveTextVersion.disabled = false;
-      ui.btnSaveTextVersion.textContent = "Salvar rascunho";
-    }
+    finishSaveFeedback();
   }
 }
 
@@ -2301,6 +2328,9 @@ async function archiveCurrentText() {
 
 async function openVersionHistory(textId = state.activeTextId) {
   if (!textId) return;
+  if (textId !== state.activeTextId) {
+    state.versionCompareSelection = [];
+  }
   renderVersionHistoryLoadingSkeleton();
   setView("versionHistory", ui.versionHistorySection);
 
@@ -2311,11 +2341,121 @@ async function openVersionHistory(textId = state.activeTextId) {
   renderVersionHistory();
 }
 
+function getVersionCompareSelection() {
+  return state.versionCompareSelection
+    .map((versionId) => state.activeTextVersions.find((item) => item.versionId === versionId))
+    .filter(Boolean)
+    .sort((left, right) => (Number(left.versionNumber) || 0) - (Number(right.versionNumber) || 0));
+}
+
+function toggleVersionCompareSelection(versionId) {
+  if (!versionId) return;
+
+  if (state.versionCompareSelection.includes(versionId)) {
+    state.versionCompareSelection = state.versionCompareSelection.filter((item) => item !== versionId);
+    renderVersionHistory();
+    return;
+  }
+
+  const nextSelection = [...state.versionCompareSelection, versionId];
+  state.versionCompareSelection = nextSelection.slice(-2);
+  renderVersionHistory();
+}
+
+function clearVersionCompareSelection() {
+  state.versionCompareSelection = [];
+  renderVersionHistory();
+}
+
+function renderVersionComparePanel() {
+  if (!ui.versionComparePanel) return;
+
+  const selectedVersions = getVersionCompareSelection();
+  if (!state.activeTextVersions.length) {
+    ui.versionComparePanel.innerHTML = "";
+    return;
+  }
+
+  if (selectedVersions.length < 2) {
+    ui.versionComparePanel.innerHTML = `
+      <section class="version-compare version-compare--empty">
+        <div>
+          <p class="workspace-kicker">Comparacao de versoes</p>
+          <h3>Escolha duas versoes para ver a evolucao lado a lado</h3>
+          <p class="workspace-meta">Selecione duas versoes no historico para comparar versos, status e indicadores.</p>
+        </div>
+        <div class="version-compare__selection">
+          ${selectedVersions.length
+            ? selectedVersions.map((version) => `<span class="version-compare__pill">Versao ${escapeHtml(version.versionNumber)}</span>`).join("")
+            : `<span class="version-compare__hint">Nenhuma versao selecionada ainda.</span>`}
+        </div>
+      </section>
+    `;
+    return;
+  }
+
+  const [baseVersion, currentVersion] = selectedVersions;
+  const baseVerses = Array.isArray(baseVersion.verses) ? baseVersion.verses : [];
+  const currentVerses = Array.isArray(currentVersion.verses) ? currentVersion.verses : [];
+
+  ui.versionComparePanel.innerHTML = `
+    <section class="version-compare">
+      <div class="version-compare__head">
+        <div>
+          <p class="workspace-kicker">Comparacao de versoes</p>
+          <h3>Versao ${escapeHtml(baseVersion.versionNumber)} x Versao ${escapeHtml(currentVersion.versionNumber)}</h3>
+          <p class="workspace-meta">Veja como a escrita mudou entre duas etapas do mesmo texto.</p>
+        </div>
+        <div class="workspace-actions">
+          <button class="btn btn-ghost" type="button" data-action="clear-compare">Limpar comparacao</button>
+        </div>
+      </div>
+      <div class="version-compare__summary">
+        <article class="version-compare__summary-card">
+          <p class="workspace-kicker">Versao ${escapeHtml(baseVersion.versionNumber)}</p>
+          <p class="workspace-meta">${escapeHtml(formatDateTime(baseVersion.createdAt))}</p>
+          ${renderStatusBadge(baseVersion.status)}
+          <div class="version-card__indicators">${renderIndicatorChips(baseVersion.indicators)}</div>
+        </article>
+        <article class="version-compare__summary-card">
+          <p class="workspace-kicker">Versao ${escapeHtml(currentVersion.versionNumber)}</p>
+          <p class="workspace-meta">${escapeHtml(formatDateTime(currentVersion.createdAt))}</p>
+          ${renderStatusBadge(currentVersion.status)}
+          <div class="version-card__indicators">${renderIndicatorChips(currentVersion.indicators)}</div>
+        </article>
+      </div>
+      <div class="version-compare__verses">
+        ${Array.from({ length: 6 }, (_, index) => {
+          const leftVerse = String(baseVerses[index] || "").trim();
+          const rightVerse = String(currentVerses[index] || "").trim();
+          const changed = leftVerse !== rightVerse;
+          const changedClass = changed ? "version-compare__cell--changed" : "";
+          return `
+            <div class="version-compare__cell ${changedClass}">
+              <span class="version-compare__label">Versao ${escapeHtml(baseVersion.versionNumber)} · Verso ${index + 1}</span>
+              <p>${escapeHtml(leftVerse || "—")}</p>
+            </div>
+            <div class="version-compare__cell ${changedClass}">
+              <span class="version-compare__label">Versao ${escapeHtml(currentVersion.versionNumber)} · Verso ${index + 1}</span>
+              <p>${escapeHtml(rightVerse || "—")}</p>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderVersionHistory() {
   if (ui.versionHistoryTitle) {
     ui.versionHistoryTitle.textContent = state.activeText?.title || "Versoes da sextilha";
   }
   if (!ui.versionHistoryList) return;
+
+  state.versionCompareSelection = state.versionCompareSelection.filter((versionId) => (
+    state.activeTextVersions.some((item) => item.versionId === versionId)
+  ));
+  renderVersionComparePanel();
 
   if (!state.activeTextVersions.length) {
     ui.versionHistoryList.innerHTML = `<div class="workspace-empty">Nenhuma versao salva ainda.</div>`;
@@ -2323,7 +2463,7 @@ function renderVersionHistory() {
   }
 
   ui.versionHistoryList.innerHTML = state.activeTextVersions.map((version) => `
-    <article class="version-card">
+    <article class="version-card ${state.versionCompareSelection.includes(version.versionId) ? "version-card--selected" : ""}">
       <div class="version-card__head">
         <div>
           <h3 class="version-card__title">Versao ${version.versionNumber}</h3>
@@ -2334,6 +2474,9 @@ function renderVersionHistory() {
       <div class="version-card__indicators">${renderIndicatorChips(version.indicators)}</div>
       <pre>${escapeHtml((version.verses || []).filter(Boolean).join("\n") || "Sem versos registrados nesta versao.")}</pre>
       <div class="version-card__actions">
+        <button class="btn btn-secondary" type="button" data-action="toggle-compare" data-version-id="${escapeHtml(version.versionId)}">
+          ${state.versionCompareSelection.includes(version.versionId) ? "Remover da comparacao" : "Comparar"}
+        </button>
         <button class="btn btn-primary" type="button" data-action="restore-version" data-version-id="${escapeHtml(version.versionId)}">Usar esta versao no editor</button>
       </div>
     </article>
@@ -2605,9 +2748,23 @@ if (ui.btnBackToDashboardFromVersions) {
 
 if (ui.versionHistoryList) {
   ui.versionHistoryList.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-action='restore-version']");
+    const button = event.target.closest("button[data-action]");
     if (!button) return;
-    restoreVersionToEditor(button.dataset.versionId || "");
+    if (button.dataset.action === "restore-version") {
+      restoreVersionToEditor(button.dataset.versionId || "");
+      return;
+    }
+    if (button.dataset.action === "toggle-compare") {
+      toggleVersionCompareSelection(button.dataset.versionId || "");
+    }
+  });
+}
+
+if (ui.versionComparePanel) {
+  ui.versionComparePanel.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action='clear-compare']");
+    if (!button) return;
+    clearVersionCompareSelection();
   });
 }
 

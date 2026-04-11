@@ -292,6 +292,11 @@ O fluxo seguro recomendado e:
 4. O Apps Script assina um custom token do Firebase com claims como `participantId`.
 5. O frontend usa esse token para autenticar no Firebase e acessar apenas `/participants/{participantId}/texts/...`.
 
+Observacao:
+
+- o custom token serve para o login inicial no Firebase;
+- depois disso, o proprio SDK web mantem a sessao do usuario na aba e renova seu ID token internamente.
+
 Propriedades esperadas no Apps Script para o token:
 
 - `INANNA_FIREBASE_PROJECT_ID`
@@ -299,6 +304,8 @@ Propriedades esperadas no Apps Script para o token:
 - `INANNA_FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY`
 
 No frontend, preencha `window.INANNA_FIREBASE_CONFIG` com os dados publicos do app Web do Firebase e troque `mode` para `firestore`.
+
+No modelo atual, o status `arquivada` fica apenas no documento pai do texto. As versoes salvas em `/versions/{versionId}` continuam imutaveis.
 
 ## Regras sugeridas do Firestore
 
@@ -329,7 +336,9 @@ service cloud.firestore {
 Mesmo antes da virada ao Firestore, o caderno ja recebeu dois ganhos locais:
 
 - skeleton loaders no dashboard e no historico de versoes;
-- menos round-trips apos `save_text_version`, porque o editor reaproveita o retorno do proprio salvamento em vez de consultar tudo de novo.
+- menos round-trips apos `save_text_version`, porque o editor reaproveita o retorno do proprio salvamento em vez de consultar tudo de novo;
+- feedback progressivo no botao de salvar: primeiro `Salvando rascunho...` e, em esperas mais longas, `Inanna esta lendo...`;
+- comparacao lado a lado entre duas versoes, destacando versos alterados.
 
 ## Observacoes
 
