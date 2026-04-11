@@ -1,15 +1,16 @@
 ﻿var DEFAULT_REGISTRY_SPREADSHEET_ID = "";
-var DEFAULT_REGISTRY_SHEET_NAME = "";
+var DEFAULT_REGISTRY_SHEET_NAME = "Página1";
 var DEFAULT_CHECKIN_SPREADSHEET_ID = "";
 var DEFAULT_CHECKIN_SHEET_NAME = "USERS";
 var DEFAULT_APP_VARIANT = "inanna-main";
-var REGISTRY_SHEET_ALIASES = [];
-var PLACAR_SHEET_NAME = "";
-var USERS_CACHE_SHEET_NAME = "";
+var FALLBACK_REGISTRY_SPREADSHEET_ID = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+var REGISTRY_SHEET_ALIASES = ["Página1", "PÃ¡gina1", "Pagina1"];
+var PLACAR_SHEET_NAME = "placar";
+var USERS_CACHE_SHEET_NAME = "USERS_CACHE";
 var TEXTS_SHEET_NAME = "TEXTS";
-var TEXT_VERSIONS_SHEET_NAME = "";
-var TEXT_FEEDBACK_SHEET_NAME = "";
-var TEXT_ACTIVITY_LOG_SHEET_NAME = "";
+var TEXT_VERSIONS_SHEET_NAME = "TEXT_VERSIONS";
+var TEXT_FEEDBACK_SHEET_NAME = "TEXT_FEEDBACK";
+var TEXT_ACTIVITY_LOG_SHEET_NAME = "TEXT_ACTIVITY_LOG";
 
 var FORM_HEADERS = [
   "Carimbo de data/hora",
@@ -512,8 +513,33 @@ function buildPlacarResponse_() {
   return result;
 }
 
+function getRegistrySpreadsheetId_() {
+  var props = PropertiesService.getScriptProperties();
+  return String(
+    props.getProperty("INANNA_REGISTRY_SPREADSHEET_ID") ||
+    props.getProperty("IZA_REGISTRY_SPREADSHEET_ID") ||
+    DEFAULT_REGISTRY_SPREADSHEET_ID ||
+    FALLBACK_REGISTRY_SPREADSHEET_ID ||
+    ""
+  ).trim();
+}
+
 function getRegistrySpreadsheet_() {
-  return SpreadsheetApp.openById(DEFAULT_REGISTRY_SPREADSHEET_ID);
+  var spreadsheetId = getRegistrySpreadsheetId_();
+  if (spreadsheetId) {
+    var directSpreadsheet = openSpreadsheetSafely_(spreadsheetId);
+    if (directSpreadsheet) return directSpreadsheet;
+    throw new Error("Nao foi possivel abrir a planilha de registro pelo ID configurado: " + spreadsheetId);
+  }
+
+  try {
+    var activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    if (activeSpreadsheet) return activeSpreadsheet;
+  } catch (error) {
+    // Segue para a mensagem clara abaixo quando o projeto nao estiver vinculado a uma planilha.
+  }
+
+  throw new Error("Planilha de registro nao configurada. Defina INANNA_REGISTRY_SPREADSHEET_ID nas propriedades do script.");
 }
 
 function getRecordsSheet_() {
@@ -2107,14 +2133,15 @@ function garantirTriggersDoPlacar_() {
 
 function instalarTriggersDoPlacar() {
   limparTriggersDoPlacar();
+  var registrySpreadsheetId = getRegistrySpreadsheet_().getId();
 
   ScriptApp.newTrigger("aoNovoRegistroAtualizarPlacar")
-    .forSpreadsheet(DEFAULT_REGISTRY_SPREADSHEET_ID)
+    .forSpreadsheet(registrySpreadsheetId)
     .onFormSubmit()
     .create();
 
   ScriptApp.newTrigger("aoEditarRegistroAtualizarPlacar")
-    .forSpreadsheet(DEFAULT_REGISTRY_SPREADSHEET_ID)
+    .forSpreadsheet(registrySpreadsheetId)
     .onEdit()
     .create();
 
