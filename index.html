@@ -92,7 +92,7 @@
         </div>
       </div>
 
-      <div class="header-right">
+      <div class="header-right" id="headerRight">
         <div class="toggles glass-pill">
           <label class="mode-toggle">
             <input id="modeChallenge" type="checkbox" />
@@ -109,7 +109,7 @@
     </header>
 
     <!-- ── INDICADORES DE PROGRESSO ──────────────────────────────── -->
-    <nav class="steps-bar" aria-label="Progresso do jogo">
+    <nav id="stepsBar" class="steps-bar" aria-label="Progresso do jogo">
       <div class="step-indicator current" data-step="0">
         <div class="step-num">0</div>
         <div class="step-lbl">Identificacao</div>
@@ -159,6 +159,159 @@
               Começar jornada</button>
             <p id="startHint" class="verse-hint form-hint" aria-live="polite"></p>
           </div>
+        </section>
+
+        <section id="trackChooserSection" class="workspace-panel" aria-label="Escolha de trilha">
+          <div class="step-header">
+            <img src="emoji.png" alt="Inanna" class="inanna-avatar" />
+            <h2>Escolha sua trilha</h2>
+            <p class="step-desc">Depois da validacao do check-in, voce pode seguir pela experiencia ludica das quadras ou abrir seu caderno pessoal de sextilhas.</p>
+          </div>
+          <div class="track-chooser-grid">
+            <article class="track-card">
+              <p class="track-card__eyebrow">Trilha Game</p>
+              <h3>Jogar com quadras</h3>
+              <p>Continue no fluxo ja existente, com sugestoes da Inanna, pontuacao do modo desafio e placar.</p>
+              <button id="chooseGameTrackBtn" class="btn btn-primary" type="button">Entrar no jogo</button>
+            </article>
+            <article class="track-card track-card--warm">
+              <p class="track-card__eyebrow">Trilha Autoral</p>
+              <h3>Entrar no meu caderno de sextilhas</h3>
+              <p>Escreva com calma, salve rascunhos, acompanhe versoes e amadureca seus textos sem gamificacao.</p>
+              <button id="chooseSextilhaTrackBtn" class="btn btn-custom" type="button">Abrir meu caderno</button>
+            </article>
+          </div>
+          <div class="workspace-actions">
+            <button id="trackChooserBackBtn" class="btn btn-ghost" type="button">Voltar para a validacao</button>
+          </div>
+        </section>
+
+        <section id="userDashboardSection" class="workspace-panel" aria-label="Caderno de sextilhas">
+          <div class="workspace-head">
+            <div>
+              <p class="workspace-kicker">Caderno de sextilhas</p>
+              <h2 id="dashboardGreeting">Minhas sextilhas</h2>
+              <p class="step-desc">Seu espaco pessoal de escrita, memoria e revisao.</p>
+            </div>
+            <div class="workspace-actions">
+              <button id="btnCreateText" class="btn btn-primary" type="button">Nova sextilha</button>
+              <button id="btnBackToTrackChooser" class="btn btn-ghost" type="button">Voltar ao menu inicial</button>
+            </div>
+          </div>
+          <div class="dashboard-metrics">
+            <article class="dashboard-metric">
+              <span id="dashboardTextCount">0</span>
+              <small>Textos iniciados</small>
+            </article>
+            <article class="dashboard-metric">
+              <span id="dashboardCompletedCount">0</span>
+              <small>Textos concluidos</small>
+            </article>
+            <article class="dashboard-metric dashboard-metric--wide">
+              <span id="dashboardLastEdited">Ainda sem edicoes</span>
+              <small>Ultima edicao</small>
+            </article>
+          </div>
+          <div class="workspace-toolbar">
+            <label class="field-label" for="dashboardStatusFilter">Filtrar por status</label>
+            <select id="dashboardStatusFilter" class="workspace-select">
+              <option value="all">Todos</option>
+              <option value="rascunho">Rascunho</option>
+              <option value="em revisao">Em revisao</option>
+              <option value="concluida">Concluida</option>
+              <option value="compartilhada com educador">Compartilhada com educador</option>
+              <option value="selecionada para antologia">Selecionada para antologia</option>
+              <option value="arquivada">Arquivada</option>
+            </select>
+          </div>
+          <div id="dashboardTextList" class="text-list" aria-live="polite"></div>
+        </section>
+
+        <section id="sextilhaEditorSection" class="workspace-panel" aria-label="Editor de sextilha">
+          <div class="workspace-head">
+            <div>
+              <p class="workspace-kicker">Editor de sextilha</p>
+              <h2 id="editorTitleHeading">Nova sextilha</h2>
+              <p class="step-desc">Escreva de forma autoral. Aqui a Inanna nao completa seus versos automaticamente.</p>
+            </div>
+            <div class="workspace-actions">
+              <button id="btnBackToDashboard" class="btn btn-ghost" type="button">Voltar ao caderno</button>
+              <button id="btnOpenVersionHistory" class="btn btn-secondary" type="button">Ver versoes</button>
+            </div>
+          </div>
+          <div class="editor-layout">
+            <div class="editor-form">
+              <label class="field-label" for="editorTitleInput">Titulo</label>
+              <input id="editorTitleInput" type="text" maxlength="120" class="workspace-input" placeholder="Dê um titulo para sua sextilha" />
+
+              <label class="field-label" for="editorThemeInput">Tema ou motivo</label>
+              <input id="editorThemeInput" type="text" maxlength="120" class="workspace-input" placeholder="Qual campo de imaginacao ou assunto te guia?" />
+
+              <label class="field-label" for="editorNoteInput">Observacao inicial</label>
+              <textarea id="editorNoteInput" class="workspace-textarea" rows="3" placeholder="Anote uma ideia, uma imagem ou uma lembranca que queira guardar."></textarea>
+
+              <div class="editor-verses">
+                <label class="field-label" for="editorVerse1">Versos</label>
+                <textarea id="editorVerse1" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 1"></textarea>
+                <textarea id="editorVerse2" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 2"></textarea>
+                <textarea id="editorVerse3" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 3"></textarea>
+                <textarea id="editorVerse4" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 4"></textarea>
+                <textarea id="editorVerse5" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 5"></textarea>
+                <textarea id="editorVerse6" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 6"></textarea>
+              </div>
+
+              <div class="editor-form-grid">
+                <div>
+                  <label class="field-label" for="editorStatusSelect">Status do texto</label>
+                  <select id="editorStatusSelect" class="workspace-select">
+                    <option value="rascunho">Rascunho</option>
+                    <option value="em revisao">Em revisao</option>
+                    <option value="concluida">Concluida</option>
+                    <option value="compartilhada com educador">Compartilhada com educador</option>
+                    <option value="selecionada para antologia">Selecionada para antologia</option>
+                    <option value="arquivada">Arquivada</option>
+                  </select>
+                </div>
+                <label class="workspace-check">
+                  <input id="editorSharedWithEducator" type="checkbox" />
+                  <span>Compartilhar com educador</span>
+                </label>
+              </div>
+
+              <div class="workspace-actions">
+                <button id="btnSaveTextVersion" class="btn btn-primary" type="button">Salvar rascunho</button>
+                <button id="btnArchiveText" class="btn btn-ghost" type="button">Arquivar texto</button>
+              </div>
+              <p id="editorSaveMessage" class="workspace-feedback" aria-live="polite"></p>
+            </div>
+
+            <aside class="editor-sidebar">
+              <div class="indicator-panel">
+                <p class="workspace-kicker">Indicadores de escrita</p>
+                <div id="editorIndicatorList" class="indicator-list"></div>
+              </div>
+              <div class="indicator-panel indicator-panel--muted">
+                <p class="workspace-kicker">Acompanhamento</p>
+                <p id="editorVersionMeta" class="workspace-meta">Versao ainda nao salva.</p>
+                <p id="editorLastSaved" class="workspace-meta">Ultima atualizacao: ainda sem registro.</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="versionHistorySection" class="workspace-panel" aria-label="Historico de versoes">
+          <div class="workspace-head">
+            <div>
+              <p class="workspace-kicker">Historico</p>
+              <h2 id="versionHistoryTitle">Versoes da sextilha</h2>
+              <p class="step-desc">Cada salvamento relevante gera uma nova versao sem apagar a anterior.</p>
+            </div>
+            <div class="workspace-actions">
+              <button id="btnBackToEditor" class="btn btn-secondary" type="button">Voltar ao editor</button>
+              <button id="btnBackToDashboardFromVersions" class="btn btn-ghost" type="button">Voltar ao caderno</button>
+            </div>
+          </div>
+          <div id="versionHistoryList" class="version-list" aria-live="polite"></div>
         </section>
 
         <!-- ── ETAPA 1: ESCOLHER TEMA ─────────────────────────────────── -->

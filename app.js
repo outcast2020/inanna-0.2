@@ -17,6 +17,8 @@ const ui = {
   step1: $("step1"),
   step2: $("step2"),
   step3: $("step3"),
+  stepsBar: $("stepsBar"),
+  headerRight: $("headerRight"),
 
   // app script globals
   btnStart: $("btnStart"),
@@ -31,6 +33,47 @@ const ui = {
   placarList: $("placarList"),
   btnRefreshPlacar: $("btnRefreshPlacar"),
   rankingArea: $("rankingArea"),
+
+  // trilhas
+  trackChooserSection: $("trackChooserSection"),
+  chooseGameTrackBtn: $("chooseGameTrackBtn"),
+  chooseSextilhaTrackBtn: $("chooseSextilhaTrackBtn"),
+  trackChooserBackBtn: $("trackChooserBackBtn"),
+  userDashboardSection: $("userDashboardSection"),
+  dashboardGreeting: $("dashboardGreeting"),
+  dashboardTextCount: $("dashboardTextCount"),
+  dashboardCompletedCount: $("dashboardCompletedCount"),
+  dashboardLastEdited: $("dashboardLastEdited"),
+  dashboardStatusFilter: $("dashboardStatusFilter"),
+  dashboardTextList: $("dashboardTextList"),
+  btnCreateText: $("btnCreateText"),
+  btnBackToTrackChooser: $("btnBackToTrackChooser"),
+  sextilhaEditorSection: $("sextilhaEditorSection"),
+  editorTitleHeading: $("editorTitleHeading"),
+  editorTitleInput: $("editorTitleInput"),
+  editorThemeInput: $("editorThemeInput"),
+  editorNoteInput: $("editorNoteInput"),
+  editorVerse1: $("editorVerse1"),
+  editorVerse2: $("editorVerse2"),
+  editorVerse3: $("editorVerse3"),
+  editorVerse4: $("editorVerse4"),
+  editorVerse5: $("editorVerse5"),
+  editorVerse6: $("editorVerse6"),
+  editorStatusSelect: $("editorStatusSelect"),
+  editorSharedWithEducator: $("editorSharedWithEducator"),
+  btnSaveTextVersion: $("btnSaveTextVersion"),
+  btnArchiveText: $("btnArchiveText"),
+  btnBackToDashboard: $("btnBackToDashboard"),
+  btnOpenVersionHistory: $("btnOpenVersionHistory"),
+  editorSaveMessage: $("editorSaveMessage"),
+  editorIndicatorList: $("editorIndicatorList"),
+  editorVersionMeta: $("editorVersionMeta"),
+  editorLastSaved: $("editorLastSaved"),
+  versionHistorySection: $("versionHistorySection"),
+  versionHistoryTitle: $("versionHistoryTitle"),
+  versionHistoryList: $("versionHistoryList"),
+  btnBackToEditor: $("btnBackToEditor"),
+  btnBackToDashboardFromVersions: $("btnBackToDashboardFromVersions"),
 
   // rules modal
   rulesModal: $("rulesModal"),
@@ -106,6 +149,8 @@ const ui = {
 // ── Estado do jogo ───────────────────────────────────────────────────
 const state = {
   phase: 0,           // 0 | 1 | 2 | 3
+  view: "identity",   // identity | chooser | game | gameResult | sextilhaDashboard | sextilhaEditor | versionHistory
+  selectedTrack: "",
   playerData: null,
   name: "",
   email: "",
@@ -134,11 +179,26 @@ const state = {
   writingElapsedMs: 0,
   writingTimerId: null,
   writingTimerRunning: false,
+  userDashboard: null,
+  userTexts: [],
+  dashboardFilter: "all",
+  activeTextId: "",
+  activeText: null,
+  activeTextVersions: [],
+  draftVersionSource: null,
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzOgEHPchn-0MKvrUrBXEeqIoXgHyiK4b7X1xFd8wsaIp_cO6saUTq4OoeoWdWpLjCW/exec";
 const APP_VARIANT = "inanna-main";
+const SEXTILHA_STATUS_LABELS = {
+  "rascunho": "Rascunho",
+  "em revisao": "Em revisao",
+  "concluida": "Concluida",
+  "compartilhada com educador": "Compartilhada com educador",
+  "selecionada para antologia": "Selecionada para antologia",
+  "arquivada": "Arquivada"
+};
 
 // ── Banco de Curadoria Local (Fallback/Library Pré-Programado) ────────
 // Caso a planilha não esteja conectada, o administrador pode adicionar 
@@ -575,6 +635,127 @@ function normalizeOrigem(value) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+function formatDateTime(value) {
+  if (!value) return "Ainda sem registro";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function setElementDisplay(el, shouldShow, displayValue = "") {
+  if (!el) return;
+  el.style.display = shouldShow ? displayValue : "none";
+}
+
+function getWorkspacePanels() {
+  return [
+    ui.trackChooserSection,
+    ui.userDashboardSection,
+    ui.sextilhaEditorSection,
+    ui.versionHistorySection,
+  ];
+}
+
+function getSextilhaVerseInputs() {
+  return [
+    ui.editorVerse1,
+    ui.editorVerse2,
+    ui.editorVerse3,
+    ui.editorVerse4,
+    ui.editorVerse5,
+    ui.editorVerse6,
+  ];
+}
+
+function setActiveWorkspacePanel(activePanel) {
+  getWorkspacePanels().forEach((panel) => {
+    if (!panel) return;
+    panel.classList.toggle("active", panel === activePanel);
+  });
+}
+
+function hideGameExperience() {
+  [ui.step0, ui.step1, ui.step2, ui.step3].forEach((section) => {
+    if (section) section.classList.remove("active");
+  });
+  if (ui.poemSection) ui.poemSection.classList.remove("visible");
+}
+
+function syncExperienceChrome() {
+  const isGameView = state.view === "game" || state.view === "gameResult";
+  setElementDisplay(ui.stepsBar, isGameView, "");
+  setElementDisplay(ui.headerRight, isGameView, "flex");
+  setElementDisplay(ui.rankingArea, isGameView, "block");
+}
+
+function setView(nextView, activePanel = null) {
+  state.view = nextView;
+  setActiveWorkspacePanel(activePanel);
+  syncExperienceChrome();
+}
+
+function buildIdentityPayload() {
+  return {
+    participantId: state.participantId,
+    checkinUserId: state.checkinUserId,
+    email: state.email,
+    name: state.name,
+    municipio: state.municipio,
+    estado: state.estadoUF,
+    origem: state.origem,
+    teacherGroup: state.teacherGroup,
+    appVariant: APP_VARIANT,
+  };
+}
+
+async function fetchAppGet(action, params = {}) {
+  const query = new URLSearchParams({
+    action,
+    t: String(Date.now()),
+    ...params,
+  });
+  const response = await fetch(`${WEB_APP_URL}?${query.toString()}`);
+  const payload = await response.json();
+  if (payload?.status === "error" || payload?.error) {
+    throw new Error(payload?.message || payload?.error || "Erro ao consultar o backend.");
+  }
+  return payload;
+}
+
+async function postAppAction(action, payload = {}) {
+  const response = await fetch(WEB_APP_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      ...payload,
+    }),
+  });
+  const result = await response.json();
+  if (result?.status === "error" || result?.error) {
+    throw new Error(result?.message || result?.error || "Erro ao salvar no backend.");
+  }
+  return result;
+}
+
+function normalizeStatusValue(value) {
+  return String(value || "").trim().toLowerCase() || "rascunho";
+}
+
+function statusClassName(status) {
+  return `status-${normalizeStatusValue(status).replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function getStatusLabel(status) {
+  return SEXTILHA_STATUS_LABELS[normalizeStatusValue(status)] || "Rascunho";
+}
+
+function renderStatusBadge(status) {
+  return `<span class="status-badge ${statusClassName(status)}">${escapeHtml(getStatusLabel(status))}</span>`;
+}
+
 function clearResolvedCheckinIdentity(nextEmail = "") {
   state.email = String(nextEmail || "").trim();
   state.name = "";
@@ -801,7 +982,84 @@ function handleStartJourney() {
     estado: state.estadoUF,
     origem: state.origem
   };
+  showTrackChooser();
+}
+
+function resetSextilhaState() {
+  state.userDashboard = null;
+  state.userTexts = [];
+  state.activeTextId = "";
+  state.activeText = null;
+  state.activeTextVersions = [];
+  state.draftVersionSource = null;
+}
+
+function returnToIdentityStep() {
+  resetSextilhaState();
+  state.selectedTrack = "";
+  setView("identity");
+  goToPhase(0);
+}
+
+function showTrackChooser() {
+  state.selectedTrack = "";
+  resetSextilhaState();
+  hideGameExperience();
+  setView("chooser", ui.trackChooserSection);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function startGameTrack() {
+  state.selectedTrack = "game";
+  setView("game");
+  resetQuadraState({ resetPoints: true, restartTimer: false });
+  buildThemeGrid();
   goToPhase(1);
+}
+
+function getSextilhaDraft() {
+  return {
+    title: ui.editorTitleInput?.value.trim() || "",
+    theme: ui.editorThemeInput?.value.trim() || "",
+    note: ui.editorNoteInput?.value.trim() || "",
+    verses: getSextilhaVerseInputs().map((input) => input?.value.trim() || ""),
+    status: normalizeStatusValue(ui.editorStatusSelect?.value || "rascunho"),
+    sharedWithEducator: !!ui.editorSharedWithEducator?.checked,
+  };
+}
+
+function formatTextUpdatedLabel(text) {
+  return text?.updatedAt ? formatDateTime(text.updatedAt) : "Ainda sem edicoes";
+}
+
+function setEditorFeedback(message, tone = "muted") {
+  if (!ui.editorSaveMessage) return;
+  ui.editorSaveMessage.textContent = message || "";
+  ui.editorSaveMessage.style.color =
+    tone === "success" ? "var(--accent)" :
+      tone === "error" ? "var(--danger)" :
+        "var(--muted)";
+}
+
+function slugStatus(status) {
+  return normalizeStatusValue(status).replace(/[^a-z0-9]+/g, "-");
+}
+
+function renderIndicatorChips(indicators = {}) {
+  const items = [
+    indicators.completude,
+    indicators.fechamento,
+    indicators.rimaStatus,
+    indicators.coerenciaTematica,
+    indicators.repeticaoLexical,
+    indicators.maturacao,
+  ].filter(Boolean);
+
+  if (!items.length) {
+    return `<span class="indicator-chip">Texto iniciando</span>`;
+  }
+
+  return items.map((item) => `<span class="indicator-chip">${escapeHtml(item)}</span>`).join("");
 }
 
 function normalizeSpaces(value) {
@@ -1588,6 +1846,16 @@ function finishPoem() {
 function goToPhase(n, options) {
   const settings = Object.assign({ scrollTop: true }, options);
   state.phase = n;
+  if (n === 0) {
+    setView("identity");
+  } else if (n === 4) {
+    setView("gameResult");
+  } else {
+    setView("game");
+  }
+  if (n !== 4 && ui.poemSection) {
+    ui.poemSection.classList.remove("visible");
+  }
   [ui.step0, ui.step1, ui.step2, ui.step3].forEach((el, i) => {
     if (!el) return;
     el.classList.toggle("active", i === n);
@@ -1599,6 +1867,392 @@ function goToPhase(n, options) {
   });
   if (settings.scrollTop) {
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+}
+
+function applyDashboardPayload(payload) {
+  state.userDashboard = payload;
+  state.userTexts = Array.isArray(payload?.texts) ? payload.texts : [];
+
+  if (ui.dashboardGreeting) {
+    ui.dashboardGreeting.textContent = state.name ? `${state.name}, este e seu caderno` : "Minhas sextilhas";
+  }
+  if (ui.dashboardTextCount) {
+    ui.dashboardTextCount.textContent = String(payload?.textCount || 0);
+  }
+  if (ui.dashboardCompletedCount) {
+    ui.dashboardCompletedCount.textContent = String(payload?.completedCount || 0);
+  }
+  if (ui.dashboardLastEdited) {
+    ui.dashboardLastEdited.textContent = payload?.lastEditedAt ? formatDateTime(payload.lastEditedAt) : "Ainda sem edicoes";
+  }
+  if (ui.dashboardStatusFilter) {
+    ui.dashboardStatusFilter.value = state.dashboardFilter || "all";
+  }
+
+  renderDashboardTexts();
+}
+
+async function openSextilhaDashboard() {
+  state.selectedTrack = "sextilha";
+  hideGameExperience();
+  setView("sextilhaDashboard", ui.userDashboardSection);
+  if (ui.dashboardTextList) {
+    ui.dashboardTextList.innerHTML = `<div class="workspace-empty">Carregando seu caderno...</div>`;
+  }
+
+  const payload = await fetchAppGet("get_user_dashboard", buildIdentityPayload());
+  applyDashboardPayload(payload);
+}
+
+function renderDashboardTexts() {
+  if (!ui.dashboardTextList) return;
+
+  const filterValue = normalizeStatusValue(ui.dashboardStatusFilter?.value || state.dashboardFilter || "all");
+  state.dashboardFilter = filterValue;
+  const filteredTexts = state.userTexts.filter((text) => {
+    if (filterValue === "all") return true;
+    return normalizeStatusValue(text.status) === filterValue;
+  });
+
+  if (!filteredTexts.length) {
+    ui.dashboardTextList.innerHTML = `
+      <div class="workspace-empty">
+        ${filterValue === "all" ? "Nenhuma sextilha criada ainda. Comece um novo texto para abrir seu caderno." : "Nenhum texto encontrado para este status."}
+      </div>
+    `;
+    return;
+  }
+
+  ui.dashboardTextList.innerHTML = filteredTexts.map((text) => `
+    <article class="text-card" data-text-id="${escapeHtml(text.textId)}">
+      <div class="text-card__head">
+        <div>
+          <h3 class="text-card__title">${escapeHtml(text.title || "Sextilha sem titulo")}</h3>
+          <p class="text-card__meta">
+            ${escapeHtml(text.theme || "Tema livre")}<br>
+            Ultima edicao: ${escapeHtml(formatTextUpdatedLabel(text))}
+          </p>
+        </div>
+        ${renderStatusBadge(text.status)}
+      </div>
+      <div class="text-card__indicators">${renderIndicatorChips(text.indicators)}</div>
+      <div class="text-card__actions">
+        <button class="btn btn-primary" type="button" data-action="open-text" data-text-id="${escapeHtml(text.textId)}">Continuar</button>
+        <button class="btn btn-secondary" type="button" data-action="view-versions" data-text-id="${escapeHtml(text.textId)}">Versoes</button>
+        <button class="btn btn-ghost" type="button" data-action="archive-text" data-text-id="${escapeHtml(text.textId)}">Arquivar</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+async function createNewSextilha() {
+  if (ui.btnCreateText) {
+    ui.btnCreateText.disabled = true;
+    ui.btnCreateText.textContent = "Criando...";
+  }
+
+  try {
+    const result = await postAppAction("create_text", {
+      ...buildIdentityPayload(),
+      title: "",
+      theme: "",
+      status: "rascunho",
+    });
+    state.activeTextId = result?.text?.textId || "";
+    await openSextilhaEditor(state.activeTextId);
+    setEditorFeedback("Novo rascunho criado. Voce ja pode escrever e salvar.", "success");
+  } finally {
+    if (ui.btnCreateText) {
+      ui.btnCreateText.disabled = false;
+      ui.btnCreateText.textContent = "Nova sextilha";
+    }
+  }
+}
+
+async function openSextilhaEditor(textId, draftVersion = null) {
+  if (!textId) return;
+
+  const payload = await fetchAppGet("get_text", {
+    ...buildIdentityPayload(),
+    textId,
+  });
+
+  state.activeTextId = textId;
+  state.activeText = payload?.text || null;
+  state.draftVersionSource = draftVersion;
+  setView("sextilhaEditor", ui.sextilhaEditorSection);
+  fillSextilhaEditor(payload?.text, draftVersion);
+}
+
+function fillSextilhaEditor(text, draftVersion = null) {
+  const source = draftVersion || text?.latestVersion || text;
+  if (!source) return;
+
+  if (ui.editorTitleHeading) {
+    ui.editorTitleHeading.textContent = text?.title || draftVersion?.title || "Nova sextilha";
+  }
+  if (ui.editorTitleInput) ui.editorTitleInput.value = source.title || "";
+  if (ui.editorThemeInput) ui.editorThemeInput.value = source.theme || "";
+  if (ui.editorNoteInput) ui.editorNoteInput.value = source.note || "";
+
+  const verses = Array.isArray(source.verses) ? source.verses : [];
+  getSextilhaVerseInputs().forEach((input, index) => {
+    if (input) input.value = verses[index] || "";
+  });
+
+  if (ui.editorStatusSelect) {
+    ui.editorStatusSelect.value = normalizeStatusValue(source.status || text?.status || "rascunho");
+  }
+  if (ui.editorSharedWithEducator) {
+    ui.editorSharedWithEducator.checked = !!source.sharedWithEducator;
+  }
+  if (ui.editorVersionMeta) {
+    ui.editorVersionMeta.textContent = draftVersion?.versionNumber
+      ? `Versao ${draftVersion.versionNumber} carregada no editor.`
+      : text?.versionCount
+        ? `${text.versionCount} versoes registradas.`
+        : "Versao ainda nao salva.";
+  }
+  if (ui.editorLastSaved) {
+    ui.editorLastSaved.textContent = text?.updatedAt
+      ? `Ultima atualizacao: ${formatDateTime(text.updatedAt)}`
+      : "Ultima atualizacao: ainda sem registro.";
+  }
+
+  updateSextilhaIndicators();
+}
+
+async function saveCurrentTextVersion() {
+  if (!state.activeTextId) return;
+  const draft = getSextilhaDraft();
+
+  if (!draft.title && !draft.theme && !draft.verses.some(Boolean) && !draft.note) {
+    setEditorFeedback("Escreva pelo menos um elemento do texto antes de salvar.", "error");
+    return;
+  }
+
+  if (ui.btnSaveTextVersion) {
+    ui.btnSaveTextVersion.disabled = true;
+    ui.btnSaveTextVersion.textContent = "Salvando...";
+  }
+
+  try {
+    const response = await postAppAction("save_text_version", {
+      ...buildIdentityPayload(),
+      textId: state.activeTextId,
+      title: draft.title,
+      theme: draft.theme,
+      note: draft.note,
+      verses: draft.verses,
+      status: draft.status,
+      sharedWithEducator: draft.sharedWithEducator,
+    });
+
+    state.activeText = response?.text || state.activeText;
+    state.draftVersionSource = null;
+    fillSextilhaEditor(state.activeText);
+    setEditorFeedback("Versao salva com sucesso.", "success");
+    const dashboardPayload = await fetchAppGet("get_user_dashboard", buildIdentityPayload());
+    applyDashboardPayload(dashboardPayload);
+    await openSextilhaEditor(state.activeTextId);
+  } catch (error) {
+    setEditorFeedback(error?.message || "Nao foi possivel salvar a versao.", "error");
+  } finally {
+    if (ui.btnSaveTextVersion) {
+      ui.btnSaveTextVersion.disabled = false;
+      ui.btnSaveTextVersion.textContent = "Salvar rascunho";
+    }
+  }
+}
+
+async function archiveCurrentText() {
+  if (!state.activeTextId) return;
+  const confirmed = window.confirm("Arquivar este texto sem apagar o historico?");
+  if (!confirmed) return;
+
+  await postAppAction("archive_text", {
+    ...buildIdentityPayload(),
+    textId: state.activeTextId,
+    status: "arquivada",
+  });
+
+  await openSextilhaDashboard();
+}
+
+async function openVersionHistory(textId = state.activeTextId) {
+  if (!textId) return;
+
+  const response = await fetchAppGet("get_text_versions", {
+    ...buildIdentityPayload(),
+    textId,
+  });
+
+  state.activeTextId = textId;
+  state.activeTextVersions = Array.isArray(response?.versions) ? response.versions : [];
+  setView("versionHistory", ui.versionHistorySection);
+  renderVersionHistory();
+}
+
+function renderVersionHistory() {
+  if (ui.versionHistoryTitle) {
+    ui.versionHistoryTitle.textContent = state.activeText?.title || "Versoes da sextilha";
+  }
+  if (!ui.versionHistoryList) return;
+
+  if (!state.activeTextVersions.length) {
+    ui.versionHistoryList.innerHTML = `<div class="workspace-empty">Nenhuma versao salva ainda.</div>`;
+    return;
+  }
+
+  ui.versionHistoryList.innerHTML = state.activeTextVersions.map((version) => `
+    <article class="version-card">
+      <div class="version-card__head">
+        <div>
+          <h3 class="version-card__title">Versao ${version.versionNumber}</h3>
+          <p class="version-card__meta">${escapeHtml(formatDateTime(version.createdAt))}</p>
+        </div>
+        ${renderStatusBadge(version.status)}
+      </div>
+      <div class="version-card__indicators">${renderIndicatorChips(version.indicators)}</div>
+      <pre>${escapeHtml((version.verses || []).filter(Boolean).join("\n") || "Sem versos registrados nesta versao.")}</pre>
+      <div class="version-card__actions">
+        <button class="btn btn-primary" type="button" data-action="restore-version" data-version-id="${escapeHtml(version.versionId)}">Usar esta versao no editor</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function restoreVersionToEditor(versionId) {
+  const version = state.activeTextVersions.find((item) => item.versionId === versionId);
+  if (!version) return;
+  state.draftVersionSource = version;
+  setView("sextilhaEditor", ui.sextilhaEditorSection);
+  fillSextilhaEditor(state.activeText, version);
+  setEditorFeedback("Versao carregada no editor. Salve para criar uma nova etapa do texto.", "success");
+}
+
+function buildLiveSextilhaIndicators() {
+  const draft = getSextilhaDraft();
+  const verses = draft.verses;
+  const filledVerses = verses.filter(Boolean);
+  const finalWords = filledVerses.map((verse) => {
+    const tokens = norm(verse).split(/\s+/).filter(Boolean);
+    return tokens[tokens.length - 1] || "";
+  }).filter(Boolean);
+
+  const meaningfulThemeTokens = norm(`${draft.title} ${draft.theme} ${draft.note}`)
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+  const verseTokens = norm(verses.join(" "))
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+
+  const completude = `${filledVerses.length}/6 versos preenchidos`;
+
+  let fechamento = "texto iniciando";
+  if (filledVerses.length) {
+    const validEndings = finalWords.filter((word) => word.length >= 2).length;
+    fechamento = validEndings >= Math.max(1, filledVerses.length - 1)
+      ? "versos em fechamento"
+      : "revisar finais dos versos";
+    if (filledVerses.length === 6 && validEndings === 6) {
+      fechamento = "fechamento consistente";
+    }
+  }
+
+  let rimaStatus = "rima em formacao";
+  if (finalWords.length >= 2) {
+    const suffixGroups = [3, 2, 1].map((size) => {
+      const counts = {};
+      finalWords.forEach((word) => {
+        if (word.length < size) return;
+        const suffix = word.slice(-size);
+        counts[suffix] = (counts[suffix] || 0) + 1;
+      });
+      return Math.max(0, ...Object.values(counts));
+    });
+    if (suffixGroups[0] >= 3) rimaStatus = "rima consistente";
+    else if (suffixGroups[1] >= 2) rimaStatus = "rima em consolidacao";
+    else if (suffixGroups[2] >= 2) rimaStatus = "rima leve aparecendo";
+    else rimaStatus = "rima livre em desenvolvimento";
+  }
+
+  let coerenciaTematica = "tema em formacao";
+  if (!meaningfulThemeTokens.length) {
+    coerenciaTematica = filledVerses.length >= 3 ? "boa unidade do texto" : "tema em aberto";
+  } else {
+    const overlap = meaningfulThemeTokens.filter((token) => verseTokens.includes(token)).length;
+    if (overlap >= 2) coerenciaTematica = "boa unidade tematica";
+    else if (overlap >= 1) coerenciaTematica = "tema presente";
+    else if (filledVerses.length >= 3) coerenciaTematica = "reforcar unidade tematica";
+  }
+
+  const tokenFrequency = verseTokens.reduce((acc, token) => {
+    acc[token] = (acc[token] || 0) + 1;
+    return acc;
+  }, {});
+  const highestFrequency = Math.max(0, ...Object.values(tokenFrequency));
+  const repeticaoLexical = highestFrequency >= 4
+    ? "repeticao alta"
+    : highestFrequency === 3
+      ? "alguma repeticao"
+      : "boa variedade lexical";
+
+  const revisionCount = Number(state.activeText?.versionCount || 0);
+  const maturacao = revisionCount >= 4
+    ? "texto amadurecido"
+    : revisionCount >= 2
+      ? "texto amadurecendo"
+      : revisionCount === 1
+        ? "primeira versao registrada"
+        : "texto iniciando";
+
+  return {
+    completude,
+    fechamento,
+    rimaStatus,
+    coerenciaTematica,
+    repeticaoLexical,
+    maturacao,
+  };
+}
+
+function updateSextilhaIndicators() {
+  const indicators = buildLiveSextilhaIndicators();
+  if (ui.editorIndicatorList) {
+    ui.editorIndicatorList.innerHTML = renderIndicatorChips(indicators);
+  }
+}
+
+async function handleDashboardTextAction(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const { action, textId } = button.dataset;
+  if (!textId) return;
+
+  if (action === "open-text") {
+    await openSextilhaEditor(textId);
+    return;
+  }
+
+  if (action === "view-versions") {
+    const match = state.userTexts.find((text) => text.textId === textId);
+    if (match) state.activeText = match;
+    await openVersionHistory(textId);
+    return;
+  }
+
+  if (action === "archive-text") {
+    const confirmed = window.confirm("Arquivar este texto sem apagar o historico?");
+    if (!confirmed) return;
+    await postAppAction("archive_text", {
+      ...buildIdentityPayload(),
+      textId,
+      status: "arquivada",
+    });
+    await openSextilhaDashboard();
   }
 }
 
@@ -1628,6 +2282,129 @@ if (ui.playerEmail) {
     }
   });
 }
+
+if (ui.chooseGameTrackBtn) {
+  ui.chooseGameTrackBtn.addEventListener("click", startGameTrack);
+}
+
+if (ui.chooseSextilhaTrackBtn) {
+  ui.chooseSextilhaTrackBtn.addEventListener("click", async () => {
+    try {
+      await openSextilhaDashboard();
+    } catch (error) {
+      window.alert(error?.message || "Nao foi possivel abrir o caderno agora.");
+      showTrackChooser();
+    }
+  });
+}
+
+if (ui.trackChooserBackBtn) {
+  ui.trackChooserBackBtn.addEventListener("click", () => {
+    returnToIdentityStep();
+  });
+}
+
+if (ui.btnBackToTrackChooser) {
+  ui.btnBackToTrackChooser.addEventListener("click", showTrackChooser);
+}
+
+if (ui.btnCreateText) {
+  ui.btnCreateText.addEventListener("click", async () => {
+    try {
+      await createNewSextilha();
+    } catch (error) {
+      if (ui.dashboardTextList) {
+        ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel criar a sextilha agora.")}</div>`;
+      }
+    }
+  });
+}
+
+if (ui.dashboardStatusFilter) {
+  ui.dashboardStatusFilter.addEventListener("change", renderDashboardTexts);
+}
+
+if (ui.dashboardTextList) {
+  ui.dashboardTextList.addEventListener("click", (event) => {
+    handleDashboardTextAction(event).catch((error) => {
+      if (ui.dashboardTextList) {
+        ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel carregar este texto.")}</div>`;
+      }
+    });
+  });
+}
+
+if (ui.btnBackToDashboard) {
+  ui.btnBackToDashboard.addEventListener("click", async () => {
+    try {
+      await openSextilhaDashboard();
+    } catch (error) {
+      setEditorFeedback(error?.message || "Nao foi possivel voltar ao caderno.", "error");
+    }
+  });
+}
+
+if (ui.btnSaveTextVersion) {
+  ui.btnSaveTextVersion.addEventListener("click", () => {
+    saveCurrentTextVersion();
+  });
+}
+
+if (ui.btnArchiveText) {
+  ui.btnArchiveText.addEventListener("click", () => {
+    archiveCurrentText().catch((error) => {
+      setEditorFeedback(error?.message || "Nao foi possivel arquivar este texto.", "error");
+    });
+  });
+}
+
+if (ui.btnOpenVersionHistory) {
+  ui.btnOpenVersionHistory.addEventListener("click", () => {
+    openVersionHistory().catch((error) => {
+      setEditorFeedback(error?.message || "Nao foi possivel abrir o historico.", "error");
+    });
+  });
+}
+
+if (ui.btnBackToEditor) {
+  ui.btnBackToEditor.addEventListener("click", async () => {
+    if (state.activeTextId) {
+      await openSextilhaEditor(state.activeTextId, state.draftVersionSource);
+    }
+  });
+}
+
+if (ui.btnBackToDashboardFromVersions) {
+  ui.btnBackToDashboardFromVersions.addEventListener("click", async () => {
+    try {
+      await openSextilhaDashboard();
+    } catch (error) {
+      if (ui.versionHistoryList) {
+        ui.versionHistoryList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel voltar ao caderno.")}</div>`;
+      }
+    }
+  });
+}
+
+if (ui.versionHistoryList) {
+  ui.versionHistoryList.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action='restore-version']");
+    if (!button) return;
+    restoreVersionToEditor(button.dataset.versionId || "");
+  });
+}
+
+getSextilhaVerseInputs().forEach((input) => {
+  if (!input) return;
+  input.addEventListener("input", updateSextilhaIndicators);
+});
+
+[ui.editorTitleInput, ui.editorThemeInput, ui.editorNoteInput, ui.editorStatusSelect, ui.editorSharedWithEducator]
+  .filter(Boolean)
+  .forEach((input) => {
+    input.addEventListener("input", updateSextilhaIndicators);
+    input.addEventListener("change", updateSextilhaIndicators);
+  });
 
 // ── Placar e Envio ───────────────────────────────────────────────────
 function renderPlacarItems(data) {
@@ -1971,7 +2748,8 @@ refreshWritingTimerUI();
 if (!state.playerData) {
   goToPhase(0);
 } else {
-  goToPhase(1);
+  showTrackChooser();
 }
+updateSextilhaIndicators();
 updateWelcomeIdentityUI();
 loadPlacar();
