@@ -193,6 +193,7 @@ const state = {
   sextilhaStoreStatus: "idle",
   firebaseSessionReady: false,
   lastAiFeedback: null,
+  aiFeedbackRequestKey: "",
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
@@ -815,8 +816,16 @@ function renderEditorAiFeedback(feedback) {
     return;
   }
 
-  const toneClass = feedback.tone === "error" ? "ai-feedback-card--error" : "";
-  const label = feedback.source === "gemini" ? "Inanna + Gemini" : "Inanna acompanha";
+  const toneClass = feedback.tone === "error"
+    ? "ai-feedback-card--error"
+    : feedback.tone === "loading"
+      ? "ai-feedback-card--loading"
+      : "";
+  const label = feedback.tone === "loading"
+    ? "Inanna esta lendo"
+    : feedback.source === "gemini"
+      ? "Inanna + Gemini"
+      : "Inanna acompanha";
   ui.editorAiFeedback.className = `ai-feedback-card ${toneClass}`.trim();
   ui.editorAiFeedback.innerHTML = `
     <strong>${escapeHtml(label)}</strong>
@@ -855,24 +864,55 @@ function beginSaveDraftProgressiveFeedback() {
   ui.btnSaveTextVersion.disabled = true;
   ui.btnSaveTextVersion.textContent = "Salvando rascunho...";
 
-  const shouldAnnounceAiReview = getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE;
-  const followUpTimer = shouldAnnounceAiReview
-    ? window.setTimeout(() => {
-      if (!ui.btnSaveTextVersion?.disabled) return;
-      ui.btnSaveTextVersion.textContent = "Inanna esta lendo...";
-      setEditorFeedback("Estamos salvando seu rascunho. A Inanna esta preparando uma devolutiva breve.", "muted");
-    }, 2000)
-    : null;
-
   return () => {
-    if (followUpTimer) {
-      window.clearTimeout(followUpTimer);
-    }
     if (ui.btnSaveTextVersion) {
       ui.btnSaveTextVersion.disabled = false;
       ui.btnSaveTextVersion.textContent = "Salvar rascunho";
     }
   };
+}
+
+function shouldApplyAiFeedbackResponse(requestKey, textId, versionId) {
+  return (
+    state.aiFeedbackRequestKey === requestKey &&
+    state.activeTextId === textId &&
+    String(state.activeText?.currentVersionId || "").trim() === String(versionId || "").trim()
+  );
+}
+
+async function requestAiFeedbackForVersion(textId, versionId) {
+  if (!textId || !versionId || getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
+    return;
+  }
+
+  const requestKey = `${textId}:${versionId}:${Date.now()}`;
+  state.aiFeedbackRequestKey = requestKey;
+  renderEditorAiFeedback({
+    source: "inanna",
+    tone: "loading",
+    message: "Inanna esta lendo seu rascunho com calma para deixar um comentario breve e sutil.",
+  });
+
+  try {
+    const response = await generateSextilhaTextFeedbackRecord({ textId, versionId });
+    if (!shouldApplyAiFeedbackResponse(requestKey, textId, versionId)) return;
+
+    state.lastAiFeedback = response?.aiFeedback || null;
+    if (state.lastAiFeedback?.message) {
+      renderEditorAiFeedback(state.lastAiFeedback);
+      setEditorFeedback("Versao salva e devolutiva recebida.", "success");
+      return;
+    }
+
+    state.lastAiFeedback = null;
+    renderEditorAiFeedback(null);
+  } catch (error) {
+    if (!shouldApplyAiFeedbackResponse(requestKey, textId, versionId)) return;
+    renderEditorAiFeedback({
+      tone: "error",
+      message: error?.message || "A Inanna nao conseguiu responder agora, mas o rascunho foi salvo.",
+    });
+  }
 }
 
 async function ensureFirebaseSextilhaSession() {
@@ -952,6 +992,14 @@ async function saveSextilhaTextVersionRecord(payload) {
   );
 }
 
+async function generateSextilhaTextFeedbackRecord(payload) {
+  const identity = buildIdentityPayload();
+  if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
+    return null;
+  }
+  return postAppAction("generate_text_feedback", { ...identity, ...payload });
+}
+
 async function loadSextilhaTextVersionsRecord(textId) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
@@ -1001,6 +1049,7 @@ function clearResolvedCheckinIdentity(nextEmail = "") {
   state.checkinLookupMessage = "";
   state.firebaseSessionReady = false;
   state.lastAiFeedback = null;
+  state.aiFeedbackRequestKey = "";
 }
 
 function applyResolvedCheckinIdentity(identity) {
@@ -1226,6 +1275,7 @@ function resetSextilhaState() {
   state.versionCompareSelection = [];
   state.draftVersionSource = null;
   state.lastAiFeedback = null;
+  state.aiFeedbackRequestKey = "";
   state.sextilhaStoreStatus = "idle";
   renderEditorAiFeedback(null);
 }
@@ -2240,6 +2290,7 @@ async function openSextilhaEditor(textId, draftVersion = null) {
   if (!textId) return;
 
   state.lastAiFeedback = null;
+  state.aiFeedbackRequestKey = "";
   setEditorFeedback("Carregando texto...", "muted");
   renderEditorAiFeedback(state.lastAiFeedback);
 
@@ -2301,6 +2352,7 @@ async function saveCurrentTextVersion() {
   }
 
   const finishSaveFeedback = beginSaveDraftProgressiveFeedback();
+  state.aiFeedbackRequestKey = "";
 
   try {
     const nextRevisionCount = Number(state.activeText?.versionCount || 0) + 1;
@@ -2320,12 +2372,13 @@ async function saveCurrentTextVersion() {
     });
 
     state.activeText = response?.text || state.activeText;
-    state.lastAiFeedback = response?.aiFeedback || null;
+    state.lastAiFeedback = null;
     state.draftVersionSource = null;
     fillSextilhaEditor(state.activeText);
     upsertTextInDashboardState(state.activeText);
     state.activeTextVersions = [response?.version, ...state.activeTextVersions.filter((version) => version?.versionId !== response?.version?.versionId)].filter(Boolean);
     setEditorFeedback("Versao salva com sucesso.", "success");
+    requestAiFeedbackForVersion(response?.text?.textId, response?.version?.versionId);
   } catch (error) {
     setEditorFeedback(error?.message || "Nao foi possivel salvar a versao.", "error");
     if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {

@@ -1556,6 +1556,32 @@ select:focus-visible,
   color: #fecaca;
 }
 
+.ai-feedback-card--loading {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(217, 119, 6, 0.08));
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-feedback-card--loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  transform: translateX(-100%);
+  animation: aiFeedbackSweep 1.8s ease-in-out infinite;
+}
+
+.ai-feedback-card--loading p {
+  color: #fde7cf;
+}
+
+@keyframes aiFeedbackSweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 .text-card__actions,
 .version-card__actions {
   display: flex;

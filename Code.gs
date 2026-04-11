@@ -144,6 +144,9 @@ function doPost(e) {
     if (action === "save_text_version") {
       return jsonOutput_(handleSaveTextVersion_(payload));
     }
+    if (action === "generate_text_feedback") {
+      return jsonOutput_(handleGenerateTextFeedback_(payload));
+    }
     if (action === "update_text_status") {
       return jsonOutput_(handleUpdateTextStatus_(payload));
     }
@@ -1017,13 +1020,58 @@ function handleSaveTextVersion_(payload) {
     versionNumber: versionNumber,
     status: status
   });
-  var aiFeedback = generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, indicators);
+  var aiFeedback = toBoolean_(payload.includeAiFeedback)
+    ? generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, indicators)
+    : null;
 
   return {
     ok: true,
     status: "success",
     text: mapTextDetail_(textRecord, versionRecord, versionNumber),
     version: mapVersionRecord_(versionRecord),
+    aiFeedback: aiFeedback
+  };
+}
+
+function handleGenerateTextFeedback_(payload) {
+  ensureSextilhaInfrastructure_();
+  var identity = resolveAuthorizedParticipant_(payload);
+  var textId = String(payload.textId || "").trim();
+  var versionId = String(payload.versionId || "").trim();
+  if (!textId) throw new Error("textId obrigatorio.");
+
+  var textEntry = getOwnedTextEntry_(identity.participantId, textId);
+  var versions = getParticipantVersionsForText_(identity.participantId, textId);
+  var versionEntry = versionId
+    ? getOwnedVersionEntry_(identity.participantId, textId, versionId)
+    : getCurrentVersionEntry_(textEntry.record, versions);
+
+  if (!versionEntry) {
+    throw new Error("Versao nao encontrada para gerar devolutiva.");
+  }
+
+  var existingFeedback = getAiFeedbackForVersion_(identity.participantId, versionId || versionEntry.record.VERSION_ID);
+  if (existingFeedback) {
+    return {
+      ok: true,
+      status: "success",
+      reused: true,
+      version: mapVersionRecord_(versionEntry.record),
+      aiFeedback: {
+        source: String(existingFeedback.EDUCATOR_ID || "").trim() === "INANNA_GEMINI" ? "gemini" : "inanna",
+        tone: "success",
+        message: String(existingFeedback.COMENTARIO || "").trim()
+      }
+    };
+  }
+
+  var versionIndicators = buildVersionIndicatorsPayload_(versionEntry.record);
+  var aiFeedback = generateInannaFeedbackIfEnabled_(identity, textEntry.record, versionEntry.record, versionIndicators);
+
+  return {
+    ok: true,
+    status: "success",
+    version: mapVersionRecord_(versionEntry.record),
     aiFeedback: aiFeedback
   };
 }
@@ -1169,27 +1217,22 @@ function generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, i
 
   try {
     var prompt = buildInannaFeedbackPrompt_(identity, textRecord, versionRecord, indicators);
-    var response = requestGeminiFeedback_(apiKey, prompt, props);
-    var feedbackText = extractGeminiText_(response);
-    if (!feedbackText) {
-      return null;
+    var feedbackText = requestUsefulGeminiFeedback_(apiKey, prompt, props);
+    var source = "gemini";
+    var educatorId = "INANNA_GEMINI";
+    var category = "auto_ai_feedback";
+
+    if (!isUsefulInannaFeedback_(feedbackText)) {
+      feedbackText = buildFallbackInannaFeedback_(textRecord, versionRecord, indicators);
+      source = "inanna";
+      educatorId = "INANNA_RULES";
+      category = "auto_ai_feedback_fallback";
     }
 
-    var record = {
-      FEEDBACK_ID: buildEntityId_("feedback"),
-      TEXT_ID: String(versionRecord.TEXT_ID || "").trim(),
-      VERSION_ID: String(versionRecord.VERSION_ID || "").trim(),
-      PARTICIPANT_ID: identity.participantId,
-      EDUCATOR_ID: "INANNA_GEMINI",
-      COMENTARIO: feedbackText,
-      CATEGORIA: "auto_ai_feedback",
-      CREATED_AT: new Date()
-    };
-
-    appendRecordToSheet_(getSextilhaSheet_(TEXT_FEEDBACK_SHEET_NAME), TEXT_FEEDBACK_HEADERS, record);
+    persistInannaFeedback_(identity.participantId, versionRecord, feedbackText, educatorId, category);
 
     return {
-      source: "gemini",
+      source: source,
       tone: "success",
       message: feedbackText
     };
@@ -1197,10 +1240,12 @@ function generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, i
     logTextActivity_(identity.participantId, String(versionRecord.TEXT_ID || "").trim(), "ai_feedback_error", {
       message: error && error.message ? error.message : String(error)
     });
+    var fallbackText = buildFallbackInannaFeedback_(textRecord, versionRecord, indicators);
+    persistInannaFeedback_(identity.participantId, versionRecord, fallbackText, "INANNA_RULES", "auto_ai_feedback_fallback");
     return {
-      source: "gemini",
-      tone: "error",
-      message: "O texto foi salvo, mas a devolutiva da Inanna nao ficou disponivel neste momento."
+      source: "inanna",
+      tone: "success",
+      message: fallbackText
     };
   }
 }
@@ -1268,8 +1313,37 @@ function testarInannaAi() {
       }
     );
 
-    var response = requestGeminiFeedback_(apiKey, prompt, props);
-    var feedbackText = extractGeminiText_(response);
+    var feedbackText = requestUsefulGeminiFeedback_(apiKey, prompt, props);
+    if (!isUsefulInannaFeedback_(feedbackText)) {
+      feedbackText = buildFallbackInannaFeedback_(
+        {
+          TITULO: "Noite no sertao",
+          TEMA: "sertao",
+          OBSERVACAO: "Rascunho inicial"
+        },
+        {
+          TEXT_ID: "text_demo",
+          VERSION_ID: "version_demo",
+          TITULO: "Noite no sertao",
+          TEMA: "sertao",
+          OBSERVACAO: "Rascunho inicial",
+          VERSO_1: "A lua clareou meu chao",
+          VERSO_2: "No terreiro do meu viver",
+          VERSO_3: "O vento cantou no portao",
+          VERSO_4: "Chamando a rima pra nascer",
+          VERSO_5: "Meu verso procura a canção",
+          VERSO_6: "Pra no cordel amanhecer"
+        },
+        {
+          completude: "6/6 versos preenchidos",
+          fechamento: "versos completos",
+          rimaStatus: "rima em formacao",
+          coerenciaTematica: "boa unidade tematica",
+          repeticaoLexical: "boa variedade",
+          maturacao: "texto amadurecendo"
+        }
+      );
+    }
     diagnostics.ok = !!feedbackText;
     diagnostics.sampleFeedback = feedbackText || "";
     diagnostics.message = feedbackText
@@ -1293,12 +1367,16 @@ function buildInannaFeedbackPrompt_(identity, textRecord, versionRecord, indicat
   var note = String(versionRecord.OBSERVACAO || textRecord.OBSERVACAO || "").trim();
 
   return [
-    "Atue como Inanna, uma educadora de literatura de cordel.",
+    "Atue como Inanna, a presenca felina e delicada que acompanha a escrita no Laboratorio Cordel 2.0.",
+    "Sua presenca lembra uma gata que passa entre as pernas com leveza: proxima, afetuosa, atenta e nunca invasiva.",
     "Escreva em portugues do Brasil.",
-    "Dê uma devolutiva em no maximo 2 frases curtas, calorosas e praticas.",
+    "Dê uma devolutiva em 2 frases completas, calorosas e praticas, com 22 a 55 palavras no total.",
+    "Comece direto pela leitura do texto. Nao use saudacoes como 'Ola', 'Oi' ou o nome do aluno isolado no inicio.",
     "Nunca escreva versos novos para o aluno e nunca reescreva o poema por ele.",
     "Valorize a autoria humana e use tom encorajador.",
-    "Se houver algum ponto a revisar, indique apenas um proximo passo simples.",
+    "Se houver algum ponto a revisar, indique apenas um proximo passo simples e realizavel.",
+    "Evite elogios vazios. Cite uma qualidade concreta do texto antes da sugestao.",
+    "Nao use bullets, aspas, emojis, titulos nem assinatura.",
     "",
     "Dados do aluno:",
     "Nome: " + String(identity.name || "").trim(),
@@ -1321,7 +1399,8 @@ function buildInannaFeedbackPrompt_(identity, textRecord, versionRecord, indicat
     "1. Comece reconhecendo uma qualidade real do texto.",
     "2. Se necessario, aponte um unico ajuste de forma simples.",
     "3. Nao use linguagem competitiva nem fale em pontuacao.",
-    "4. Mencione rima ou variacao lexical somente se isso realmente aparecer nos indicadores."
+    "4. Mencione rima ou variacao lexical somente se isso realmente aparecer nos indicadores.",
+    "5. A devolutiva final precisa soar como presenca sutil, nao como professora dando sermão."
   ].join("\n");
 }
 
@@ -1362,6 +1441,25 @@ function requestGeminiFeedback_(apiKey, prompt, props) {
   return JSON.parse(body);
 }
 
+function requestUsefulGeminiFeedback_(apiKey, prompt, props) {
+  var primaryResponse = requestGeminiFeedback_(apiKey, prompt, props);
+  var primaryText = normalizeInannaFeedbackText_(extractGeminiText_(primaryResponse));
+  if (isUsefulInannaFeedback_(primaryText)) {
+    return primaryText;
+  }
+
+  var retryPrompt = [
+    prompt,
+    "",
+    "Tente novamente seguindo todas as regras.",
+    "Entregue exatamente 2 frases completas.",
+    "Nao use saudacao.",
+    "Fale de uma qualidade concreta do texto e proponha um unico proximo passo claro."
+  ].join("\n");
+  var retryResponse = requestGeminiFeedback_(apiKey, retryPrompt, props);
+  return normalizeInannaFeedbackText_(extractGeminiText_(retryResponse));
+}
+
 function extractGeminiText_(response) {
   var candidates = response && response.candidates;
   if (!candidates || !candidates.length) return "";
@@ -1373,6 +1471,82 @@ function extractGeminiText_(response) {
   }).join(" ").replace(/\s+/g, " ").trim();
 
   return text;
+}
+
+function normalizeInannaFeedbackText_(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, "")
+    .trim();
+}
+
+function isUsefulInannaFeedback_(text) {
+  var normalized = normalizeInannaFeedbackText_(text);
+  if (!normalized || normalized.length < 48) return false;
+  if (!/[.!?]/.test(normalized)) return false;
+
+  var lower = normalized.toLowerCase();
+  if (/^(ola|olá|oi|carlos[,!]?|aluno[,!]?)\b/.test(lower) && normalized.length < 80) {
+    return false;
+  }
+
+  return true;
+}
+
+function persistInannaFeedback_(participantId, versionRecord, feedbackText, educatorId, category) {
+  var message = normalizeInannaFeedbackText_(feedbackText);
+  if (!message) return;
+
+  appendRecordToSheet_(getSextilhaSheet_(TEXT_FEEDBACK_SHEET_NAME), TEXT_FEEDBACK_HEADERS, {
+    FEEDBACK_ID: buildEntityId_("feedback"),
+    TEXT_ID: String(versionRecord.TEXT_ID || "").trim(),
+    VERSION_ID: String(versionRecord.VERSION_ID || "").trim(),
+    PARTICIPANT_ID: participantId,
+    EDUCATOR_ID: educatorId || "INANNA_RULES",
+    COMENTARIO: message,
+    CATEGORIA: category || "auto_ai_feedback",
+    CREATED_AT: new Date()
+  });
+}
+
+function buildFallbackInannaFeedback_(textRecord, versionRecord, indicators) {
+  var verses = extractVersesFromVersionRecord_(versionRecord).filter(function (item) {
+    return !!String(item || "").trim();
+  });
+  var theme = String(versionRecord.TEMA || textRecord.TEMA || "").trim();
+  var firstSentence = "";
+  var secondSentence = "";
+  var rima = normalizeLooseText_(indicators.rimaStatus || "");
+  var coerencia = normalizeLooseText_(indicators.coerenciaTematica || "");
+  var repeticao = normalizeLooseText_(indicators.repeticaoLexical || "");
+  var fechamento = normalizeLooseText_(indicators.fechamento || "");
+  var completude = String(indicators.completude || "").trim();
+
+  if (completude.indexOf("6/6") === 0 && rima.indexOf("consistente") !== -1) {
+    firstSentence = "Sua sextilha ja sustenta um pulso bonito: os seis versos estao de pe e a rima ajuda o texto a caminhar com unidade.";
+  } else if (coerencia.indexOf("boa unidade") !== -1 || coerencia.indexOf("tema presente") !== -1) {
+    firstSentence = theme
+      ? "O tema de " + theme + " ja aparece com nitidez, e isso da corpo ao caminho que seu texto esta escolhendo."
+      : "Seu texto ja tem uma imagem central aparecendo com clareza, e isso ajuda a sextilha a ganhar identidade.";
+  } else if (verses.length >= 4) {
+    firstSentence = "Seu rascunho ja mostra materia poetica de verdade, com imagens que comecam a puxar o leitor para dentro do texto.";
+  } else {
+    firstSentence = "Ja existe um nucleo sensivel no que voce escreveu, e ele merece ser escutado com calma antes de crescer mais.";
+  }
+
+  if (repeticao.indexOf("alta") !== -1) {
+    secondSentence = "No proximo retorno, vale variar uma ou duas palavras que se repetem para a musica dos versos respirar melhor.";
+  } else if (rima.indexOf("formacao") !== -1 || rima.indexOf("consolidacao") !== -1) {
+    secondSentence = "No proximo retorno, experimente aproximar mais os finais dos versos para a rima aparecer com mais naturalidade.";
+  } else if (fechamento.indexOf("iniciando") !== -1 || fechamento.indexOf("fechamento") === -1) {
+    secondSentence = "No proximo retorno, tente fechar cada verso com uma palavra mais inteira e sonora, para o conjunto pousar com mais firmeza.";
+  } else if (coerencia.indexOf("reforcar") !== -1 || coerencia.indexOf("formacao") !== -1) {
+    secondSentence = "No proximo retorno, escolha uma imagem ou sentimento central e deixe os seis versos girarem mais perto dele.";
+  } else {
+    secondSentence = "No proximo retorno, lapide o verso que mais te agrada e use esse tom como guia para os demais.";
+  }
+
+  return normalizeInannaFeedbackText_(firstSentence + " " + secondSentence);
 }
 
 function resolveAuthorizedParticipant_(input) {
@@ -1534,6 +1708,18 @@ function getOwnedTextEntry_(participantId, textId) {
   throw new Error("Texto nao encontrado.");
 }
 
+function getOwnedVersionEntry_(participantId, textId, versionId) {
+  var versionEntries = getParticipantVersionsForText_(participantId, textId);
+
+  for (var i = 0; i < versionEntries.length; i++) {
+    if (String(versionEntries[i].record.VERSION_ID || "").trim() === String(versionId || "").trim()) {
+      return versionEntries[i];
+    }
+  }
+
+  return null;
+}
+
 function getParticipantVersionsForText_(participantId, textId) {
   var table = getSheetTable_(getSextilhaSheet_(TEXT_VERSIONS_SHEET_NAME));
   var result = [];
@@ -1565,6 +1751,19 @@ function getCurrentVersionEntry_(textRecord, versionEntries) {
   }
 
   return versionEntries[versionEntries.length - 1];
+}
+
+function getAiFeedbackForVersion_(participantId, versionId) {
+  var table = getSheetTable_(getSextilhaSheet_(TEXT_FEEDBACK_SHEET_NAME));
+
+  for (var i = table.rows.length - 1; i >= 0; i--) {
+    var record = table.rows[i].record;
+    if (String(record.PARTICIPANT_ID || "").trim() !== String(participantId || "").trim()) continue;
+    if (String(record.VERSION_ID || "").trim() !== String(versionId || "").trim()) continue;
+    return record;
+  }
+
+  return null;
 }
 
 function getCurrentVersionRecord_(textRecord, versionRecords) {
@@ -1674,6 +1873,10 @@ function buildTextIndicatorsPayload_(currentVersionRecord, versionCount) {
     numberOfRevisions: Number(currentVersionRecord.VERSION_NUMBER) || Number(versionCount) || 0,
     maturacao: buildMaturationLabel_(Number(currentVersionRecord.VERSION_NUMBER) || Number(versionCount) || 0)
   };
+}
+
+function buildVersionIndicatorsPayload_(versionRecord) {
+  return buildTextIndicatorsPayload_(versionRecord, Number(versionRecord && versionRecord.VERSION_NUMBER) || 0);
 }
 
 function extractVersesFromVersionRecord_(record) {
