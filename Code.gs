@@ -1205,6 +1205,85 @@ function generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, i
   }
 }
 
+function testarInannaAi() {
+  var props = PropertiesService.getScriptProperties();
+  var enabled = normalizeLooseText_(props.getProperty("INANNA_AI_FEEDBACK_ENABLED") || "");
+  var apiKey = String(
+    props.getProperty("INANNA_GEMINI_API_KEY") ||
+    props.getProperty("GEMINI_API_KEY") ||
+    ""
+  ).trim();
+  var modelName = String(props.getProperty("INANNA_GEMINI_MODEL") || "gemini-2.5-flash").trim();
+  var diagnostics = {
+    ok: false,
+    enabled: enabled === "true" || enabled === "1" || enabled === "sim",
+    apiKeyConfigured: !!apiKey,
+    model: modelName,
+    timestamp: new Date().toISOString()
+  };
+
+  if (!diagnostics.enabled) {
+    diagnostics.message = "Ative INANNA_AI_FEEDBACK_ENABLED=true antes do teste.";
+    Logger.log(JSON.stringify(diagnostics, null, 2));
+    return diagnostics;
+  }
+
+  if (!diagnostics.apiKeyConfigured) {
+    diagnostics.message = "Defina INANNA_GEMINI_API_KEY nas propriedades do script.";
+    Logger.log(JSON.stringify(diagnostics, null, 2));
+    return diagnostics;
+  }
+
+  try {
+    var prompt = buildInannaFeedbackPrompt_(
+      {
+        name: "Aluno de teste",
+        participantId: "participant_demo"
+      },
+      {
+        TITULO: "Noite no sertao",
+        TEMA: "sertao",
+        OBSERVACAO: "Rascunho inicial"
+      },
+      {
+        TEXT_ID: "text_demo",
+        VERSION_ID: "version_demo",
+        TITULO: "Noite no sertao",
+        TEMA: "sertao",
+        OBSERVACAO: "Rascunho inicial",
+        VERSO_1: "A lua clareou meu chao",
+        VERSO_2: "No terreiro do meu viver",
+        VERSO_3: "O vento cantou no portao",
+        VERSO_4: "Chamando a rima pra nascer",
+        VERSO_5: "Meu verso procura a canção",
+        VERSO_6: "Pra no cordel amanhecer"
+      },
+      {
+        completude: "6/6 versos preenchidos",
+        fechamento: "versos completos",
+        rimaStatus: "rima em formacao",
+        coerenciaTematica: "boa unidade tematica",
+        repeticaoLexical: "boa variedade",
+        maturacao: "texto amadurecendo"
+      }
+    );
+
+    var response = requestGeminiFeedback_(apiKey, prompt, props);
+    var feedbackText = extractGeminiText_(response);
+    diagnostics.ok = !!feedbackText;
+    diagnostics.sampleFeedback = feedbackText || "";
+    diagnostics.message = feedbackText
+      ? "Gemini respondeu com sucesso."
+      : "A requisicao foi concluida, mas o Gemini nao devolveu texto.";
+  } catch (error) {
+    diagnostics.ok = false;
+    diagnostics.message = error && error.message ? error.message : String(error);
+  }
+
+  Logger.log(JSON.stringify(diagnostics, null, 2));
+  return diagnostics;
+}
+
 function buildInannaFeedbackPrompt_(identity, textRecord, versionRecord, indicators) {
   var verses = extractVersesFromVersionRecord_(versionRecord).filter(function (item) {
     return !!String(item || "").trim();

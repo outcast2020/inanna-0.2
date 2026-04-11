@@ -276,6 +276,12 @@ Propriedades esperadas no Apps Script:
 - `INANNA_GEMINI_API_KEY=...`
 - `INANNA_GEMINI_MODEL=gemini-2.5-flash`
 
+Teste rapido no Apps Script:
+
+- execute `testarInannaAi()` no editor do Apps Script;
+- a funcao verifica se a IA esta habilitada, se a chave existe e faz uma chamada de smoke test ao Gemini;
+- o retorno aparece em `Executions` e tambem no `Logger`, incluindo `sampleFeedback` quando a resposta vier correta.
+
 Com isso ativo, cada salvamento relevante:
 
 - registra a nova versao na aba `TEXT_VERSIONS`;
