@@ -189,7 +189,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyBTwBaY9Xvd5TKtivmXZpHE_JRXdvIiC339RWEkWIdC-m3AaLrn_4_-GS21yfe8Ow7/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxZGEfdHfTVkIlk2JJM56ccE9MF5wsIeEcXKS4hxZWW-sdmafJ7c3-9gtLHIbML7Djw/exec";
 const APP_VARIANT = "inanna-main";
 const SEXTILHA_STATUS_LABELS = {
   "rascunho": "Rascunho",
