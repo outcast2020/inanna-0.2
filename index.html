@@ -252,37 +252,95 @@
               <textarea id="editorNoteInput" class="workspace-textarea" rows="3" placeholder="Anote uma ideia, uma imagem ou uma lembranca que queira guardar."></textarea>
 
               <div class="editor-verses">
-                <label class="field-label" for="editorVerse1">Versos</label>
-                <textarea id="editorVerse1" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 1"></textarea>
-                <textarea id="editorVerse2" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 2"></textarea>
-                <textarea id="editorVerse3" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 3"></textarea>
-                <textarea id="editorVerse4" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 4"></textarea>
-                <textarea id="editorVerse5" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 5"></textarea>
-                <textarea id="editorVerse6" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 6"></textarea>
+                <div class="editor-verses__intro">
+                  <label class="field-label" for="editorVerse1">Versos</label>
+                  <p class="workspace-meta">A oficina acompanha a rima B nos versos 2, 4 e 6 e avisa quando a contagem gramatical passa de 8.</p>
+                </div>
+
+                <div class="verse-field" data-verse-index="0">
+                  <div class="verse-field__head">
+                    <span class="verse-field__number">Verso 1</span>
+                  </div>
+                  <textarea id="editorVerse1" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 1"></textarea>
+                  <button class="verse-meter" type="button" data-verse-meter="0" aria-pressed="false">
+                    <span class="verse-meter__track"><span class="verse-meter__fill"></span></span>
+                    <span class="verse-meter__label">0 grupos vocálicos</span>
+                  </button>
+                </div>
+
+                <div class="verse-field" data-verse-index="1">
+                  <div class="verse-field__head">
+                    <span class="verse-field__number">Verso 2</span>
+                    <span class="verse-rhyme-badge" data-rhyme-target="b">[ B ]</span>
+                  </div>
+                  <textarea id="editorVerse2" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 2"></textarea>
+                  <button class="verse-meter" type="button" data-verse-meter="1" aria-pressed="false">
+                    <span class="verse-meter__track"><span class="verse-meter__fill"></span></span>
+                    <span class="verse-meter__label">0 grupos vocálicos</span>
+                  </button>
+                </div>
+
+                <div class="verse-field" data-verse-index="2">
+                  <div class="verse-field__head">
+                    <span class="verse-field__number">Verso 3</span>
+                  </div>
+                  <textarea id="editorVerse3" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 3"></textarea>
+                  <button class="verse-meter" type="button" data-verse-meter="2" aria-pressed="false">
+                    <span class="verse-meter__track"><span class="verse-meter__fill"></span></span>
+                    <span class="verse-meter__label">0 grupos vocálicos</span>
+                  </button>
+                </div>
+
+                <div class="verse-field" data-verse-index="3">
+                  <div class="verse-field__head">
+                    <span class="verse-field__number">Verso 4</span>
+                    <span class="verse-rhyme-badge" data-rhyme-target="b">[ B ]</span>
+                  </div>
+                  <textarea id="editorVerse4" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 4"></textarea>
+                  <button class="verse-meter" type="button" data-verse-meter="3" aria-pressed="false">
+                    <span class="verse-meter__track"><span class="verse-meter__fill"></span></span>
+                    <span class="verse-meter__label">0 grupos vocálicos</span>
+                  </button>
+                </div>
+
+                <div class="verse-field" data-verse-index="4">
+                  <div class="verse-field__head">
+                    <span class="verse-field__number">Verso 5</span>
+                  </div>
+                  <textarea id="editorVerse5" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 5"></textarea>
+                  <button class="verse-meter" type="button" data-verse-meter="4" aria-pressed="false">
+                    <span class="verse-meter__track"><span class="verse-meter__fill"></span></span>
+                    <span class="verse-meter__label">0 grupos vocálicos</span>
+                  </button>
+                </div>
+
+                <div class="verse-field" data-verse-index="5">
+                  <div class="verse-field__head">
+                    <span class="verse-field__number">Verso 6</span>
+                    <span class="verse-rhyme-badge" data-rhyme-target="b">[ B ]</span>
+                  </div>
+                  <textarea id="editorVerse6" class="workspace-textarea verse-textarea" rows="2" placeholder="Verso 6"></textarea>
+                  <button class="verse-meter" type="button" data-verse-meter="5" aria-pressed="false">
+                    <span class="verse-meter__track"><span class="verse-meter__fill"></span></span>
+                    <span class="verse-meter__label">0 grupos vocálicos</span>
+                  </button>
+                </div>
               </div>
 
-              <div class="editor-form-grid">
-                <div>
-                  <label class="field-label" for="editorStatusSelect">Status do texto</label>
-                  <select id="editorStatusSelect" class="workspace-select">
-                    <option value="rascunho">Rascunho</option>
-                    <option value="em revisao">Em revisao</option>
-                    <option value="concluida">Concluida</option>
-                    <option value="compartilhada com educador">Compartilhada com educador</option>
-                    <option value="selecionada para antologia">Selecionada para antologia</option>
-                    <option value="arquivada">Arquivada</option>
-                  </select>
-                </div>
+              <div class="editor-form-grid editor-form-grid--single">
                 <label class="workspace-check">
                   <input id="editorSharedWithEducator" type="checkbox" />
                   <span>Compartilhar com educador</span>
                 </label>
               </div>
 
-              <div class="workspace-actions">
+              <div class="workspace-actions editor-actions">
                 <button id="btnSaveTextVersion" class="btn btn-primary" type="button">Salvar rascunho</button>
+                <button id="btnFinalizeText" class="btn btn-secondary" type="button">Finalizar Sextilha</button>
+                <button id="btnRequestReopen" class="btn btn-secondary" type="button" hidden>Solicitar reabertura</button>
                 <button id="btnArchiveText" class="btn btn-ghost" type="button">Arquivar texto</button>
               </div>
+              <p id="editorLockNotice" class="workspace-feedback" aria-live="polite"></p>
               <p id="editorSaveMessage" class="workspace-feedback" aria-live="polite"></p>
             </div>
 

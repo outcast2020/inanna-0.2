@@ -164,6 +164,7 @@
       versionCount: versionCount,
       sharedWithEducator: !!record.sharedWithEducator,
       selectedForAnthology: !!record.selectedForAnthology,
+      reopenRequested: !!record.reopenRequested,
       indicators: normalizeIndicators(record.indicators, versionCount),
       participantId: String(record.participantId || "").trim(),
       checkinUserId: String(record.checkinUserId || "").trim(),
@@ -279,6 +280,7 @@
       versionCount: 0,
       sharedWithEducator: false,
       selectedForAnthology: false,
+      reopenRequested: false,
       appVariant: String(identity.appVariant || "inanna-main").trim() || "inanna-main",
       indicators: defaultIndicators(0),
       verses: ["", "", "", "", "", ""],
@@ -377,6 +379,7 @@
       currentVersionId: versionId,
       versionCount: nextVersionNumber,
       sharedWithEducator,
+      reopenRequested: !!currentText.reopenRequested,
       indicators: versionRecord.indicators,
       verses: versionRecord.verses,
       latestVersion: versionRecord,
@@ -397,6 +400,13 @@
   }
 
   async function archiveText(identity, payload) {
+    return updateTextStatus(identity, {
+      ...payload,
+      status: payload.status || "arquivada",
+    });
+  }
+
+  async function updateTextStatus(identity, payload) {
     const { firebase, db } = await ensureClients();
     const textId = String(payload.textId || "").trim();
     if (!textId) throw new Error("textId obrigatorio.");
@@ -410,14 +420,40 @@
     const currentText = mapTextRecord(snapshot.data());
     assertOwner(identity, currentText);
 
-    const nextStatus = normalizeStatus(payload.status || "arquivada", currentText.sharedWithEducator);
+    const sharedWithEducator = payload.sharedWithEducator === undefined
+      ? !!currentText.sharedWithEducator
+      : !!payload.sharedWithEducator;
+    const nextStatus = normalizeStatus(payload.status || currentText.status || "rascunho", sharedWithEducator);
+    let reopenRequested = payload.reopenRequested === undefined
+      ? !!currentText.reopenRequested
+      : !!payload.reopenRequested;
+    if (nextStatus !== "concluida") reopenRequested = false;
     const updatedAt = isoNow();
+    const nextLatestVersion = currentText.latestVersion
+      ? Object.assign({}, currentText.latestVersion, {
+        status: nextStatus,
+        sharedWithEducator,
+      })
+      : currentText.latestVersion;
     const nextTextRecord = Object.assign({}, currentText, {
       status: nextStatus,
+      sharedWithEducator,
+      reopenRequested,
       updatedAt,
+      latestVersion: nextLatestVersion,
     });
 
     await firebase.setDoc(textRef, nextTextRecord, { merge: true });
+    if (currentText.currentVersionId) {
+      await firebase.setDoc(
+        firebase.doc(db, ...getVersionCollectionPath(identity.participantId, textId), currentText.currentVersionId),
+        {
+          status: nextStatus,
+          sharedWithEducator,
+        },
+        { merge: true }
+      );
+    }
 
     return {
       ok: true,
@@ -441,6 +477,7 @@
     getText,
     getTextVersions,
     saveTextVersion,
+    updateTextStatus,
     archiveText,
   };
 })();

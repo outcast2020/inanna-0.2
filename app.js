@@ -59,12 +59,14 @@ const ui = {
   editorVerse4: $("editorVerse4"),
   editorVerse5: $("editorVerse5"),
   editorVerse6: $("editorVerse6"),
-  editorStatusSelect: $("editorStatusSelect"),
   editorSharedWithEducator: $("editorSharedWithEducator"),
   btnSaveTextVersion: $("btnSaveTextVersion"),
+  btnFinalizeText: $("btnFinalizeText"),
+  btnRequestReopen: $("btnRequestReopen"),
   btnArchiveText: $("btnArchiveText"),
   btnBackToDashboard: $("btnBackToDashboard"),
   btnOpenVersionHistory: $("btnOpenVersionHistory"),
+  editorLockNotice: $("editorLockNotice"),
   editorSaveMessage: $("editorSaveMessage"),
   editorIndicatorList: $("editorIndicatorList"),
   editorAiFeedback: $("editorAiFeedback"),
@@ -194,12 +196,15 @@ const state = {
   firebaseSessionReady: false,
   lastAiFeedback: null,
   aiFeedbackRequestKey: "",
+  mutedVerseWarningIndexes: Array.from({ length: 6 }, () => false),
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwuJSjxZeZJIBXsi6enCrfkzdH5t2TECrdjbzRII6ScZK4QAb25ZyQmnDpXf9Fe0M1Q/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
+const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
+const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const SEXTILHA_STATUS_LABELS = {
   "rascunho": "Rascunho",
   "em revisao": "Em revisao",
@@ -687,6 +692,18 @@ function getSextilhaVerseInputs() {
   ];
 }
 
+function getSextilhaVerseFields() {
+  return Array.from(document.querySelectorAll(".verse-field"));
+}
+
+function getSextilhaVerseMeterButtons() {
+  return Array.from(document.querySelectorAll(".verse-meter"));
+}
+
+function getSextilhaRhymeBadges() {
+  return Array.from(document.querySelectorAll(".verse-rhyme-badge[data-rhyme-target='b']"));
+}
+
 function setActiveWorkspacePanel(activePanel) {
   getWorkspacePanels().forEach((panel) => {
     if (!panel) return;
@@ -856,18 +873,29 @@ function upsertTextInDashboardState(text) {
   state.userDashboard = buildDashboardPayloadFromState();
 }
 
-function beginSaveDraftProgressiveFeedback() {
-  if (!ui.btnSaveTextVersion) {
+function beginTextPersistProgressiveFeedback(saveMode = "draft") {
+  if (!ui.btnSaveTextVersion && !ui.btnFinalizeText) {
     return () => {};
   }
 
-  ui.btnSaveTextVersion.disabled = true;
-  ui.btnSaveTextVersion.textContent = "Salvando rascunho...";
+  if (ui.btnSaveTextVersion) {
+    ui.btnSaveTextVersion.disabled = true;
+    ui.btnSaveTextVersion.textContent = "Salvando rascunho...";
+  }
+
+  if (ui.btnFinalizeText) {
+    ui.btnFinalizeText.disabled = true;
+    ui.btnFinalizeText.textContent = saveMode === "finalize" ? "Finalizando..." : "Finalizar Sextilha";
+  }
 
   return () => {
     if (ui.btnSaveTextVersion) {
-      ui.btnSaveTextVersion.disabled = false;
+      ui.btnSaveTextVersion.disabled = isEditorLocked();
       ui.btnSaveTextVersion.textContent = "Salvar rascunho";
+    }
+    if (ui.btnFinalizeText) {
+      ui.btnFinalizeText.disabled = isEditorLocked();
+      ui.btnFinalizeText.textContent = "Finalizar Sextilha";
     }
   };
 }
@@ -1018,6 +1046,15 @@ async function archiveSextilhaTextRecord(textId, payload = {}) {
     "archive_text",
     () => postAppAction("archive_text", { ...identity, textId, ...payload }),
     (bridge) => bridge.archiveText(identity, { textId, ...payload })
+  );
+}
+
+async function updateSextilhaTextStatusRecord(textId, payload = {}) {
+  const identity = buildIdentityPayload();
+  return runSextilhaStoreOperation(
+    "update_text_status",
+    () => postAppAction("update_text_status", { ...identity, textId, ...payload }),
+    (bridge) => bridge.updateTextStatus(identity, { textId, ...payload })
   );
 }
 
@@ -1280,6 +1317,7 @@ function resetSextilhaState() {
   state.lastAiFeedback = null;
   state.aiFeedbackRequestKey = "";
   state.sextilhaStoreStatus = "idle";
+  state.mutedVerseWarningIndexes = Array.from({ length: 6 }, () => false);
   renderEditorAiFeedback(null);
 }
 
@@ -1332,12 +1370,13 @@ function stopGameSessionAndReturnToMenu() {
 }
 
 function getSextilhaDraft() {
+  const baselineStatus = state.draftVersionSource?.status || state.activeText?.status || "rascunho";
   return {
     title: ui.editorTitleInput?.value.trim() || "",
     theme: ui.editorThemeInput?.value.trim() || "",
     note: ui.editorNoteInput?.value.trim() || "",
     verses: getSextilhaVerseInputs().map((input) => input?.value.trim() || ""),
-    status: normalizeStatusValue(ui.editorStatusSelect?.value || "rascunho"),
+    status: normalizeStatusValue(baselineStatus),
     sharedWithEducator: !!ui.editorSharedWithEducator?.checked,
   };
 }
@@ -1429,6 +1468,202 @@ function setEditorFeedback(message, tone = "muted") {
     tone === "success" ? "var(--accent)" :
       tone === "error" ? "var(--danger)" :
         "var(--muted)";
+}
+
+function setEditorLockNotice(message, tone = "muted") {
+  if (!ui.editorLockNotice) return;
+  ui.editorLockNotice.textContent = message || "";
+  ui.editorLockNotice.style.color =
+    tone === "success" ? "var(--accent)" :
+      tone === "error" ? "var(--danger)" :
+        "var(--muted)";
+}
+
+function isTextConcluded(textLike) {
+  return normalizeStatusValue(textLike?.status || "") === "concluida";
+}
+
+function isEditorLocked(text = state.activeText) {
+  return isTextConcluded(text);
+}
+
+function getNextDraftStatus(saveMode, sharedWithEducator) {
+  if (saveMode === "finalize") return "concluida";
+  return sharedWithEducator ? "compartilhada com educador" : "rascunho";
+}
+
+function applyEditorLockState(locked, text = state.activeText) {
+  const nextLocked = !!locked;
+  const inputs = [
+    ui.editorTitleInput,
+    ui.editorThemeInput,
+    ui.editorNoteInput,
+    ...getSextilhaVerseInputs(),
+  ].filter(Boolean);
+
+  inputs.forEach((input) => {
+    input.readOnly = nextLocked;
+  });
+
+  if (ui.editorSharedWithEducator) {
+    ui.editorSharedWithEducator.disabled = nextLocked;
+  }
+
+  if (ui.btnSaveTextVersion) {
+    ui.btnSaveTextVersion.disabled = nextLocked;
+  }
+
+  if (ui.btnFinalizeText) {
+    ui.btnFinalizeText.disabled = nextLocked;
+    ui.btnFinalizeText.hidden = nextLocked;
+  }
+
+  if (ui.btnRequestReopen) {
+    const reopenRequested = !!text?.reopenRequested;
+    ui.btnRequestReopen.hidden = !nextLocked;
+    ui.btnRequestReopen.disabled = !nextLocked || reopenRequested;
+    ui.btnRequestReopen.textContent = reopenRequested ? "Reabertura solicitada" : "Solicitar reabertura";
+  }
+
+  getSextilhaVerseFields().forEach((field) => {
+    field.classList.toggle("verse-field--locked", nextLocked);
+  });
+
+  if (!nextLocked) {
+    setEditorLockNotice("");
+    return;
+  }
+
+  if (text?.reopenRequested) {
+    setEditorLockNotice("Texto finalizado e pedido de reabertura registrado para avaliacao futura do educador.", "success");
+    return;
+  }
+
+  setEditorLockNotice("Texto finalizado. Agora ele fica bloqueado e so pode ser reaberto com avaliacao futura do educador.");
+}
+
+function normalizeWordEnding(value) {
+  return norm(String(value || "").replace(/[.,;:!?…()[\]{}"'`´]+/g, " "))
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .trim();
+}
+
+function getVerseLastWord(value) {
+  const tokens = normalizeWordEnding(value).split(/\s+/).filter(Boolean);
+  return tokens[tokens.length - 1] || "";
+}
+
+function evaluateABCBDBRhyme(verses = []) {
+  const targetWords = SEXTILHA_RHYME_VERSE_INDEXES
+    .map((index) => getVerseLastWord(verses[index] || ""))
+    .filter(Boolean);
+
+  if (!targetWords.length) {
+    return { matched: false, complete: false, partialMatch: false, suffix: "", words: targetWords };
+  }
+
+  const candidateSizes = [4, 3, 2];
+  let sharedSuffix = "";
+  for (const size of candidateSizes) {
+    const suffixes = targetWords.map((word) => (word.length >= size ? word.slice(-size) : ""));
+    if (suffixes.every(Boolean) && suffixes.every((suffix) => suffix === suffixes[0])) {
+      sharedSuffix = suffixes[0];
+      break;
+    }
+  }
+
+  const complete = targetWords.length === SEXTILHA_RHYME_VERSE_INDEXES.length;
+  return {
+    matched: complete && !!sharedSuffix,
+    complete,
+    partialMatch: !complete && targetWords.length >= 2 && !!sharedSuffix,
+    suffix: sharedSuffix,
+    words: targetWords,
+  };
+}
+
+function countGrammaticalSyllableGroups(value) {
+  const matches = String(value || "").match(/[aeiouáéíóúàâêôãõü]+/ig);
+  return matches ? matches.length : 0;
+}
+
+function isVerseWarningMuted(index) {
+  return !!state.mutedVerseWarningIndexes[index];
+}
+
+function toggleVerseWarningMuted(index) {
+  if (index < 0 || index >= state.mutedVerseWarningIndexes.length) return;
+  const currentVerse = getSextilhaDraft().verses[index] || "";
+  if (countGrammaticalSyllableGroups(currentVerse) <= SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT) {
+    state.mutedVerseWarningIndexes[index] = false;
+    updateSextilhaIndicators();
+    return;
+  }
+  state.mutedVerseWarningIndexes[index] = !state.mutedVerseWarningIndexes[index];
+  updateSextilhaIndicators();
+}
+
+function applyVerseMeterFeedback(verses = []) {
+  const meterButtons = getSextilhaVerseMeterButtons();
+
+  meterButtons.forEach((button, index) => {
+    const label = button.querySelector(".verse-meter__label");
+    const fill = button.querySelector(".verse-meter__fill");
+    const count = countGrammaticalSyllableGroups(verses[index] || "");
+    const isWarning = count > SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT;
+    const muted = isWarning && isVerseWarningMuted(index);
+    const progressRatio = clamp(count / SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT, 0, 1.18);
+
+    if (fill) {
+      fill.style.width = `${Math.min(progressRatio, 1) * 100}%`;
+    }
+
+    button.classList.toggle("verse-meter--warning", isWarning && !muted);
+    button.classList.toggle("verse-meter--muted", muted);
+    button.setAttribute("aria-pressed", muted ? "true" : "false");
+
+    if (label) {
+      if (!count) {
+        label.textContent = "0 grupos vocálicos";
+      } else if (muted) {
+        label.textContent = `${count} grupos vocálicos · aviso desligado`;
+      } else if (isWarning) {
+        label.textContent = `${count} grupos vocálicos · toque para desligar o aviso`;
+      } else {
+        label.textContent = `${count} grupos vocálicos`;
+      }
+    }
+  });
+}
+
+function applyRhymeBadgeFeedback(verses = []) {
+  const badges = getSextilhaRhymeBadges();
+  const rhyme = evaluateABCBDBRhyme(verses);
+  const shouldHighlight = rhyme.matched && rhyme.words.length === SEXTILHA_RHYME_VERSE_INDEXES.length;
+
+  badges.forEach((badge) => {
+    badge.classList.toggle("verse-rhyme-badge--active", shouldHighlight);
+    badge.classList.toggle("verse-rhyme-badge--pending", !shouldHighlight);
+    badge.title = shouldHighlight
+      ? `Rima B confirmada com a terminação "${rhyme.suffix}".`
+      : "Versos 2, 4 e 6 devem fechar a mesma rima B.";
+  });
+}
+
+function focusNextVerseInput(currentIndex) {
+  const inputs = getSextilhaVerseInputs();
+  const nextInput = inputs[currentIndex + 1];
+  if (nextInput) {
+    nextInput.focus();
+    return;
+  }
+
+  if (!ui.btnSaveTextVersion?.disabled) {
+    ui.btnSaveTextVersion?.focus();
+    return;
+  }
+
+  ui.btnFinalizeText?.focus();
 }
 
 function slugStatus(status) {
@@ -2326,13 +2561,14 @@ function renderDashboardTexts() {
           <p class="text-card__meta">
             ${escapeHtml(text.theme || "Tema livre")}<br>
             Ultima edicao: ${escapeHtml(formatTextUpdatedLabel(text))}
+            ${text.reopenRequested ? "<br>Reabertura solicitada ao educador" : ""}
           </p>
         </div>
         ${renderStatusBadge(text.status)}
       </div>
-      <div class="text-card__indicators">${renderIndicatorChips(text.indicators)}</div>
+      <div class="text-card__indicators">${renderIndicatorChips(text.indicators)}${text.reopenRequested ? `<span class="indicator-chip">reabertura solicitada</span>` : ""}</div>
       <div class="text-card__actions">
-        <button class="btn btn-primary" type="button" data-action="open-text" data-text-id="${escapeHtml(text.textId)}">Continuar</button>
+        <button class="btn btn-primary" type="button" data-action="open-text" data-text-id="${escapeHtml(text.textId)}">${normalizeStatusValue(text.status) === "concluida" ? "Abrir" : "Continuar"}</button>
         <button class="btn btn-secondary" type="button" data-action="view-versions" data-text-id="${escapeHtml(text.textId)}">Versoes</button>
         <button class="btn btn-ghost" type="button" data-action="archive-text" data-text-id="${escapeHtml(text.textId)}">Arquivar</button>
       </div>
@@ -2385,6 +2621,7 @@ async function openSextilhaEditor(textId, draftVersion = null) {
 function fillSextilhaEditor(text, draftVersion = null) {
   const source = draftVersion || text?.latestVersion || text;
   if (!source) return;
+  state.mutedVerseWarningIndexes = Array.from({ length: 6 }, () => false);
 
   if (ui.editorTitleHeading) {
     ui.editorTitleHeading.textContent = text?.title || draftVersion?.title || "Nova sextilha";
@@ -2398,9 +2635,6 @@ function fillSextilhaEditor(text, draftVersion = null) {
     if (input) input.value = verses[index] || "";
   });
 
-  if (ui.editorStatusSelect) {
-    ui.editorStatusSelect.value = normalizeStatusValue(text?.status || source.status || "rascunho");
-  }
   if (ui.editorSharedWithEducator) {
     ui.editorSharedWithEducator.checked = !!source.sharedWithEducator;
   }
@@ -2419,17 +2653,38 @@ function fillSextilhaEditor(text, draftVersion = null) {
       : "Ultima atualizacao: ainda sem registro.";
   }
 
+  applyEditorLockState(isEditorLocked(text || source), text || source);
   renderEditorAiFeedback(state.lastAiFeedback);
   updateSextilhaIndicators();
 }
 
-async function saveCurrentTextVersion() {
+async function saveCurrentTextVersion(saveMode = "draft") {
   if (!state.activeTextId) return;
-  const draft = getSextilhaDraft();
+  if (isEditorLocked()) {
+    setEditorFeedback("Este texto ja foi finalizado e esta bloqueado para edicao.", "error");
+    return;
+  }
+
+  const baseDraft = getSextilhaDraft();
+  const draft = {
+    ...baseDraft,
+    status: getNextDraftStatus(saveMode, baseDraft.sharedWithEducator),
+  };
 
   if (!draft.title && !draft.theme && !draft.verses.some(Boolean) && !draft.note) {
     setEditorFeedback("Escreva pelo menos um elemento do texto antes de salvar.", "error");
     return;
+  }
+
+  if (saveMode === "finalize") {
+    const filledVersesCount = draft.verses.filter(Boolean).length;
+    if (filledVersesCount < 6) {
+      setEditorFeedback("Preencha os 6 versos antes de finalizar a sextilha.", "error");
+      return;
+    }
+
+    const confirmed = window.confirm("Tem certeza que vai finalizar o rascunho? Depois disso, voce nao podera modificar o texto sem avaliacao futura do educador.");
+    if (!confirmed) return;
   }
 
   const baselineVersion = getEditorBaselineVersion();
@@ -2441,7 +2696,7 @@ async function saveCurrentTextVersion() {
     return;
   }
 
-  const finishSaveFeedback = beginSaveDraftProgressiveFeedback();
+  const finishSaveFeedback = beginTextPersistProgressiveFeedback(saveMode);
   state.aiFeedbackRequestKey = "";
 
   try {
@@ -2468,7 +2723,12 @@ async function saveCurrentTextVersion() {
     fillSextilhaEditor(state.activeText);
     upsertTextInDashboardState(state.activeText);
     state.activeTextVersions = [savedVersion, ...state.activeTextVersions.filter((version) => version?.versionId !== savedVersion?.versionId)].filter(Boolean);
-    setEditorFeedback(`${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`, "success");
+    setEditorFeedback(
+      saveMode === "finalize"
+        ? "Sextilha finalizada com sucesso."
+        : `${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`,
+      "success"
+    );
     requestAiFeedbackForVersion(
       response?.text?.textId,
       savedVersion?.versionId,
@@ -2498,6 +2758,32 @@ async function archiveCurrentText() {
   }
 
   await openSextilhaDashboard();
+}
+
+async function requestTextReopen() {
+  if (!state.activeTextId || !isEditorLocked()) return;
+
+  if (state.activeText?.reopenRequested) {
+    setEditorFeedback("O pedido de reabertura ja foi registrado para avaliacao futura do educador.", "muted");
+    return;
+  }
+
+  const confirmed = window.confirm("Deseja solicitar a reabertura deste texto para avaliacao futura do educador?");
+  if (!confirmed) return;
+
+  const response = await updateSextilhaTextStatusRecord(state.activeTextId, {
+    status: state.activeText?.status || "concluida",
+    sharedWithEducator: true,
+    reopenRequested: true,
+  });
+
+  if (response?.text) {
+    state.activeText = response.text;
+    upsertTextInDashboardState(response.text);
+    fillSextilhaEditor(state.activeText);
+  }
+
+  setEditorFeedback("Pedido de reabertura registrado para avaliacao futura do educador.", "success");
 }
 
 async function openVersionHistory(textId = state.activeTextId) {
@@ -2663,13 +2949,19 @@ function restoreVersionToEditor(versionId) {
   state.draftVersionSource = version;
   setView("sextilhaEditor", ui.sextilhaEditorSection);
   fillSextilhaEditor(state.activeText, version);
-  setEditorFeedback("Versao carregada no editor. Salve para criar uma nova etapa do texto.", "success");
+  setEditorFeedback(
+    isEditorLocked(state.activeText)
+      ? "Versao carregada para leitura. O texto segue bloqueado porque ja foi finalizado."
+      : "Versao carregada no editor. Salve para criar uma nova etapa do texto.",
+    "success"
+  );
 }
 
 function buildLiveSextilhaIndicators(options = {}) {
   const draft = options.draft || getSextilhaDraft();
   const verses = draft.verses;
   const filledVerses = verses.filter(Boolean);
+  const targetRhyme = evaluateABCBDBRhyme(verses);
   const finalWords = filledVerses.map((verse) => {
     const tokens = norm(verse).split(/\s+/).filter(Boolean);
     return tokens[tokens.length - 1] || "";
@@ -2695,21 +2987,13 @@ function buildLiveSextilhaIndicators(options = {}) {
     }
   }
 
-  let rimaStatus = "rima em formacao";
-  if (finalWords.length >= 2) {
-    const suffixGroups = [3, 2, 1].map((size) => {
-      const counts = {};
-      finalWords.forEach((word) => {
-        if (word.length < size) return;
-        const suffix = word.slice(-size);
-        counts[suffix] = (counts[suffix] || 0) + 1;
-      });
-      return Math.max(0, ...Object.values(counts));
-    });
-    if (suffixGroups[0] >= 3) rimaStatus = "rima consistente";
-    else if (suffixGroups[1] >= 2) rimaStatus = "rima em consolidacao";
-    else if (suffixGroups[2] >= 2) rimaStatus = "rima leve aparecendo";
-    else rimaStatus = "rima livre em desenvolvimento";
+  let rimaStatus = "rima B aguardando versos 2, 4 e 6";
+  if (targetRhyme.matched) {
+    rimaStatus = "rima B confirmada";
+  } else if (targetRhyme.complete) {
+    rimaStatus = "revisar rima B dos versos 2, 4 e 6";
+  } else if (targetRhyme.partialMatch || targetRhyme.words.length >= 1) {
+    rimaStatus = "rima B em formacao";
   }
 
   let coerenciaTematica = "tema em formacao";
@@ -2755,9 +3039,12 @@ function buildLiveSextilhaIndicators(options = {}) {
 
 function updateSextilhaIndicators() {
   const indicators = buildLiveSextilhaIndicators();
+  const verses = getSextilhaDraft().verses;
   if (ui.editorIndicatorList) {
     ui.editorIndicatorList.innerHTML = renderIndicatorChips(indicators);
   }
+  applyVerseMeterFeedback(verses);
+  applyRhymeBadgeFeedback(verses);
 }
 
 async function handleDashboardTextAction(event) {
@@ -2880,7 +3167,21 @@ if (ui.btnBackToDashboard) {
 
 if (ui.btnSaveTextVersion) {
   ui.btnSaveTextVersion.addEventListener("click", () => {
-    saveCurrentTextVersion();
+    saveCurrentTextVersion("draft");
+  });
+}
+
+if (ui.btnFinalizeText) {
+  ui.btnFinalizeText.addEventListener("click", () => {
+    saveCurrentTextVersion("finalize");
+  });
+}
+
+if (ui.btnRequestReopen) {
+  ui.btnRequestReopen.addEventListener("click", () => {
+    requestTextReopen().catch((error) => {
+      setEditorFeedback(error?.message || "Nao foi possivel registrar o pedido de reabertura.", "error");
+    });
   });
 }
 
@@ -2945,14 +3246,28 @@ if (ui.versionComparePanel) {
 getSextilhaVerseInputs().forEach((input) => {
   if (!input) return;
   input.addEventListener("input", updateSextilhaIndicators);
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    const currentIndex = getSextilhaVerseInputs().indexOf(input);
+    focusNextVerseInput(currentIndex);
+  });
 });
 
-[ui.editorTitleInput, ui.editorThemeInput, ui.editorNoteInput, ui.editorStatusSelect, ui.editorSharedWithEducator]
+[ui.editorTitleInput, ui.editorThemeInput, ui.editorNoteInput, ui.editorSharedWithEducator]
   .filter(Boolean)
   .forEach((input) => {
     input.addEventListener("input", updateSextilhaIndicators);
     input.addEventListener("change", updateSextilhaIndicators);
   });
+
+getSextilhaVerseMeterButtons().forEach((button) => {
+  button.addEventListener("click", () => {
+    const index = Number(button.dataset.verseMeter || "-1");
+    if (index < 0) return;
+    toggleVerseWarningMuted(index);
+  });
+});
 
 // ── Placar e Envio ───────────────────────────────────────────────────
 function renderPlacarItems(data) {
