@@ -10,7 +10,7 @@ window.INANNA_FIREBASE_CONFIG = window.INANNA_FIREBASE_CONFIG || {
 
 window.INANNA_FIREBASE_OPTIONS = Object.assign(
   {
-    mode: "apps-script",
+    mode: "firestore",
     collectionRoot: "participants",
     textCollectionName: "texts",
     versionCollectionName: "versions",
