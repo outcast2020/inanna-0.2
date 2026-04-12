@@ -880,12 +880,13 @@ function shouldApplyAiFeedbackResponse(requestKey, textId, versionId) {
   );
 }
 
-async function requestAiFeedbackForVersion(textId, versionId) {
-  if (!textId || !versionId || getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
+async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
+  if (!textId || !versionId) {
     return;
   }
 
   const requestKey = `${textId}:${versionId}:${Date.now()}`;
+  const versionLabel = buildSextilhaVersionLabel(payload);
   state.aiFeedbackRequestKey = requestKey;
   renderEditorAiFeedback({
     source: "inanna",
@@ -894,13 +895,13 @@ async function requestAiFeedbackForVersion(textId, versionId) {
   });
 
   try {
-    const response = await generateSextilhaTextFeedbackRecord({ textId, versionId });
+    const response = await generateSextilhaTextFeedbackRecord(payload || { textId, versionId });
     if (!shouldApplyAiFeedbackResponse(requestKey, textId, versionId)) return;
 
     state.lastAiFeedback = response?.aiFeedback || null;
     if (state.lastAiFeedback?.message) {
       renderEditorAiFeedback(state.lastAiFeedback);
-      setEditorFeedback("Versao salva e devolutiva recebida.", "success");
+      setEditorFeedback(`${versionLabel} salva e devolutiva recebida.`, "success");
       return;
     }
 
@@ -908,6 +909,7 @@ async function requestAiFeedbackForVersion(textId, versionId) {
     renderEditorAiFeedback(null);
   } catch (error) {
     if (!shouldApplyAiFeedbackResponse(requestKey, textId, versionId)) return;
+    setEditorFeedback(`${versionLabel} salva. A devolutiva ainda nao chegou.`, "muted");
     renderEditorAiFeedback({
       tone: "error",
       message: error?.message || "A Inanna nao conseguiu responder agora, mas o rascunho foi salvo.",
@@ -994,10 +996,11 @@ async function saveSextilhaTextVersionRecord(payload) {
 
 async function generateSextilhaTextFeedbackRecord(payload) {
   const identity = buildIdentityPayload();
-  if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
-    return null;
-  }
-  return postAppAction("generate_text_feedback", { ...identity, ...payload });
+  return postAppAction("generate_text_feedback", {
+    ...identity,
+    sourceStore: getConfiguredSextilhaDataSource(),
+    ...payload,
+  });
 }
 
 async function loadSextilhaTextVersionsRecord(textId) {
@@ -1336,6 +1339,82 @@ function getSextilhaDraft() {
     verses: getSextilhaVerseInputs().map((input) => input?.value.trim() || ""),
     status: normalizeStatusValue(ui.editorStatusSelect?.value || "rascunho"),
     sharedWithEducator: !!ui.editorSharedWithEducator?.checked,
+  };
+}
+
+function normalizeComparableDraftText(value) {
+  return String(value || "").trim();
+}
+
+function buildComparableSextilhaDraftSnapshot(source) {
+  if (!source) return null;
+
+  const verses = Array.isArray(source.verses) ? source.verses : [];
+  return {
+    title: normalizeComparableDraftText(source.title),
+    theme: normalizeComparableDraftText(source.theme),
+    note: normalizeComparableDraftText(source.note),
+    verses: Array.from({ length: 6 }, (_, index) => normalizeComparableDraftText(verses[index])),
+    status: normalizeStatusValue(source.status || "rascunho"),
+    sharedWithEducator: !!source.sharedWithEducator,
+  };
+}
+
+function buildComparableSextilhaDraftFingerprint(source) {
+  const snapshot = buildComparableSextilhaDraftSnapshot(source);
+  return snapshot ? JSON.stringify(snapshot) : "";
+}
+
+function getEditorBaselineVersion() {
+  return state.draftVersionSource || state.activeText?.latestVersion || state.activeText || null;
+}
+
+function buildSextilhaVersionLabel(versionLike) {
+  const versionNumber = Number(versionLike?.versionNumber || versionLike?.versionCount || 0);
+  return versionNumber ? `Versao ${versionNumber}` : "Rascunho atual";
+}
+
+function describeSextilhaBaselineVersion(versionLike) {
+  const versionNumber = Number(versionLike?.versionNumber || versionLike?.versionCount || 0);
+  return versionNumber ? `a Versao ${versionNumber}` : "este rascunho";
+}
+
+function buildAiFeedbackRequestPayload(text, version) {
+  const versionSnapshot = version || text?.latestVersion || null;
+  const verses = Array.isArray(versionSnapshot?.verses)
+    ? versionSnapshot.verses
+    : Array.isArray(text?.verses)
+      ? text.verses
+      : [];
+  const versionNumber = Number(versionSnapshot?.versionNumber || text?.versionCount || 0);
+  const title = versionSnapshot?.title || text?.title || "";
+  const theme = versionSnapshot?.theme || text?.theme || "";
+  const note = versionSnapshot?.note || text?.note || "";
+  const sharedWithEducator = versionSnapshot?.sharedWithEducator ?? text?.sharedWithEducator ?? false;
+  const status = versionSnapshot?.status || text?.status || "rascunho";
+
+  return {
+    textId: text?.textId || versionSnapshot?.textId || "",
+    versionId: versionSnapshot?.versionId || "",
+    versionNumber,
+    title,
+    theme,
+    note,
+    verses,
+    status,
+    sharedWithEducator,
+    indicators: versionSnapshot?.indicators || buildLiveSextilhaIndicators({
+      draft: {
+        title,
+        theme,
+        note,
+        verses,
+        status,
+        sharedWithEducator,
+      },
+      revisionCount: versionNumber,
+    }),
+    sourceStore: getConfiguredSextilhaDataSource(),
   };
 }
 
@@ -2328,6 +2407,8 @@ function fillSextilhaEditor(text, draftVersion = null) {
   if (ui.editorVersionMeta) {
     ui.editorVersionMeta.textContent = draftVersion?.versionNumber
       ? `Versao ${draftVersion.versionNumber} carregada no editor.`
+      : text?.latestVersion?.versionNumber
+        ? `Versao ${text.latestVersion.versionNumber} e a mais recente no editor.`
       : text?.versionCount
         ? `${text.versionCount} versoes registradas.`
         : "Versao ainda nao salva.";
@@ -2351,6 +2432,15 @@ async function saveCurrentTextVersion() {
     return;
   }
 
+  const baselineVersion = getEditorBaselineVersion();
+  if (
+    baselineVersion &&
+    buildComparableSextilhaDraftFingerprint(draft) === buildComparableSextilhaDraftFingerprint(baselineVersion)
+  ) {
+    setEditorFeedback(`Nenhuma alteracao nova desde ${describeSextilhaBaselineVersion(baselineVersion)}. Ajuste algo antes de salvar outra etapa.`, "muted");
+    return;
+  }
+
   const finishSaveFeedback = beginSaveDraftProgressiveFeedback();
   state.aiFeedbackRequestKey = "";
 
@@ -2371,14 +2461,19 @@ async function saveCurrentTextVersion() {
       indicators,
     });
 
+    const savedVersion = response?.version || null;
     state.activeText = response?.text || state.activeText;
     state.lastAiFeedback = null;
     state.draftVersionSource = null;
     fillSextilhaEditor(state.activeText);
     upsertTextInDashboardState(state.activeText);
-    state.activeTextVersions = [response?.version, ...state.activeTextVersions.filter((version) => version?.versionId !== response?.version?.versionId)].filter(Boolean);
-    setEditorFeedback("Versao salva com sucesso.", "success");
-    requestAiFeedbackForVersion(response?.text?.textId, response?.version?.versionId);
+    state.activeTextVersions = [savedVersion, ...state.activeTextVersions.filter((version) => version?.versionId !== savedVersion?.versionId)].filter(Boolean);
+    setEditorFeedback(`${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`, "success");
+    requestAiFeedbackForVersion(
+      response?.text?.textId,
+      savedVersion?.versionId,
+      buildAiFeedbackRequestPayload(state.activeText, savedVersion)
+    );
   } catch (error) {
     setEditorFeedback(error?.message || "Nao foi possivel salvar a versao.", "error");
     if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
