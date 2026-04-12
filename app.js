@@ -1621,6 +1621,11 @@ function applyVerseMeterFeedback(verses = []) {
     button.classList.toggle("verse-meter--warning", isWarning && !muted);
     button.classList.toggle("verse-meter--muted", muted);
     button.setAttribute("aria-pressed", muted ? "true" : "false");
+    button.title = muted
+      ? "Clique para reativar este aviso."
+      : isWarning
+        ? "Clique para desligar este aviso se voce discordar da maquina."
+        : "A barra acompanha a contagem aproximada de silabas gramaticais.";
 
     if (label) {
       if (!count) {
@@ -1645,8 +1650,8 @@ function applyRhymeBadgeFeedback(verses = []) {
     badge.classList.toggle("verse-rhyme-badge--active", shouldHighlight);
     badge.classList.toggle("verse-rhyme-badge--pending", !shouldHighlight);
     badge.title = shouldHighlight
-      ? `Rima B confirmada com a terminação "${rhyme.suffix}".`
-      : "Versos 2, 4 e 6 devem fechar a mesma rima B.";
+      ? `Esquema ABCBDB alinhado. A rima B fechou com a terminação "${rhyme.suffix}".`
+      : "No esquema ABCBDB, os versos 2, 4 e 6 devem fechar a mesma rima B.";
   });
 }
 
@@ -2987,13 +2992,13 @@ function buildLiveSextilhaIndicators(options = {}) {
     }
   }
 
-  let rimaStatus = "rima B aguardando versos 2, 4 e 6";
+  let rimaStatus = "ABCBDB: aguardando a rima B nos versos 2, 4 e 6";
   if (targetRhyme.matched) {
-    rimaStatus = "rima B confirmada";
+    rimaStatus = "ABCBDB: rima B confirmada";
   } else if (targetRhyme.complete) {
-    rimaStatus = "revisar rima B dos versos 2, 4 e 6";
+    rimaStatus = "ABCBDB: revisar versos 2, 4 e 6";
   } else if (targetRhyme.partialMatch || targetRhyme.words.length >= 1) {
-    rimaStatus = "rima B em formacao";
+    rimaStatus = "ABCBDB: rima B em formacao";
   }
 
   let coerenciaTematica = "tema em formacao";
