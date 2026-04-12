@@ -213,6 +213,8 @@
       session.lastCustomToken = customToken;
     }
 
+    await ensureParticipantClaimsReady(auth, participantId);
+
     session.currentParticipantId = participantId;
 
     return {
@@ -228,6 +230,22 @@
     if (!hasUser) return false;
     if (!currentParticipantId) return true;
     return session.currentParticipantId === currentParticipantId;
+  }
+
+  async function ensureParticipantClaimsReady(auth, participantId) {
+    const currentParticipantId = String(participantId || "").trim();
+    if (!auth?.currentUser || !currentParticipantId) return;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await auth.currentUser.getIdToken(true);
+      const tokenResult = await auth.currentUser.getIdTokenResult();
+      if (String(tokenResult?.claims?.participantId || "").trim() === currentParticipantId) {
+        return;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+
+    throw new Error("As claims do Firebase ainda nao ficaram prontas para este participante.");
   }
 
   async function getUserDashboard(identity) {
