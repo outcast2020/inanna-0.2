@@ -10,6 +10,11 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - Backend e placar: `Code.gs`.
 - Midias e embeds: imagens, video e snippet de footer na propria pasta.
 
+## Licenciamento
+
+- O aplicativo Inanna e este repositorio estao licenciados sob MIT. Veja `LICENSE`.
+- Os textos produzidos por cada usuario permanecem de autoria de seus respectivos criadores e sao disponibilizados sob CC BY-ND 4.0.
+
 ## Objetivo pedagogico
 
 O app nao tenta simular um LLM real. Ele mostra de forma legivel como um sistema escolhe palavras a partir de:
