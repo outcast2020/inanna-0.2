@@ -197,7 +197,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyXBAC8UM9WhgRzcOBvHZjVx1RIv7zvjiW6GVlWYJroH7igPq30DVtbbhEZ5YWJzIZ9/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwuJSjxZeZJIBXsi6enCrfkzdH5t2TECrdjbzRII6ScZK4QAb25ZyQmnDpXf9Fe0M1Q/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_STATUS_LABELS = {
