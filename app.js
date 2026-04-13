@@ -231,7 +231,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxd8l3vr7MMlCH54VKqa1xvFTaPjEkCc8dO4I-0L4tiSlBnM_9YaBpYvpAsjMu1QDzg/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx3kGpXPfD-7yb7oO-NkuLV9PcJaubp0N39WpR8FDB335et2OIArwcJbrhbC8jOIz4Y/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
@@ -892,33 +892,28 @@ function buildIdentityPayload() {
   };
 }
 
-async function fetchAppGet(action, params = {}) {
-  const query = new URLSearchParams({
-    action,
-    t: String(Date.now()),
-    ...params,
-  });
-  const response = await fetch(`${WEB_APP_URL}?${query.toString()}`);
-  const payload = await response.json();
-  if (payload?.status === "error" || payload?.error) {
-    throw new Error(payload?.message || payload?.error || "Erro ao consultar o backend.");
-  }
-  return payload;
-}
-
-async function postAppAction(action, payload = {}) {
+async function requestAppAction(action, payload = {}, fallbackMessage = "Erro ao consultar o backend.") {
   const response = await fetch(WEB_APP_URL, {
     method: "POST",
     body: JSON.stringify({
       action,
+      t: String(Date.now()),
       ...payload,
     }),
   });
   const result = await response.json();
   if (result?.status === "error" || result?.error) {
-    throw new Error(result?.message || result?.error || "Erro ao salvar no backend.");
+    throw new Error(result?.message || result?.error || fallbackMessage);
   }
   return result;
+}
+
+async function fetchAppGet(action, params = {}) {
+  return requestAppAction(action, params, "Erro ao consultar o backend.");
+}
+
+async function postAppAction(action, payload = {}) {
+  return requestAppAction(action, payload, "Erro ao salvar no backend.");
 }
 
 function buildLoadingSkeletonCard() {
@@ -4263,9 +4258,7 @@ function loadPlacar() {
 
   ui.placarList.innerHTML = "<p style='text-align: center; color: var(--muted); margin-top:20px;'>Carregando placar...</p>";
 
-  // Adicionando timestamp para evitar problemas de cache rigoroso no GitHub Pages
-  fetch(WEB_APP_URL + "?action=getPlacar&t=" + new Date().getTime())
-    .then(r => r.json())
+  fetchAppGet("getPlacar")
     .then(data => {
       if (data && typeof data === "object" && !Array.isArray(data)) {
         if (data.status === "error") {
