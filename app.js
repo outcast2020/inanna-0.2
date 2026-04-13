@@ -231,7 +231,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx3kGpXPfD-7yb7oO-NkuLV9PcJaubp0N39WpR8FDB335et2OIArwcJbrhbC8jOIz4Y/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyofnCcZ52DNe0p-5GdWSSP6QqtK4DWXFryfyxUBghMdRC5pzCWVCtvEuRf38KeIbo/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
@@ -1500,6 +1500,17 @@ async function runSextilhaStoreOperation(operationName, appsScriptFn, firebaseFn
 
 async function loadUserDashboardData() {
   const identity = buildIdentityPayload();
+  if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
+    try {
+      const firebasePayload = await loadFirestoreDashboardPayload(identity);
+      state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
+      state.firebaseSessionReady = true;
+      return firebasePayload;
+    } catch (error) {
+      console.warn("[dashboard] fallback para Apps Script apos falha no Firestore", error);
+    }
+  }
+
   const payload = await withTimeout(
     loadAppsScriptDashboardPayload(identity),
     DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
