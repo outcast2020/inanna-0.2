@@ -18,6 +18,7 @@
       {
         mode: "apps-script",
         collectionRoot: "participants",
+        folhetoCollectionName: "folhetos",
         textCollectionName: "texts",
         versionCollectionName: "versions",
       },
@@ -88,6 +89,11 @@
     return [options.collectionRoot, participantId, options.textCollectionName];
   }
 
+  function getFolhetoCollectionPath(participantId) {
+    const options = getOptions();
+    return [options.collectionRoot, participantId, options.folhetoCollectionName];
+  }
+
   function getVersionCollectionPath(participantId, textId) {
     const options = getOptions();
     return [options.collectionRoot, participantId, options.textCollectionName, textId, options.versionCollectionName];
@@ -136,6 +142,9 @@
     return {
       versionId: String(record.versionId || "").trim(),
       textId: String(record.textId || "").trim(),
+      folhetoId: String(record.folhetoId || "").trim(),
+      folhetoTitle: String(record.folhetoTitle || "").trim(),
+      folhetoOrder: Number(record.folhetoOrder) || 0,
       participantId: String(record.participantId || "").trim(),
       versionNumber: Number(record.versionNumber) || 0,
       title: String(record.title || "").trim(),
@@ -150,10 +159,27 @@
     };
   }
 
+  function mapFolhetoRecord(record) {
+    return {
+      folhetoId: String(record.folhetoId || "").trim(),
+      title: String(record.title || "").trim(),
+      createdAt: String(record.createdAt || ""),
+      updatedAt: String(record.updatedAt || record.createdAt || ""),
+      participantId: String(record.participantId || "").trim(),
+      checkinUserId: String(record.checkinUserId || "").trim(),
+      teacherGroup: String(record.teacherGroup || "").trim(),
+      textCount: Number(record.textCount || 0),
+      completedCount: Number(record.completedCount || 0),
+    };
+  }
+
   function mapTextRecord(record) {
     const versionCount = Number(record.versionCount) || 0;
     return {
       textId: String(record.textId || "").trim(),
+      folhetoId: String(record.folhetoId || "").trim(),
+      folhetoTitle: String(record.folhetoTitle || "").trim(),
+      folhetoOrder: Number(record.folhetoOrder) || 0,
       title: String(record.title || "").trim(),
       theme: String(record.theme || "").trim(),
       note: String(record.note || "").trim(),
@@ -174,16 +200,37 @@
     };
   }
 
-  function buildDashboardPayload(texts) {
+  function buildDashboardPayload(texts, folhetos = []) {
     const completedCount = texts.filter((item) => normalizeStatus(item.status) === "concluida").length;
     const sorted = [...texts].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+    const sortedFolhetos = [...folhetos].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
     return {
       status: "success",
+      folhetoCount: sortedFolhetos.length,
       textCount: texts.length,
       completedCount,
       lastEditedAt: sorted[0]?.updatedAt || "",
+      folhetos: sortedFolhetos,
       texts: sorted,
     };
+  }
+
+  async function touchFolhetoRecord(firebase, db, identity, folhetoId, updates = {}) {
+    const normalizedFolhetoId = String(folhetoId || "").trim();
+    if (!normalizedFolhetoId) return;
+
+    await firebase.setDoc(
+      firebase.doc(db, ...getFolhetoCollectionPath(identity.participantId), normalizedFolhetoId),
+      {
+        folhetoId: normalizedFolhetoId,
+        participantId: identity.participantId,
+        checkinUserId: identity.checkinUserId,
+        teacherGroup: identity.teacherGroup || "",
+        updatedAt: isoNow(),
+        ...updates,
+      },
+      { merge: true }
+    );
   }
 
   async function initializeSession(input) {
@@ -255,18 +302,60 @@
       firebase.collection(db, ...getTextCollectionPath(identity.participantId)),
       firebase.orderBy("updatedAt", "desc")
     );
-    const snapshot = await firebase.getDocs(textsQuery);
-    const texts = snapshot.docs.map((docSnap) => mapTextRecord(docSnap.data()));
+    const folhetosQuery = firebase.query(
+      firebase.collection(db, ...getFolhetoCollectionPath(identity.participantId)),
+      firebase.orderBy("updatedAt", "desc")
+    );
+    const [textSnapshot, folhetoSnapshot] = await Promise.all([
+      firebase.getDocs(textsQuery),
+      firebase.getDocs(folhetosQuery),
+    ]);
+    const texts = textSnapshot.docs.map((docSnap) => mapTextRecord(docSnap.data()));
+    const folhetos = folhetoSnapshot.docs.map((docSnap) => mapFolhetoRecord(docSnap.data()));
     texts.forEach((record) => assertOwner(identity, record));
-    return buildDashboardPayload(texts);
+    folhetos.forEach((record) => assertOwner(identity, record));
+    return buildDashboardPayload(texts, folhetos);
+  }
+
+  async function createFolheto(identity, payload) {
+    const { firebase, db } = await ensureClients();
+    const folhetoId = buildEntityId("folheto");
+    const now = isoNow();
+    const folhetoRecord = {
+      folhetoId,
+      participantId: identity.participantId,
+      checkinUserId: identity.checkinUserId,
+      teacherGroup: identity.teacherGroup || "",
+      title: String(payload.title || "").trim() || "Folheto sem titulo",
+      createdAt: now,
+      updatedAt: now,
+      textCount: 0,
+      completedCount: 0,
+    };
+
+    await firebase.setDoc(
+      firebase.doc(db, ...getFolhetoCollectionPath(identity.participantId), folhetoId),
+      folhetoRecord
+    );
+
+    return {
+      ok: true,
+      status: "success",
+      folheto: mapFolhetoRecord(folhetoRecord),
+    };
   }
 
   async function createText(identity, payload) {
     const { firebase, db } = await ensureClients();
     const textId = buildEntityId("text");
     const now = isoNow();
+    const folhetoId = String(payload.folhetoId || "").trim();
+    const folhetoTitle = String(payload.folhetoTitle || "").trim();
     const textRecord = {
       textId,
+      folhetoId,
+      folhetoTitle,
+      folhetoOrder: Number(payload.folhetoOrder) || 0,
       participantId: identity.participantId,
       checkinUserId: identity.checkinUserId,
       teacherGroup: identity.teacherGroup || "",
@@ -291,6 +380,11 @@
       firebase.doc(db, ...getTextCollectionPath(identity.participantId), textId),
       textRecord
     );
+    if (folhetoId) {
+      await touchFolhetoRecord(firebase, db, identity, folhetoId, {
+        title: folhetoTitle || "Folheto sem titulo",
+      });
+    }
 
     return {
       ok: true,
@@ -355,6 +449,9 @@
     const versionRecord = {
       versionId,
       textId,
+      folhetoId: currentText.folhetoId || String(payload.folhetoId || "").trim(),
+      folhetoTitle: currentText.folhetoTitle || String(payload.folhetoTitle || "").trim(),
+      folhetoOrder: Number(currentText.folhetoOrder || payload.folhetoOrder || 0),
       participantId: identity.participantId,
       checkinUserId: identity.checkinUserId,
       teacherGroup: identity.teacherGroup || "",
@@ -371,6 +468,9 @@
     };
 
     const nextTextRecord = Object.assign({}, currentText, {
+      folhetoId: versionRecord.folhetoId,
+      folhetoTitle: versionRecord.folhetoTitle,
+      folhetoOrder: versionRecord.folhetoOrder,
       title: versionRecord.title,
       theme: versionRecord.theme,
       note: versionRecord.note,
@@ -390,6 +490,11 @@
       versionRecord
     );
     await firebase.setDoc(textRef, nextTextRecord, { merge: true });
+    if (nextTextRecord.folhetoId) {
+      await touchFolhetoRecord(firebase, db, identity, nextTextRecord.folhetoId, {
+        title: nextTextRecord.folhetoTitle || "Folheto sem titulo",
+      });
+    }
 
     return {
       ok: true,
@@ -454,6 +559,11 @@
         { merge: true }
       );
     }
+    if (nextTextRecord.folhetoId) {
+      await touchFolhetoRecord(firebase, db, identity, nextTextRecord.folhetoId, {
+        title: nextTextRecord.folhetoTitle || "Folheto sem titulo",
+      });
+    }
 
     return {
       ok: true,
@@ -473,6 +583,7 @@
     hasActiveSession,
     initializeSession,
     getUserDashboard,
+    createFolheto,
     createText,
     getText,
     getTextVersions,

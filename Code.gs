@@ -1,17 +1,18 @@
 ﻿var DEFAULT_REGISTRY_SPREADSHEET_ID = "";
-var DEFAULT_REGISTRY_SHEET_NAME = "";
+var DEFAULT_REGISTRY_SHEET_NAME = "Página1";
 var DEFAULT_CHECKIN_SPREADSHEET_ID = "";
-var DEFAULT_CHECKIN_SHEET_NAME = "";
+var DEFAULT_CHECKIN_SHEET_NAME = "USERS_checkin";
 var DEFAULT_APP_VARIANT = "inanna-main";
-var FALLBACK_REGISTRY_SPREADSHEET_ID = "";
-var REGISTRY_SHEET_ALIASES = [""];
-var CHECKIN_SHEET_ALIASES = [""];
-var PLACAR_SHEET_NAME = "";
-var USERS_CACHE_SHEET_NAME = "";
-var TEXTS_SHEET_NAME = "";
-var TEXT_VERSIONS_SHEET_NAME = "";
-var TEXT_FEEDBACK_SHEET_NAME = "";
-var TEXT_ACTIVITY_LOG_SHEET_NAME = "";
+var FALLBACK_REGISTRY_SPREADSHEET_ID = "1hDEDkylOBUKDY-s4tqnYaMfZgm6izftB04alLVGe3Rc";
+var REGISTRY_SHEET_ALIASES = ["Página1", "PÃ¡gina1", "Pagina1"];
+var CHECKIN_SHEET_ALIASES = ["USERS_checkin", "USERS", "Users", "users", "checkin", "CHECKIN"];
+var PLACAR_SHEET_NAME = "placar";
+var USERS_CACHE_SHEET_NAME = "USERS_CACHE";
+var FOLHETOS_SHEET_NAME = "FOLHETOS";
+var TEXTS_SHEET_NAME = "TEXTS";
+var TEXT_VERSIONS_SHEET_NAME = "TEXT_VERSIONS";
+var TEXT_FEEDBACK_SHEET_NAME = "TEXT_FEEDBACK";
+var TEXT_ACTIVITY_LOG_SHEET_NAME = "TEXT_ACTIVITY_LOG";
 
 var FORM_HEADERS = [
   "Carimbo de data/hora",
@@ -65,8 +66,22 @@ var USERS_CACHE_HEADERS = [
   "UPDATED_AT"
 ];
 
+var FOLHETOS_HEADERS = [
+  "FOLHETO_ID",
+  "PARTICIPANT_ID",
+  "CHECKIN_USER_ID",
+  "TEACHER_GROUP",
+  "TITULO",
+  "CREATED_AT",
+  "UPDATED_AT",
+  "APP_VARIANT"
+];
+
 var TEXTS_HEADERS = [
   "TEXT_ID",
+  "FOLHETO_ID",
+  "FOLHETO_TITULO",
+  "ORDEM_NO_FOLHETO",
   "PARTICIPANT_ID",
   "CHECKIN_USER_ID",
   "TEACHER_GROUP",
@@ -79,12 +94,16 @@ var TEXTS_HEADERS = [
   "CURRENT_VERSION_ID",
   "COMPARTILHADO_EDUCADOR",
   "SELECIONADO_ANTOLOGIA",
+  "REABERTURA_SOLICITADA",
   "APP_VARIANT"
 ];
 
 var TEXT_VERSIONS_HEADERS = [
   "VERSION_ID",
   "TEXT_ID",
+  "FOLHETO_ID",
+  "FOLHETO_TITULO",
+  "ORDEM_NO_FOLHETO",
   "PARTICIPANT_ID",
   "CHECKIN_USER_ID",
   "TEACHER_GROUP",
@@ -138,6 +157,9 @@ function doPost(e) {
   }
 
   try {
+    if (action === "create_folheto") {
+      return jsonOutput_(handleCreateFolheto_(payload));
+    }
     if (action === "create_text") {
       return jsonOutput_(handleCreateText_(payload));
     }
@@ -152,6 +174,9 @@ function doPost(e) {
     }
     if (action === "archive_text") {
       return jsonOutput_(handleArchiveText_(payload));
+    }
+    if (action === "send_social_email") {
+      return jsonOutput_(handleSendSocialEmail_(payload));
     }
 
     return jsonOutput_({
@@ -558,6 +583,9 @@ function getSextilhaSheet_(sheetName) {
   if (sheetName === USERS_CACHE_SHEET_NAME) {
     return ensureSheetConfigured_(getRegistrySpreadsheet_(), USERS_CACHE_SHEET_NAME, [USERS_CACHE_SHEET_NAME], USERS_CACHE_HEADERS, "#d9edf7");
   }
+  if (sheetName === FOLHETOS_SHEET_NAME) {
+    return ensureSheetConfigured_(getRegistrySpreadsheet_(), FOLHETOS_SHEET_NAME, [FOLHETOS_SHEET_NAME], FOLHETOS_HEADERS, "#d0e0e3");
+  }
   if (sheetName === TEXTS_SHEET_NAME) {
     return ensureSheetConfigured_(getRegistrySpreadsheet_(), TEXTS_SHEET_NAME, [TEXTS_SHEET_NAME], TEXTS_HEADERS, "#fce5cd");
   }
@@ -835,6 +863,7 @@ function handleGetUserDashboard_(params) {
   var identity = resolveAuthorizedParticipant_(params);
   upsertUsersCacheRecord_(identity);
   var texts = getParticipantTextSummaries_(identity.participantId);
+  var folhetos = getParticipantFolhetoSummaries_(identity.participantId);
 
   return {
     ok: true,
@@ -844,11 +873,13 @@ function handleGetUserDashboard_(params) {
     name: identity.name || "",
     email: identity.email || "",
     teacherGroup: identity.teacherGroup || "",
+    folhetoCount: folhetos.length,
     textCount: texts.length,
     completedCount: texts.filter(function (text) {
       return normalizeTextStatus_(text.status) === "concluida";
     }).length,
     lastEditedAt: texts.length ? texts[0].updatedAt : "",
+    folhetos: folhetos,
     texts: texts
   };
 }
@@ -910,6 +941,31 @@ function handleGetTextVersions_(params) {
   };
 }
 
+function handleCreateFolheto_(payload) {
+  ensureSextilhaInfrastructure_();
+  var identity = resolveAuthorizedParticipant_(payload);
+  var now = new Date();
+  var folhetoRecord = {
+    FOLHETO_ID: buildEntityId_("folheto"),
+    PARTICIPANT_ID: identity.participantId,
+    CHECKIN_USER_ID: identity.checkinUserId,
+    TEACHER_GROUP: identity.teacherGroup || "",
+    TITULO: String(payload.title || "").trim() || "Folheto sem titulo",
+    CREATED_AT: now,
+    UPDATED_AT: now,
+    APP_VARIANT: String(payload.appVariant || DEFAULT_APP_VARIANT).trim() || DEFAULT_APP_VARIANT
+  };
+
+  upsertUsersCacheRecord_(identity);
+  upsertFolhetoSheetRecord_(folhetoRecord);
+
+  return {
+    ok: true,
+    status: "success",
+    folheto: mapFolhetoRecord_(folhetoRecord)
+  };
+}
+
 function handleCreateText_(payload) {
   ensureSextilhaInfrastructure_();
   var identity = resolveAuthorizedParticipant_(payload);
@@ -921,6 +977,9 @@ function handleCreateText_(payload) {
 
   var textRecord = {
     TEXT_ID: buildEntityId_("text"),
+    FOLHETO_ID: String(payload.folhetoId || "").trim(),
+    FOLHETO_TITULO: String(payload.folhetoTitle || "").trim(),
+    ORDEM_NO_FOLHETO: Number(payload.folhetoOrder) || 0,
     PARTICIPANT_ID: identity.participantId,
     CHECKIN_USER_ID: identity.checkinUserId,
     TEACHER_GROUP: identity.teacherGroup || "",
@@ -933,13 +992,27 @@ function handleCreateText_(payload) {
     CURRENT_VERSION_ID: "",
     COMPARTILHADO_EDUCADOR: false,
     SELECIONADO_ANTOLOGIA: false,
+    REABERTURA_SOLICITADA: false,
     APP_VARIANT: String(payload.appVariant || DEFAULT_APP_VARIANT).trim() || DEFAULT_APP_VARIANT
   };
 
   appendRecordToSheet_(textsSheet, textTable.headers, textRecord);
+  if (textRecord.FOLHETO_ID) {
+    upsertFolhetoSheetRecord_({
+      FOLHETO_ID: textRecord.FOLHETO_ID,
+      PARTICIPANT_ID: identity.participantId,
+      CHECKIN_USER_ID: identity.checkinUserId,
+      TEACHER_GROUP: identity.teacherGroup || "",
+      TITULO: textRecord.FOLHETO_TITULO || "Folheto sem titulo",
+      UPDATED_AT: now,
+      APP_VARIANT: textRecord.APP_VARIANT
+    });
+  }
   logTextActivity_(identity.participantId, textRecord.TEXT_ID, "create_text", {
     title: textRecord.TITULO,
-    theme: textRecord.TEMA
+    theme: textRecord.TEMA,
+    folhetoId: textRecord.FOLHETO_ID || "",
+    folhetoOrder: textRecord.ORDEM_NO_FOLHETO || 0
   });
 
   return {
@@ -976,6 +1049,9 @@ function handleSaveTextVersion_(payload) {
   var versionRecord = {
     VERSION_ID: buildEntityId_("version"),
     TEXT_ID: textId,
+    FOLHETO_ID: String(textRecord.FOLHETO_ID || payload.folhetoId || "").trim(),
+    FOLHETO_TITULO: String(textRecord.FOLHETO_TITULO || payload.folhetoTitle || "").trim(),
+    ORDEM_NO_FOLHETO: Number(textRecord.ORDEM_NO_FOLHETO || payload.folhetoOrder || 0) || 0,
     PARTICIPANT_ID: identity.participantId,
     CHECKIN_USER_ID: identity.checkinUserId,
     TEACHER_GROUP: identity.teacherGroup || "",
@@ -1004,6 +1080,9 @@ function handleSaveTextVersion_(payload) {
   var versionsTable = getSheetTable_(versionsSheet);
   appendRecordToSheet_(versionsSheet, versionsTable.headers, versionRecord);
 
+  textRecord.FOLHETO_ID = versionRecord.FOLHETO_ID;
+  textRecord.FOLHETO_TITULO = versionRecord.FOLHETO_TITULO;
+  textRecord.ORDEM_NO_FOLHETO = versionRecord.ORDEM_NO_FOLHETO;
   textRecord.TITULO = versionRecord.TITULO;
   textRecord.TEMA = versionRecord.TEMA;
   textRecord.OBSERVACAO = versionRecord.OBSERVACAO;
@@ -1011,14 +1090,28 @@ function handleSaveTextVersion_(payload) {
   textRecord.UPDATED_AT = now;
   textRecord.CURRENT_VERSION_ID = versionRecord.VERSION_ID;
   textRecord.COMPARTILHADO_EDUCADOR = sharedWithEducator;
+  textRecord.REABERTURA_SOLICITADA = toBoolean_(textRecord.REABERTURA_SOLICITADA);
 
   var textsSheet = getSextilhaSheet_(TEXTS_SHEET_NAME);
   var textsTable = getSheetTable_(textsSheet);
   updateRecordInSheet_(textsSheet, textsTable.headers, textEntry.rowNumber, textRecord);
+  if (textRecord.FOLHETO_ID) {
+    upsertFolhetoSheetRecord_({
+      FOLHETO_ID: textRecord.FOLHETO_ID,
+      PARTICIPANT_ID: identity.participantId,
+      CHECKIN_USER_ID: identity.checkinUserId,
+      TEACHER_GROUP: identity.teacherGroup || "",
+      TITULO: textRecord.FOLHETO_TITULO || "Folheto sem titulo",
+      UPDATED_AT: now,
+      APP_VARIANT: textRecord.APP_VARIANT
+    });
+  }
   logTextActivity_(identity.participantId, textId, "save_text_version", {
     versionId: versionRecord.VERSION_ID,
     versionNumber: versionNumber,
-    status: status
+    status: status,
+    folhetoId: textRecord.FOLHETO_ID || "",
+    folhetoOrder: textRecord.ORDEM_NO_FOLHETO || 0
   });
   var aiFeedback = toBoolean_(payload.includeAiFeedback)
     ? generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, indicators)
@@ -1040,23 +1133,44 @@ function handleGenerateTextFeedback_(payload) {
   var versionId = String(payload.versionId || "").trim();
   if (!textId) throw new Error("textId obrigatorio.");
 
-  var textEntry = getOwnedTextEntry_(identity.participantId, textId);
-  var versions = getParticipantVersionsForText_(identity.participantId, textId);
-  var versionEntry = versionId
-    ? getOwnedVersionEntry_(identity.participantId, textId, versionId)
-    : getCurrentVersionEntry_(textEntry.record, versions);
+  var sourceStore = normalizeLooseText_(payload.sourceStore || "");
+  var textRecord = null;
+  var versionRecord = null;
+  var versionIndicators = null;
 
-  if (!versionEntry) {
-    throw new Error("Versao nao encontrada para gerar devolutiva.");
+  if (sourceStore === "firestore" || hasInlineFeedbackPayload_(payload)) {
+    var snapshot = buildFeedbackRecordsFromPayload_(identity, payload);
+    textRecord = snapshot.textRecord;
+    versionRecord = snapshot.versionRecord;
+    versionIndicators = snapshot.indicators;
+  } else {
+    var textEntry = getOwnedTextEntry_(identity.participantId, textId);
+    var versions = getParticipantVersionsForText_(identity.participantId, textId);
+    var versionEntry = versionId
+      ? getOwnedVersionEntry_(identity.participantId, textId, versionId)
+      : getCurrentVersionEntry_(textEntry.record, versions);
+
+    if (!versionEntry) {
+      throw new Error("Versao nao encontrada para gerar devolutiva.");
+    }
+
+    textRecord = textEntry.record;
+    versionRecord = versionEntry.record;
+    versionIndicators = buildVersionIndicatorsPayload_(versionRecord);
   }
 
-  var existingFeedback = getAiFeedbackForVersion_(identity.participantId, versionId || versionEntry.record.VERSION_ID);
+  var effectiveVersionId = String(versionId || versionRecord.VERSION_ID || "").trim();
+  if (!effectiveVersionId) {
+    throw new Error("versionId obrigatorio para gerar devolutiva.");
+  }
+
+  var existingFeedback = getAiFeedbackForVersion_(identity.participantId, effectiveVersionId);
   if (existingFeedback) {
     return {
       ok: true,
       status: "success",
       reused: true,
-      version: mapVersionRecord_(versionEntry.record),
+      version: mapVersionRecord_(versionRecord),
       aiFeedback: {
         source: String(existingFeedback.EDUCATOR_ID || "").trim() === "INANNA_GEMINI" ? "gemini" : "inanna",
         tone: "success",
@@ -1065,14 +1179,137 @@ function handleGenerateTextFeedback_(payload) {
     };
   }
 
-  var versionIndicators = buildVersionIndicatorsPayload_(versionEntry.record);
-  var aiFeedback = generateInannaFeedbackIfEnabled_(identity, textEntry.record, versionEntry.record, versionIndicators);
+  var aiFeedback = generateInannaFeedbackIfEnabled_(identity, textRecord, versionRecord, versionIndicators);
 
   return {
     ok: true,
     status: "success",
-    version: mapVersionRecord_(versionEntry.record),
+    version: mapVersionRecord_(versionRecord),
     aiFeedback: aiFeedback
+  };
+}
+
+function hasInlineFeedbackPayload_(payload) {
+  if (!payload) return false;
+
+  if (Array.isArray(payload.verses)) {
+    var hasAnyVerse = payload.verses.some(function (item) {
+      return !!String(item || "").trim();
+    });
+    if (hasAnyVerse) return true;
+  }
+
+  return !!String(
+    payload.title ||
+    payload.theme ||
+    payload.note ||
+    payload.observation ||
+    ""
+  ).trim();
+}
+
+function buildFeedbackRecordsFromPayload_(identity, payload) {
+  var textId = String(payload.textId || "").trim();
+  var versionId = String(payload.versionId || "").trim() || buildEntityId_("version");
+  var verses = normalizeVersesArray_(payload.verses);
+  var title = String(payload.title || "").trim();
+  var theme = String(payload.theme || "").trim();
+  var note = String(payload.note || payload.observation || "").trim();
+  var sharedWithEducator = toBoolean_(payload.sharedWithEducator);
+  var versionNumber = Number(
+    payload.versionNumber ||
+    (payload.indicators && (
+      payload.indicators.numberOfRevisions ||
+      payload.indicators.number_of_revisions
+    )) ||
+    0
+  ) || 1;
+  var status = normalizeTextStatus_(payload.status || "rascunho", sharedWithEducator);
+  var calculatedIndicators = calculateSextilhaIndicators_({
+    title: title,
+    theme: theme,
+    note: note,
+    verses: verses,
+    revisionCount: versionNumber
+  });
+  var indicators = mergeFeedbackIndicatorPayload_(calculatedIndicators, payload.indicators);
+  var textCreatedAt = payload.textCreatedAt || payload.createdAt || new Date();
+  var versionCreatedAt = payload.versionCreatedAt || payload.updatedAt || payload.createdAt || new Date();
+  var folhetoId = String(payload.folhetoId || "").trim();
+  var folhetoTitle = String(payload.folhetoTitle || "").trim();
+  var folhetoOrder = Number(payload.folhetoOrder) || 0;
+
+  return {
+    textRecord: {
+      TEXT_ID: textId,
+      FOLHETO_ID: folhetoId,
+      FOLHETO_TITULO: folhetoTitle,
+      ORDEM_NO_FOLHETO: folhetoOrder,
+      PARTICIPANT_ID: identity.participantId,
+      CHECKIN_USER_ID: identity.checkinUserId,
+      TEACHER_GROUP: identity.teacherGroup || "",
+      APP_VARIANT: identity.appVariant || DEFAULT_APP_VARIANT,
+      TITULO: title,
+      TEMA: theme,
+      OBSERVACAO: note,
+      STATUS: status,
+      CREATED_AT: textCreatedAt,
+      UPDATED_AT: versionCreatedAt,
+      CURRENT_VERSION_ID: versionId,
+      COMPARTILHADO_EDUCADOR: sharedWithEducator,
+      SELECIONADO_ANTOLOGIA: false,
+      REABERTURA_SOLICITADA: false
+    },
+    versionRecord: {
+      VERSION_ID: versionId,
+      TEXT_ID: textId,
+      FOLHETO_ID: folhetoId,
+      FOLHETO_TITULO: folhetoTitle,
+      ORDEM_NO_FOLHETO: folhetoOrder,
+      PARTICIPANT_ID: identity.participantId,
+      CHECKIN_USER_ID: identity.checkinUserId,
+      TEACHER_GROUP: identity.teacherGroup || "",
+      VERSION_NUMBER: versionNumber,
+      TITULO: title,
+      TEMA: theme,
+      OBSERVACAO: note,
+      VERSO_1: verses[0],
+      VERSO_2: verses[1],
+      VERSO_3: verses[2],
+      VERSO_4: verses[3],
+      VERSO_5: verses[4],
+      VERSO_6: verses[5],
+      STATUS: status,
+      COMPARTILHADO_EDUCADOR: sharedWithEducator,
+      COMPLETUDE: indicators.completude,
+      FECHAMENTO: indicators.fechamento,
+      RIMA_STATUS: indicators.rimaStatus,
+      COERENCIA_TEMATICA: indicators.coerenciaTematica,
+      REPETICAO_LEXICAL: indicators.repeticaoLexical,
+      REVISION_NOTE: String(payload.revisionNote || "").trim(),
+      CREATED_AT: versionCreatedAt
+    },
+    indicators: indicators
+  };
+}
+
+function mergeFeedbackIndicatorPayload_(baseIndicators, payloadIndicators) {
+  var source = payloadIndicators || {};
+  var revisionCount = Number(
+    source.numberOfRevisions ||
+    source.number_of_revisions ||
+    baseIndicators.numberOfRevisions ||
+    0
+  );
+
+  return {
+    completude: String(source.completude || baseIndicators.completude || "").trim(),
+    fechamento: String(source.fechamento || baseIndicators.fechamento || "").trim(),
+    rimaStatus: String(source.rimaStatus || source.rima_status || baseIndicators.rimaStatus || "").trim(),
+    coerenciaTematica: String(source.coerenciaTematica || source.coerencia_tematica || baseIndicators.coerenciaTematica || "").trim(),
+    repeticaoLexical: String(source.repeticaoLexical || source.repeticao_lexical || baseIndicators.repeticaoLexical || "").trim(),
+    numberOfRevisions: revisionCount,
+    maturacao: String(source.maturacao || baseIndicators.maturacao || buildMaturationLabel_(revisionCount)).trim()
   };
 }
 
@@ -1087,21 +1324,36 @@ function handleUpdateTextStatus_(payload) {
   var sharedWithEducator = payload.sharedWithEducator === undefined ? toBoolean_(textRecord.COMPARTILHADO_EDUCADOR) : toBoolean_(payload.sharedWithEducator);
   var selectedForAnthology = payload.selectedForAnthology === undefined ? toBoolean_(textRecord.SELECIONADO_ANTOLOGIA) : toBoolean_(payload.selectedForAnthology);
   var status = normalizeTextStatus_(payload.status || textRecord.STATUS || "rascunho", sharedWithEducator);
+  var reopenRequested = payload.reopenRequested === undefined ? toBoolean_(textRecord.REABERTURA_SOLICITADA) : toBoolean_(payload.reopenRequested);
+  if (status !== "concluida") reopenRequested = false;
 
   textRecord.STATUS = status;
   textRecord.COMPARTILHADO_EDUCADOR = sharedWithEducator;
   textRecord.SELECIONADO_ANTOLOGIA = selectedForAnthology;
+  textRecord.REABERTURA_SOLICITADA = reopenRequested;
   textRecord.UPDATED_AT = new Date();
 
   var textsSheet = getSextilhaSheet_(TEXTS_SHEET_NAME);
   var textsTable = getSheetTable_(textsSheet);
   updateRecordInSheet_(textsSheet, textsTable.headers, textEntry.rowNumber, textRecord);
+  if (textRecord.FOLHETO_ID) {
+    upsertFolhetoSheetRecord_({
+      FOLHETO_ID: textRecord.FOLHETO_ID,
+      PARTICIPANT_ID: identity.participantId,
+      CHECKIN_USER_ID: identity.checkinUserId,
+      TEACHER_GROUP: identity.teacherGroup || "",
+      TITULO: textRecord.FOLHETO_TITULO || "Folheto sem titulo",
+      UPDATED_AT: textRecord.UPDATED_AT,
+      APP_VARIANT: textRecord.APP_VARIANT
+    });
+  }
   syncCurrentVersionStatus_(textRecord);
 
   logTextActivity_(identity.participantId, textId, "update_text_status", {
     status: status,
     sharedWithEducator: sharedWithEducator,
-    selectedForAnthology: selectedForAnthology
+    selectedForAnthology: selectedForAnthology,
+    reopenRequested: reopenRequested
   });
 
   var versions = getParticipantVersionsForText_(identity.participantId, textId);
@@ -1120,8 +1372,62 @@ function handleArchiveText_(payload) {
   return handleUpdateTextStatus_(payload);
 }
 
+function handleSendSocialEmail_(payload) {
+  ensureSextilhaInfrastructure_();
+  var identity = resolveAuthorizedParticipant_(payload);
+  var recipientEmail = normalizeEmail_(payload.email || identity.email || "");
+  if (!recipientEmail) throw new Error("Nao encontrei um e-mail valido para enviar o cartao postal.");
+
+  var title = String(payload.title || "Sua sextilha com a Inanna").trim();
+  var theme = String(payload.theme || "Tema livre").trim();
+  var folhetoTitle = String(payload.folhetoTitle || "").trim();
+  var fileName = String(payload.fileName || "sextilha-inanna.jpg").trim() || "sextilha-inanna.jpg";
+  var mimeType = String(payload.imageMimeType || "image/jpeg").trim() || "image/jpeg";
+  var imageBase64 = String(payload.imageBase64 || "").trim();
+  if (!imageBase64) throw new Error("A imagem do cartao postal nao chegou ao Apps Script.");
+
+  var verses = normalizeVersesArray_(payload.verses).filter(function (verse) {
+    return !!String(verse || "").trim();
+  });
+  var attachment = Utilities.newBlob(Utilities.base64Decode(imageBase64), mimeType, fileName);
+  var authorName = String(identity.name || payload.name || recipientEmail).trim() || recipientEmail;
+  var emailBody = [
+    "<div style=\"font-family:Arial,sans-serif;color:#2b2118;line-height:1.7;\">",
+    "<p>Ola, " + escapeHtmlForEmail_(authorName) + ".</p>",
+    "<p>Sua sextilha foi finalizada e a Inanna preparou um cartao postal para voce guardar e partilhar.</p>",
+    folhetoTitle ? "<p><strong>Folheto:</strong> " + escapeHtmlForEmail_(folhetoTitle) + "</p>" : "",
+    "<p><strong>Titulo:</strong> " + escapeHtmlForEmail_(title) + "<br><strong>Tema:</strong> " + escapeHtmlForEmail_(theme) + "</p>",
+    verses.length ? "<pre style=\"padding:16px;border-radius:14px;background:#f8eee2;border:1px solid #e7ccb2;white-space:pre-wrap;font-family:Georgia,serif;font-size:17px;\">" + escapeHtmlForEmail_(verses.join("\n")) + "</pre>" : "",
+    "<p>O cartao segue em anexo, pronto para circular com o selo da Inanna.</p>",
+    "<p style=\"color:#7c4a22;font-weight:700;\">Escrito com a Inanna 🐾 | @cordel2pontozero</p>",
+    "</div>"
+  ].join("");
+
+  MailApp.sendEmail({
+    to: recipientEmail,
+    subject: "Seu cartao postal de cordel chegou: " + title,
+    htmlBody: emailBody,
+    attachments: [attachment],
+    name: "Inanna"
+  });
+
+  logTextActivity_(identity.participantId, String(payload.textId || "").trim(), "send_social_email", {
+    versionId: String(payload.versionId || "").trim(),
+    recipientEmail: recipientEmail,
+    fileName: fileName
+  });
+
+  return {
+    ok: true,
+    status: "success",
+    recipientEmail: recipientEmail,
+    fileName: fileName
+  };
+}
+
 function ensureSextilhaInfrastructure_() {
   getSextilhaSheet_(USERS_CACHE_SHEET_NAME);
+  getSextilhaSheet_(FOLHETOS_SHEET_NAME);
   getSextilhaSheet_(TEXTS_SHEET_NAME);
   getSextilhaSheet_(TEXT_VERSIONS_SHEET_NAME);
   getSextilhaSheet_(TEXT_FEEDBACK_SHEET_NAME);
@@ -1136,27 +1442,23 @@ function handleGetFirebaseCustomToken_(payload) {
   return createFirebaseCustomToken_(identity);
 }
 
-function createFirebaseCustomToken_(identity) {
-  var props = PropertiesService.getScriptProperties();
-  var serviceAccountEmail = String(
-    props.getProperty("INANNA_FIREBASE_SERVICE_ACCOUNT_EMAIL") ||
-    props.getProperty("FIREBASE_SERVICE_ACCOUNT_EMAIL") ||
-    ""
-  ).trim();
-  var serviceAccountPrivateKey = normalizePrivateKey_(
-    props.getProperty("INANNA_FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ||
-    props.getProperty("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ||
-    ""
-  );
-  var projectId = String(
-    props.getProperty("INANNA_FIREBASE_PROJECT_ID") ||
-    props.getProperty("FIREBASE_PROJECT_ID") ||
-    ""
-  ).trim();
+function simularMigracaoSextilhasParaFirestore() {
+  return runSextilhaFirestoreMigration_({
+    dryRun: true
+  });
+}
 
-  if (!serviceAccountEmail || !serviceAccountPrivateKey || !projectId) {
-    throw new Error("Firebase ainda nao foi configurado no Apps Script. Defina SERVICE_ACCOUNT_EMAIL, SERVICE_ACCOUNT_PRIVATE_KEY e PROJECT_ID.");
-  }
+function migrarSextilhasParaFirestore() {
+  return runSextilhaFirestoreMigration_({
+    dryRun: false
+  });
+}
+
+function createFirebaseCustomToken_(identity) {
+  var firebaseConfig = getFirebaseServiceAccountConfig_();
+  var serviceAccountEmail = firebaseConfig.serviceAccountEmail;
+  var serviceAccountPrivateKey = firebaseConfig.serviceAccountPrivateKey;
+  var projectId = firebaseConfig.projectId;
 
   var nowInSeconds = Math.floor(Date.now() / 1000);
   var expiresAtSeconds = nowInSeconds + 3600;
@@ -1192,6 +1494,303 @@ function createFirebaseCustomToken_(identity) {
     expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
     projectId: projectId,
     uid: payload.uid
+  };
+}
+
+function runSextilhaFirestoreMigration_(options) {
+  options = options || {};
+  ensureSextilhaInfrastructure_();
+
+  var firebaseConfig = getFirebaseServiceAccountConfig_();
+  var accessToken = options.dryRun ? "" : createFirestoreAccessToken_(firebaseConfig);
+  var textsTable = getSheetTable_(getSextilhaSheet_(TEXTS_SHEET_NAME));
+  var versionsTable = getSheetTable_(getSextilhaSheet_(TEXT_VERSIONS_SHEET_NAME));
+  var versionsByTextId = {};
+  var uniqueParticipants = {};
+  var summary = {
+    ok: true,
+    dryRun: !!options.dryRun,
+    projectId: firebaseConfig.projectId,
+    textCount: 0,
+    versionCount: 0,
+    migratedTexts: 0,
+    migratedVersions: 0,
+    skippedTexts: 0,
+    skippedVersions: 0,
+    participants: 0,
+    notes: []
+  };
+
+  for (var i = 0; i < versionsTable.rows.length; i++) {
+    var versionRecord = versionsTable.rows[i].record;
+    var versionTextId = String(versionRecord.TEXT_ID || "").trim();
+    var versionParticipantId = String(versionRecord.PARTICIPANT_ID || "").trim();
+    if (!versionTextId || !versionParticipantId) {
+      summary.skippedVersions++;
+      continue;
+    }
+
+    if (!versionsByTextId[versionTextId]) versionsByTextId[versionTextId] = [];
+    versionsByTextId[versionTextId].push(versionRecord);
+  }
+
+  Object.keys(versionsByTextId).forEach(function (textId) {
+    versionsByTextId[textId].sort(function (a, b) {
+      return (Number(a.VERSION_NUMBER) || 0) - (Number(b.VERSION_NUMBER) || 0);
+    });
+  });
+
+  for (var j = 0; j < textsTable.rows.length; j++) {
+    var textRecord = textsTable.rows[j].record;
+    var textId = String(textRecord.TEXT_ID || "").trim();
+    var participantId = String(textRecord.PARTICIPANT_ID || "").trim();
+    if (!textId || !participantId) {
+      summary.skippedTexts++;
+      continue;
+    }
+
+    uniqueParticipants[participantId] = true;
+    var versionRecords = versionsByTextId[textId] || [];
+    var currentVersionRecord = getCurrentVersionRecord_(textRecord, versionRecords);
+    var firestoreTextRecord = buildFirestoreTextRecordFromSheets_(textRecord, currentVersionRecord, versionRecords.length);
+    summary.textCount++;
+    summary.versionCount += versionRecords.length;
+
+    if (!options.dryRun) {
+      firestoreUpsertDocument_(
+        firebaseConfig.projectId,
+        accessToken,
+        ["participants", participantId, "texts", textId],
+        firestoreTextRecord
+      );
+    }
+    summary.migratedTexts++;
+
+    for (var k = 0; k < versionRecords.length; k++) {
+      var firestoreVersionRecord = buildFirestoreVersionRecordFromSheets_(versionRecords[k]);
+      if (!options.dryRun) {
+        firestoreUpsertDocument_(
+          firebaseConfig.projectId,
+          accessToken,
+          ["participants", participantId, "texts", textId, "versions", firestoreVersionRecord.versionId],
+          firestoreVersionRecord
+        );
+      }
+      summary.migratedVersions++;
+    }
+  }
+
+  summary.participants = Object.keys(uniqueParticipants).length;
+  if (summary.dryRun) {
+    summary.notes.push("Nenhum documento foi escrito no Firestore.");
+  } else {
+    summary.notes.push("Migracao concluida com upsert de textos e versoes.");
+  }
+  Logger.log(JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+function getFirebaseServiceAccountConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  var serviceAccountEmail = String(
+    props.getProperty("INANNA_FIREBASE_SERVICE_ACCOUNT_EMAIL") ||
+    props.getProperty("FIREBASE_SERVICE_ACCOUNT_EMAIL") ||
+    ""
+  ).trim();
+  var serviceAccountPrivateKey = normalizePrivateKey_(
+    props.getProperty("INANNA_FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ||
+    props.getProperty("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY") ||
+    ""
+  );
+  var projectId = String(
+    props.getProperty("INANNA_FIREBASE_PROJECT_ID") ||
+    props.getProperty("FIREBASE_PROJECT_ID") ||
+    ""
+  ).trim();
+
+  if (!serviceAccountEmail || !serviceAccountPrivateKey || !projectId) {
+    throw new Error("Firebase ainda nao foi configurado no Apps Script. Defina SERVICE_ACCOUNT_EMAIL, SERVICE_ACCOUNT_PRIVATE_KEY e PROJECT_ID.");
+  }
+
+  return {
+    serviceAccountEmail: serviceAccountEmail,
+    serviceAccountPrivateKey: serviceAccountPrivateKey,
+    projectId: projectId
+  };
+}
+
+function createFirestoreAccessToken_(firebaseConfig) {
+  var nowInSeconds = Math.floor(Date.now() / 1000);
+  var expiresAtSeconds = nowInSeconds + 3600;
+  var header = {
+    alg: "RS256",
+    typ: "JWT"
+  };
+  var payload = {
+    iss: firebaseConfig.serviceAccountEmail,
+    scope: "https://www.googleapis.com/auth/datastore",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: nowInSeconds,
+    exp: expiresAtSeconds
+  };
+
+  var encodedHeader = Utilities.base64EncodeWebSafe(JSON.stringify(header), Utilities.Charset.UTF_8).replace(/=+$/g, "");
+  var encodedPayload = Utilities.base64EncodeWebSafe(JSON.stringify(payload), Utilities.Charset.UTF_8).replace(/=+$/g, "");
+  var unsignedJwt = encodedHeader + "." + encodedPayload;
+  var signatureBytes = Utilities.computeRsaSha256Signature(unsignedJwt, firebaseConfig.serviceAccountPrivateKey);
+  var encodedSignature = Utilities.base64EncodeWebSafe(signatureBytes).replace(/=+$/g, "");
+  var assertion = unsignedJwt + "." + encodedSignature;
+
+  var response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post",
+    muteHttpExceptions: true,
+    payload: {
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: assertion
+    }
+  });
+  var responseCode = response.getResponseCode();
+  var responseBody = response.getContentText() || "{}";
+  if (responseCode >= 400) {
+    throw new Error("Nao foi possivel obter access token do Firestore: " + responseBody);
+  }
+
+  var tokenPayload = JSON.parse(responseBody);
+  if (!tokenPayload.access_token) {
+    throw new Error("Resposta sem access_token ao autenticar no Firestore.");
+  }
+
+  return tokenPayload.access_token;
+}
+
+function buildFirestoreTextRecordFromSheets_(textRecord, currentVersionRecord, versionCount) {
+  var textDetail = mapTextDetail_(textRecord, currentVersionRecord, versionCount);
+  return {
+    textId: textDetail.textId,
+    folhetoId: textDetail.folhetoId,
+    folhetoTitle: textDetail.folhetoTitle,
+    folhetoOrder: textDetail.folhetoOrder,
+    participantId: textDetail.participantId,
+    checkinUserId: textDetail.checkinUserId,
+    teacherGroup: textDetail.teacherGroup,
+    title: textDetail.title,
+    theme: textDetail.theme,
+    note: textDetail.note,
+    status: textDetail.status,
+    createdAt: textDetail.createdAt,
+    updatedAt: textDetail.updatedAt,
+    currentVersionId: textDetail.currentVersionId,
+    versionCount: textDetail.versionCount,
+    sharedWithEducator: textDetail.sharedWithEducator,
+    selectedForAnthology: textDetail.selectedForAnthology,
+    reopenRequested: textDetail.reopenRequested,
+    indicators: textDetail.indicators,
+    verses: textDetail.verses,
+    latestVersion: textDetail.latestVersion,
+    appVariant: String(textRecord.APP_VARIANT || DEFAULT_APP_VARIANT).trim() || DEFAULT_APP_VARIANT
+  };
+}
+
+function buildFirestoreVersionRecordFromSheets_(versionRecord) {
+  var mappedVersion = mapVersionRecord_(versionRecord);
+  mappedVersion.checkinUserId = String(versionRecord.CHECKIN_USER_ID || "").trim();
+  mappedVersion.teacherGroup = String(versionRecord.TEACHER_GROUP || "").trim();
+  return mappedVersion;
+}
+
+function firestoreUpsertDocument_(projectId, accessToken, pathSegments, record) {
+  var url = buildFirestoreDocumentUrl_(projectId, pathSegments);
+  var response = UrlFetchApp.fetch(url, {
+    method: "patch",
+    contentType: "application/json",
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: "Bearer " + accessToken
+    },
+    payload: JSON.stringify({
+      fields: toFirestoreMapFields_(record)
+    })
+  });
+  var responseCode = response.getResponseCode();
+  var responseBody = response.getContentText() || "{}";
+
+  if (responseCode >= 400) {
+    throw new Error("Falha ao gravar documento no Firestore (" + pathSegments.join("/") + "): " + responseBody);
+  }
+
+  return JSON.parse(responseBody);
+}
+
+function buildFirestoreDocumentUrl_(projectId, pathSegments) {
+  var encodedPath = (pathSegments || []).map(function (segment) {
+    return encodeURIComponent(String(segment || "").trim());
+  }).join("/");
+  return "https://firestore.googleapis.com/v1/projects/" + encodeURIComponent(projectId) + "/databases/(default)/documents/" + encodedPath;
+}
+
+function toFirestoreMapFields_(record) {
+  var fields = {};
+  var source = record || {};
+  Object.keys(source).forEach(function (key) {
+    if (source[key] === undefined) return;
+    fields[key] = toFirestoreValue_(source[key]);
+  });
+  return fields;
+}
+
+function toFirestoreValue_(value) {
+  if (value === null) {
+    return {
+      nullValue: null
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return {
+      arrayValue: {
+        values: value.map(function (item) {
+          return toFirestoreValue_(item);
+        })
+      }
+    };
+  }
+
+  var valueType = typeof value;
+  if (valueType === "boolean") {
+    return {
+      booleanValue: value
+    };
+  }
+  if (valueType === "number") {
+    if (!isFinite(value)) {
+      return {
+        stringValue: String(value)
+      };
+    }
+    if (Math.floor(value) === value) {
+      return {
+        integerValue: String(value)
+      };
+    }
+    return {
+      doubleValue: value
+    };
+  }
+  if (Object.prototype.toString.call(value) === "[object Date]") {
+    return {
+      stringValue: value.toISOString()
+    };
+  }
+  if (valueType === "object") {
+    return {
+      mapValue: {
+        fields: toFirestoreMapFields_(value)
+      }
+    };
+  }
+
+  return {
+    stringValue: String(value)
   };
 }
 
@@ -1644,6 +2243,40 @@ function upsertUsersCacheRecord_(identity) {
   }
 }
 
+function upsertFolhetoSheetRecord_(folhetoRecord) {
+  var sheet = getSextilhaSheet_(FOLHETOS_SHEET_NAME);
+  var table = getSheetTable_(sheet);
+  var folhetoId = String(folhetoRecord && folhetoRecord.FOLHETO_ID || "").trim();
+  if (!folhetoId) {
+    throw new Error("FOLHETO_ID obrigatorio para registrar folheto.");
+  }
+
+  var existing = null;
+  for (var i = 0; i < table.rows.length; i++) {
+    if (String(table.rows[i].record.FOLHETO_ID || "").trim() === folhetoId) {
+      existing = table.rows[i];
+      break;
+    }
+  }
+
+  var now = new Date();
+  var record = existing ? cloneRecord_(existing.record) : {};
+  record.FOLHETO_ID = folhetoId;
+  record.PARTICIPANT_ID = String(folhetoRecord.PARTICIPANT_ID || "").trim();
+  record.CHECKIN_USER_ID = String(folhetoRecord.CHECKIN_USER_ID || "").trim();
+  record.TEACHER_GROUP = String(folhetoRecord.TEACHER_GROUP || "").trim();
+  record.TITULO = String(folhetoRecord.TITULO || "Folheto sem titulo").trim() || "Folheto sem titulo";
+  record.CREATED_AT = existing ? existing.record.CREATED_AT : (folhetoRecord.CREATED_AT || now);
+  record.UPDATED_AT = folhetoRecord.UPDATED_AT || now;
+  record.APP_VARIANT = String(folhetoRecord.APP_VARIANT || record.APP_VARIANT || DEFAULT_APP_VARIANT).trim() || DEFAULT_APP_VARIANT;
+
+  if (existing) {
+    updateRecordInSheet_(sheet, table.headers, existing.rowNumber, record);
+  } else {
+    appendRecordToSheet_(sheet, table.headers, record);
+  }
+}
+
 function getUserCacheByParticipantId_(participantId) {
   ensureSextilhaInfrastructure_();
   var table = getSheetTable_(getSextilhaSheet_(USERS_CACHE_SHEET_NAME));
@@ -1655,6 +2288,24 @@ function getUserCacheByParticipantId_(participantId) {
   }
 
   return null;
+}
+
+function getParticipantFolhetoSummaries_(participantId) {
+  ensureSextilhaInfrastructure_();
+  var table = getSheetTable_(getSextilhaSheet_(FOLHETOS_SHEET_NAME));
+  var folhetos = [];
+
+  for (var i = 0; i < table.rows.length; i++) {
+    var record = table.rows[i].record;
+    if (String(record.PARTICIPANT_ID || "").trim() !== String(participantId || "").trim()) continue;
+    folhetos.push(mapFolhetoRecord_(record));
+  }
+
+  folhetos.sort(function (a, b) {
+    return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+  });
+
+  return folhetos;
 }
 
 function getParticipantTextSummaries_(participantId) {
@@ -1801,6 +2452,9 @@ function syncCurrentVersionStatus_(textRecord) {
 function mapTextSummary_(textRecord, currentVersionRecord, versionCount) {
   return {
     textId: String(textRecord.TEXT_ID || "").trim(),
+    folhetoId: String(textRecord.FOLHETO_ID || "").trim(),
+    folhetoTitle: String(textRecord.FOLHETO_TITULO || "").trim(),
+    folhetoOrder: Number(textRecord.ORDEM_NO_FOLHETO) || 0,
     title: String(textRecord.TITULO || "").trim(),
     theme: String(textRecord.TEMA || "").trim(),
     note: String(textRecord.OBSERVACAO || "").trim(),
@@ -1811,7 +2465,20 @@ function mapTextSummary_(textRecord, currentVersionRecord, versionCount) {
     versionCount: Number(versionCount) || 0,
     sharedWithEducator: toBoolean_(textRecord.COMPARTILHADO_EDUCADOR),
     selectedForAnthology: toBoolean_(textRecord.SELECIONADO_ANTOLOGIA),
+    reopenRequested: toBoolean_(textRecord.REABERTURA_SOLICITADA),
     indicators: buildTextIndicatorsPayload_(currentVersionRecord, versionCount)
+  };
+}
+
+function mapFolhetoRecord_(record) {
+  return {
+    folhetoId: String(record.FOLHETO_ID || "").trim(),
+    title: String(record.TITULO || "").trim(),
+    createdAt: toIsoString_(record.CREATED_AT),
+    updatedAt: toIsoString_(record.UPDATED_AT || record.CREATED_AT),
+    participantId: String(record.PARTICIPANT_ID || "").trim(),
+    checkinUserId: String(record.CHECKIN_USER_ID || "").trim(),
+    teacherGroup: String(record.TEACHER_GROUP || "").trim()
   };
 }
 
@@ -1829,6 +2496,9 @@ function mapVersionRecord_(record) {
   return {
     versionId: String(record.VERSION_ID || "").trim(),
     textId: String(record.TEXT_ID || "").trim(),
+    folhetoId: String(record.FOLHETO_ID || "").trim(),
+    folhetoTitle: String(record.FOLHETO_TITULO || "").trim(),
+    folhetoOrder: Number(record.ORDEM_NO_FOLHETO) || 0,
     participantId: String(record.PARTICIPANT_ID || "").trim(),
     versionNumber: Number(record.VERSION_NUMBER) || 0,
     title: String(record.TITULO || "").trim(),
@@ -1899,6 +2569,15 @@ function normalizeVersesArray_(verses) {
   }
 
   return result;
+}
+
+function escapeHtmlForEmail_(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function calculateSextilhaIndicators_(input) {
@@ -2362,6 +3041,7 @@ function reconfigurarPlanilhaInanna() {
   summary.sheets.records = ensureSheetConfigured_(ss, DEFAULT_REGISTRY_SHEET_NAME, REGISTRY_SHEET_ALIASES, FORM_HEADERS, "#d9ead3").getName();
   summary.sheets.placar = ensureSheetConfigured_(ss, PLACAR_SHEET_NAME, [PLACAR_SHEET_NAME], PLACAR_HEADERS, "#fff2cc").getName();
   summary.sheets.usersCache = ensureSheetConfigured_(ss, USERS_CACHE_SHEET_NAME, [USERS_CACHE_SHEET_NAME], USERS_CACHE_HEADERS, "#d9edf7").getName();
+  summary.sheets.folhetos = ensureSheetConfigured_(ss, FOLHETOS_SHEET_NAME, [FOLHETOS_SHEET_NAME], FOLHETOS_HEADERS, "#d0e0e3").getName();
   summary.sheets.texts = ensureSheetConfigured_(ss, TEXTS_SHEET_NAME, [TEXTS_SHEET_NAME], TEXTS_HEADERS, "#fce5cd").getName();
   summary.sheets.textVersions = ensureSheetConfigured_(ss, TEXT_VERSIONS_SHEET_NAME, [TEXT_VERSIONS_SHEET_NAME], TEXT_VERSIONS_HEADERS, "#fff2cc").getName();
   summary.sheets.textFeedback = ensureSheetConfigured_(ss, TEXT_FEEDBACK_SHEET_NAME, [TEXT_FEEDBACK_SHEET_NAME], TEXT_FEEDBACK_HEADERS, "#ead1dc").getName();

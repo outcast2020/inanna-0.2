@@ -195,18 +195,23 @@
               <p class="step-desc">Seu espaco pessoal de escrita, memoria e revisao.</p>
             </div>
             <div class="workspace-actions">
-              <button id="btnCreateText" class="btn btn-primary" type="button">Nova sextilha</button>
+              <button id="btnCreateFolheto" class="btn btn-primary" type="button">Criar novo folheto</button>
+              <button id="btnCreateText" class="btn btn-secondary" type="button">Nova sextilha avulsa</button>
               <button id="btnBackToTrackChooser" class="btn btn-ghost" type="button">Voltar ao menu inicial</button>
             </div>
           </div>
           <div class="dashboard-metrics">
             <article class="dashboard-metric">
+              <span id="dashboardFolhetoCount">0</span>
+              <small>Folhetos</small>
+            </article>
+            <article class="dashboard-metric">
               <span id="dashboardTextCount">0</span>
-              <small>Textos iniciados</small>
+              <small>Sextilhas iniciadas</small>
             </article>
             <article class="dashboard-metric">
               <span id="dashboardCompletedCount">0</span>
-              <small>Textos concluidos</small>
+              <small>Sextilhas concluidas</small>
             </article>
             <article class="dashboard-metric dashboard-metric--wide">
               <span id="dashboardLastEdited">Ainda sem edicoes</span>
@@ -225,7 +230,36 @@
               <option value="arquivada">Arquivada</option>
             </select>
           </div>
-          <div id="dashboardTextList" class="text-list" aria-live="polite"></div>
+          <div id="dashboardTextList" class="text-list folheto-list" aria-live="polite"></div>
+        </section>
+
+        <section id="folhetoWorkspaceSection" class="workspace-panel" aria-label="Folheto ativo">
+          <div class="workspace-head">
+            <div>
+              <p class="workspace-kicker">Folheto em andamento</p>
+              <h2 id="folhetoTitleHeading">Novo folheto</h2>
+              <p id="folhetoSummaryText" class="step-desc">Abra um folheto para organizar sextilhas como paginas do seu livrinho.</p>
+            </div>
+            <div class="workspace-actions">
+              <button id="btnCreateTextInFolheto" class="btn btn-primary" type="button">Nova sextilha neste folheto</button>
+              <button id="btnBackToDashboardFromFolheto" class="btn btn-ghost" type="button">Voltar ao caderno</button>
+            </div>
+          </div>
+          <div class="dashboard-metrics">
+            <article class="dashboard-metric">
+              <span id="folhetoTextCount">0</span>
+              <small>Sextilhas</small>
+            </article>
+            <article class="dashboard-metric">
+              <span id="folhetoCompletedCount">0</span>
+              <small>Concluidas</small>
+            </article>
+            <article class="dashboard-metric dashboard-metric--wide">
+              <span id="folhetoLastEdited">Ainda sem edicoes</span>
+              <small>Ultima edicao no folheto</small>
+            </article>
+          </div>
+          <div id="folhetoTextList" class="text-list" aria-live="polite"></div>
         </section>
 
         <section id="sextilhaEditorSection" class="workspace-panel" aria-label="Editor de sextilha">
@@ -339,15 +373,28 @@
 
               <div class="workspace-actions editor-actions">
                 <button id="btnSaveTextVersion" class="btn btn-primary" type="button">Salvar rascunho</button>
-                <button id="btnFinalizeText" class="btn btn-secondary" type="button">Finalizar Sextilha</button>
+                <button id="btnFinalizeText" class="btn btn-secondary" type="button">Finalizar e receber por e-mail</button>
+                <button id="btnResendSocialEmail" class="btn btn-secondary" type="button" hidden>Reenviar cartao por e-mail</button>
                 <button id="btnRequestReopen" class="btn btn-secondary" type="button" hidden>Solicitar reabertura</button>
                 <button id="btnArchiveText" class="btn btn-ghost" type="button">Arquivar texto</button>
               </div>
               <p id="editorLockNotice" class="workspace-feedback" aria-live="polite"></p>
-              <p id="editorSaveMessage" class="workspace-feedback" aria-live="polite"></p>
+              <p id="editorSaveMessage" class="workspace-feedback sr-only" aria-live="polite"></p>
             </div>
 
             <aside class="editor-sidebar">
+              <div class="indicator-panel indicator-panel--companion">
+                <p class="workspace-kicker">Alma da Inanna</p>
+                <div class="inanna-companion">
+                  <div class="inanna-companion__media">
+                    <img id="editorInannaAvatar" src="inanna_observando.webp" alt="Inanna, gata siamesa de olhos azuis" class="inanna-companion__avatar" />
+                  </div>
+                  <div class="inanna-companion__copy">
+                    <strong id="editorInannaStateTitle">Inanna observando</strong>
+                    <p id="editorInannaStateText" class="workspace-meta">Ela acompanha sua escrita e pisca enquanto os versos ganham forma.</p>
+                  </div>
+                </div>
+              </div>
               <div class="indicator-panel">
                 <p class="workspace-kicker">Indicadores de escrita</p>
                 <div id="editorIndicatorList" class="indicator-list"></div>
@@ -534,6 +581,35 @@
 </footer>
   </main>
 
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <audio id="inannaFeedbackSound" preload="auto" class="sr-only">
+    <source src="miado_suave.mp3" type="audio/mpeg" />
+  </audio>
+  <div class="social-postcard-shell" aria-hidden="true">
+    <section id="socialPostcard" class="social-postcard">
+      <div class="social-postcard__texture" aria-hidden="true"></div>
+      <div class="social-postcard__header">
+        <p class="social-postcard__eyebrow">Cordel 2.0</p>
+        <h3 id="socialPostcardTitle">Sextilha pronta para partilhar</h3>
+        <p id="socialPostcardTheme" class="social-postcard__theme">Tema livre</p>
+      </div>
+      <div class="social-postcard__body">
+        <div class="social-postcard__seal">
+          <img src="inanna_celebrando.webp" alt="" class="social-postcard__seal-avatar" />
+          <span>Inanna acompanha</span>
+        </div>
+        <p id="socialPostcardAuthor" class="social-postcard__author">Por quem escreve com a Inanna</p>
+        <pre id="socialPostcardVerses" class="social-postcard__verses">Verso 1
+Verso 2
+Verso 3
+Verso 4
+Verso 5
+Verso 6</pre>
+      </div>
+      <div class="social-postcard__footer">Escrito com a Inanna 🐾 | @cordel2pontozero</div>
+    </section>
+  </div>
+
   <dialog id="vectorModal" class="rules-modal vector-modal">
     <div class="rules-content">
       <div class="vector-modal-head">
@@ -709,6 +785,7 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
   <script src="prediction_engine_v2.js"></script>
   <script src="firebase-config.js"></script>
   <script src="firebase-sextilhas.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="app.js"></script>
 </body>
 

@@ -41,13 +41,24 @@ const ui = {
   trackChooserBackBtn: $("trackChooserBackBtn"),
   userDashboardSection: $("userDashboardSection"),
   dashboardGreeting: $("dashboardGreeting"),
+  dashboardFolhetoCount: $("dashboardFolhetoCount"),
   dashboardTextCount: $("dashboardTextCount"),
   dashboardCompletedCount: $("dashboardCompletedCount"),
   dashboardLastEdited: $("dashboardLastEdited"),
   dashboardStatusFilter: $("dashboardStatusFilter"),
   dashboardTextList: $("dashboardTextList"),
+  btnCreateFolheto: $("btnCreateFolheto"),
   btnCreateText: $("btnCreateText"),
   btnBackToTrackChooser: $("btnBackToTrackChooser"),
+  folhetoWorkspaceSection: $("folhetoWorkspaceSection"),
+  folhetoTitleHeading: $("folhetoTitleHeading"),
+  folhetoSummaryText: $("folhetoSummaryText"),
+  folhetoTextCount: $("folhetoTextCount"),
+  folhetoCompletedCount: $("folhetoCompletedCount"),
+  folhetoLastEdited: $("folhetoLastEdited"),
+  folhetoTextList: $("folhetoTextList"),
+  btnCreateTextInFolheto: $("btnCreateTextInFolheto"),
+  btnBackToDashboardFromFolheto: $("btnBackToDashboardFromFolheto"),
   sextilhaEditorSection: $("sextilhaEditorSection"),
   editorTitleHeading: $("editorTitleHeading"),
   editorTitleInput: $("editorTitleInput"),
@@ -62,12 +73,16 @@ const ui = {
   editorSharedWithEducator: $("editorSharedWithEducator"),
   btnSaveTextVersion: $("btnSaveTextVersion"),
   btnFinalizeText: $("btnFinalizeText"),
+  btnResendSocialEmail: $("btnResendSocialEmail"),
   btnRequestReopen: $("btnRequestReopen"),
   btnArchiveText: $("btnArchiveText"),
   btnBackToDashboard: $("btnBackToDashboard"),
   btnOpenVersionHistory: $("btnOpenVersionHistory"),
   editorLockNotice: $("editorLockNotice"),
   editorSaveMessage: $("editorSaveMessage"),
+  editorInannaAvatar: $("editorInannaAvatar"),
+  editorInannaStateTitle: $("editorInannaStateTitle"),
+  editorInannaStateText: $("editorInannaStateText"),
   editorIndicatorList: $("editorIndicatorList"),
   editorAiFeedback: $("editorAiFeedback"),
   editorVersionMeta: $("editorVersionMeta"),
@@ -149,6 +164,15 @@ const ui = {
   closePedagogy: $("closePedagogy"),
   pedagogyLiveDistribution: $("pedagogyLiveDistribution"),
   pedagogyLiveList: $("pedagogyLiveList"),
+
+  // toast / audio / social card
+  toastRegion: $("toastRegion"),
+  inannaFeedbackSound: $("inannaFeedbackSound"),
+  socialPostcard: $("socialPostcard"),
+  socialPostcardTitle: $("socialPostcardTitle"),
+  socialPostcardTheme: $("socialPostcardTheme"),
+  socialPostcardAuthor: $("socialPostcardAuthor"),
+  socialPostcardVerses: $("socialPostcardVerses"),
 };
 
 // ── Estado do jogo ───────────────────────────────────────────────────
@@ -185,8 +209,11 @@ const state = {
   writingTimerId: null,
   writingTimerRunning: false,
   userDashboard: null,
+  userFolhetos: [],
   userTexts: [],
   dashboardFilter: "all",
+  activeFolhetoId: "",
+  activeFolheto: null,
   activeTextId: "",
   activeText: null,
   activeTextVersions: [],
@@ -196,15 +223,37 @@ const state = {
   firebaseSessionReady: false,
   lastAiFeedback: null,
   aiFeedbackRequestKey: "",
+  aiFeedbackLoading: false,
   mutedVerseWarningIndexes: Array.from({ length: 6 }, () => false),
+  editorAvatarState: "observing",
+  editorAvatarLockedUntil: 0,
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwL4boxvsc6puaPVcxhjsjry3CMo4D8a1ILmbjtY3ae3eV98W5oiVMVeXBxt835MOd1/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx_HUtyNsqKrYwWLYLRkOfNZkC3KmftUxMBwdBVkSTnwWjmgpY69JDnLL9v0_Nj2yw4/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
+const TOAST_AUTO_CLOSE_MS = 3000;
+const SYNTHETIC_LEGACY_FOLHETO_ID = "__legacy_folheto__";
+const INANNA_AVATAR_STATES = {
+  observing: {
+    src: "inanna_observando.webp",
+    title: "Inanna observando",
+    text: "Ela acompanha sua escrita e pisca enquanto os versos ganham forma.",
+  },
+  reading: {
+    src: "inanna_lendo.webp",
+    title: "Inanna lendo",
+    text: "Ela esta lendo sua sextilha com calma para responder com cuidado.",
+  },
+  celebrating: {
+    src: "inanna_celebrando.webp",
+    title: "Inanna celebrando",
+    text: "Ela gostou do brilho da sua sextilha e veio festejar a devolutiva.",
+  },
+};
 const SEXTILHA_STATUS_LABELS = {
   "rascunho": "Rascunho",
   "em revisao": "Em revisao",
@@ -213,6 +262,7 @@ const SEXTILHA_STATUS_LABELS = {
   "selecionada para antologia": "Selecionada para antologia",
   "arquivada": "Arquivada"
 };
+let toastSequence = 0;
 
 function getConfiguredSextilhaDataSource() {
   const configuredMode = String(window.INANNA_FIREBASE_OPTIONS?.mode || "").trim().toLowerCase();
@@ -676,6 +726,7 @@ function getWorkspacePanels() {
   return [
     ui.trackChooserSection,
     ui.userDashboardSection,
+    ui.folhetoWorkspaceSection,
     ui.sextilhaEditorSection,
     ui.versionHistorySection,
   ];
@@ -704,6 +755,65 @@ function getSextilhaRhymeBadges() {
   return Array.from(document.querySelectorAll(".verse-rhyme-badge[data-rhyme-target='b']"));
 }
 
+function setEditorInannaState(nextState, options = {}) {
+  const avatarConfig = INANNA_AVATAR_STATES[nextState] || INANNA_AVATAR_STATES.observing;
+  state.editorAvatarState = nextState in INANNA_AVATAR_STATES ? nextState : "observing";
+  state.editorAvatarLockedUntil = options.lockForMs ? Date.now() + Number(options.lockForMs) : 0;
+
+  if (ui.editorInannaAvatar) {
+    ui.editorInannaAvatar.src = avatarConfig.src;
+    ui.editorInannaAvatar.alt = `Inanna, gata siamesa de olhos azuis, em estado ${avatarConfig.title.toLowerCase()}`;
+  }
+  if (ui.editorInannaStateTitle) {
+    ui.editorInannaStateTitle.textContent = avatarConfig.title;
+  }
+  if (ui.editorInannaStateText) {
+    ui.editorInannaStateText.textContent = avatarConfig.text;
+  }
+}
+
+function syncEditorInannaPresence() {
+  if (state.aiFeedbackLoading) return;
+  if (Date.now() < Number(state.editorAvatarLockedUntil || 0)) return;
+  setEditorInannaState("observing");
+}
+
+function playInannaFeedbackSound() {
+  const audio = ui.inannaFeedbackSound;
+  if (!audio) return;
+
+  try {
+    audio.currentTime = 0;
+    const playAttempt = audio.play();
+    if (playAttempt && typeof playAttempt.catch === "function") {
+      playAttempt.catch(() => {});
+    }
+  } catch (error) {
+    console.debug("Nao foi possivel tocar o miado suave.", error);
+  }
+}
+
+function showToast(message, tone = "muted", options = {}) {
+  if (!ui.toastRegion || !message) return;
+  const duration = Number(options.duration || TOAST_AUTO_CLOSE_MS);
+  const toastId = `toast_${Date.now()}_${toastSequence += 1}`;
+  const toast = document.createElement("div");
+  toast.className = `toast toast--${tone}`.trim();
+  toast.dataset.toastId = toastId;
+  toast.textContent = message;
+  ui.toastRegion.appendChild(toast);
+
+  const closeToast = () => {
+    if (!toast.isConnected) return;
+    toast.classList.add("toast--closing");
+    window.setTimeout(() => {
+      if (toast.isConnected) toast.remove();
+    }, 180);
+  };
+
+  window.setTimeout(closeToast, duration);
+}
+
 function setActiveWorkspacePanel(activePanel) {
   getWorkspacePanels().forEach((panel) => {
     if (!panel) return;
@@ -729,6 +839,9 @@ function setView(nextView, activePanel = null) {
   state.view = nextView;
   setActiveWorkspacePanel(activePanel);
   syncExperienceChrome();
+  if (nextView === "sextilhaEditor") {
+    syncEditorInannaPresence();
+  }
 }
 
 function buildIdentityPayload() {
@@ -794,6 +907,7 @@ function buildLoadingSkeletonCard() {
 }
 
 function renderDashboardLoadingSkeleton() {
+  if (ui.dashboardFolhetoCount) ui.dashboardFolhetoCount.textContent = "...";
   if (ui.dashboardTextCount) ui.dashboardTextCount.textContent = "...";
   if (ui.dashboardCompletedCount) ui.dashboardCompletedCount.textContent = "...";
   if (ui.dashboardLastEdited) ui.dashboardLastEdited.textContent = "Carregando seu caderno...";
@@ -821,15 +935,19 @@ function renderVersionHistoryLoadingSkeleton() {
   `;
 }
 
-function renderEditorAiFeedback(feedback) {
+function renderEditorAiFeedback(feedback, options = {}) {
   if (!ui.editorAiFeedback) return;
 
   if (!feedback || !feedback.message) {
+    state.aiFeedbackLoading = false;
     ui.editorAiFeedback.className = "ai-feedback-card ai-feedback-card--idle";
     ui.editorAiFeedback.innerHTML = `
       <strong>Feedback breve</strong>
       <p>Salve uma versao para receber uma devolutiva curta e encorajadora da Inanna.</p>
     `;
+    if (state.view === "sextilhaEditor") {
+      syncEditorInannaPresence();
+    }
     return;
   }
 
@@ -848,15 +966,97 @@ function renderEditorAiFeedback(feedback) {
     <strong>${escapeHtml(label)}</strong>
     <p>${escapeHtml(feedback.message)}</p>
   `;
+
+  if (feedback.tone === "loading") {
+    state.aiFeedbackLoading = true;
+    setEditorInannaState("reading");
+    return;
+  }
+
+  state.aiFeedbackLoading = false;
+  if (feedback.tone === "error") {
+    syncEditorInannaPresence();
+    return;
+  }
+
+  if (options.celebrate) {
+    setEditorInannaState("celebrating", { lockForMs: 4200 });
+    playInannaFeedbackSound();
+    window.setTimeout(syncEditorInannaPresence, 4300);
+    return;
+  }
+
+  syncEditorInannaPresence();
+}
+
+function buildFolhetoCollection(texts = [], folhetos = []) {
+  const registry = new Map();
+  const sourceTexts = Array.isArray(texts) ? texts : [];
+  const sourceFolhetos = Array.isArray(folhetos) ? folhetos : [];
+
+  sourceFolhetos.forEach((folheto) => {
+    const folhetoId = String(folheto?.folhetoId || "").trim();
+    if (!folhetoId) return;
+    registry.set(folhetoId, {
+      folhetoId,
+      title: String(folheto?.title || "Folheto sem titulo").trim() || "Folheto sem titulo",
+      createdAt: folheto?.createdAt || "",
+      updatedAt: folheto?.updatedAt || "",
+      textCount: Number(folheto?.textCount || 0),
+      completedCount: Number(folheto?.completedCount || 0),
+      texts: [],
+      isLegacyBucket: false,
+    });
+  });
+
+  sourceTexts.forEach((text) => {
+    const folhetoId = String(text?.folhetoId || "").trim() || SYNTHETIC_LEGACY_FOLHETO_ID;
+    const existing = registry.get(folhetoId) || {
+      folhetoId,
+      title: folhetoId === SYNTHETIC_LEGACY_FOLHETO_ID
+        ? "Acervo anterior"
+        : String(text?.folhetoTitle || "Folheto sem titulo").trim() || "Folheto sem titulo",
+      createdAt: text?.createdAt || "",
+      updatedAt: text?.updatedAt || "",
+      textCount: 0,
+      completedCount: 0,
+      texts: [],
+      isLegacyBucket: folhetoId === SYNTHETIC_LEGACY_FOLHETO_ID,
+    };
+    existing.texts.push(text);
+    existing.textCount = existing.texts.length;
+    existing.completedCount = existing.texts.filter((item) => normalizeStatusValue(item.status) === "concluida").length;
+    existing.updatedAt = [existing.updatedAt, text?.updatedAt, text?.createdAt]
+      .filter(Boolean)
+      .sort((left, right) => new Date(right || 0).getTime() - new Date(left || 0).getTime())[0] || existing.updatedAt;
+    registry.set(folhetoId, existing);
+  });
+
+  return Array.from(registry.values())
+    .map((folheto) => ({
+      ...folheto,
+      texts: [...folheto.texts].sort((a, b) => {
+        const leftOrder = Number(a?.folhetoOrder || 0);
+        const rightOrder = Number(b?.folhetoOrder || 0);
+        if (leftOrder && rightOrder && leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+        return new Date(a?.createdAt || 0).getTime() - new Date(b?.createdAt || 0).getTime();
+      }),
+    }))
+    .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
 }
 
 function buildDashboardPayloadFromState() {
   const texts = [...state.userTexts].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+  const folhetos = buildFolhetoCollection(texts, state.userFolhetos);
   return {
     status: "success",
+    folhetoCount: folhetos.length,
     textCount: texts.length,
     completedCount: texts.filter((text) => normalizeStatusValue(text.status) === "concluida").length,
     lastEditedAt: texts[0]?.updatedAt || "",
+    folhetos,
     texts,
   };
 }
@@ -870,6 +1070,19 @@ function upsertTextInDashboardState(text) {
   const nextTexts = state.userTexts.filter((item) => item.textId !== nextText.textId);
   nextTexts.unshift(nextText);
   state.userTexts = nextTexts.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+  state.userFolhetos = buildFolhetoCollection(state.userTexts, state.userFolhetos);
+  state.userDashboard = buildDashboardPayloadFromState();
+}
+
+function upsertFolhetoInDashboardState(folheto) {
+  if (!folheto?.folhetoId) return;
+  const nextFolheto = {
+    ...folheto,
+    title: String(folheto.title || "Folheto sem titulo").trim() || "Folheto sem titulo",
+  };
+  const nextFolhetos = state.userFolhetos.filter((item) => item.folhetoId !== nextFolheto.folhetoId);
+  nextFolhetos.unshift(nextFolheto);
+  state.userFolhetos = buildFolhetoCollection(state.userTexts, nextFolhetos);
   state.userDashboard = buildDashboardPayloadFromState();
 }
 
@@ -885,7 +1098,7 @@ function beginTextPersistProgressiveFeedback(saveMode = "draft") {
 
   if (ui.btnFinalizeText) {
     ui.btnFinalizeText.disabled = true;
-    ui.btnFinalizeText.textContent = saveMode === "finalize" ? "Finalizando..." : "Finalizar Sextilha";
+    ui.btnFinalizeText.textContent = saveMode === "finalize" ? "Finalizando e preparando e-mail..." : "Finalizar e receber por e-mail";
   }
 
   return () => {
@@ -895,7 +1108,7 @@ function beginTextPersistProgressiveFeedback(saveMode = "draft") {
     }
     if (ui.btnFinalizeText) {
       ui.btnFinalizeText.disabled = isEditorLocked();
-      ui.btnFinalizeText.textContent = "Finalizar Sextilha";
+      ui.btnFinalizeText.textContent = "Finalizar e receber por e-mail";
     }
   };
 }
@@ -916,6 +1129,7 @@ async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
   const requestKey = `${textId}:${versionId}:${Date.now()}`;
   const versionLabel = buildSextilhaVersionLabel(payload);
   state.aiFeedbackRequestKey = requestKey;
+  state.aiFeedbackLoading = true;
   renderEditorAiFeedback({
     source: "inanna",
     tone: "loading",
@@ -928,7 +1142,7 @@ async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
 
     state.lastAiFeedback = response?.aiFeedback || null;
     if (state.lastAiFeedback?.message) {
-      renderEditorAiFeedback(state.lastAiFeedback);
+      renderEditorAiFeedback(state.lastAiFeedback, { celebrate: true });
       setEditorFeedback(`${versionLabel} salva e devolutiva recebida.`, "success");
       return;
     }
@@ -1001,6 +1215,15 @@ async function createSextilhaTextRecord(payload) {
     "create_text",
     () => postAppAction("create_text", { ...identity, ...payload }),
     (bridge) => bridge.createText(identity, payload)
+  );
+}
+
+async function createFolhetoRecord(payload) {
+  const identity = buildIdentityPayload();
+  return runSextilhaStoreOperation(
+    "create_folheto",
+    () => postAppAction("create_folheto", { ...identity, ...payload }),
+    (bridge) => bridge.createFolheto(identity, payload)
   );
 }
 
@@ -1461,13 +1684,16 @@ function formatTextUpdatedLabel(text) {
   return text?.updatedAt ? formatDateTime(text.updatedAt) : "Ainda sem edicoes";
 }
 
-function setEditorFeedback(message, tone = "muted") {
+function setEditorFeedback(message, tone = "muted", options = {}) {
   if (!ui.editorSaveMessage) return;
   ui.editorSaveMessage.textContent = message || "";
   ui.editorSaveMessage.style.color =
     tone === "success" ? "var(--accent)" :
       tone === "error" ? "var(--danger)" :
         "var(--muted)";
+  if (message && (options.toast ?? (tone !== "muted"))) {
+    showToast(message, tone, options);
+  }
 }
 
 function setEditorLockNotice(message, tone = "muted") {
@@ -1477,6 +1703,90 @@ function setEditorLockNotice(message, tone = "muted") {
     tone === "success" ? "var(--accent)" :
       tone === "error" ? "var(--danger)" :
         "var(--muted)";
+}
+
+function sanitizeSocialFileName(value) {
+  return String(value || "sextilha-inanna")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "sextilha-inanna";
+}
+
+function buildSocialPostcardData(text = state.activeText, version = null) {
+  const sourceVersion = version || text?.latestVersion || state.activeText?.latestVersion || null;
+  const verses = Array.isArray(sourceVersion?.verses) ? sourceVersion.verses.map((item) => String(item || "").trim()).slice(0, 6) : [];
+
+  return {
+    textId: text?.textId || state.activeTextId || "",
+    versionId: sourceVersion?.versionId || "",
+    folhetoId: String(text?.folhetoId || "").trim(),
+    folhetoTitle: String(text?.folhetoTitle || state.activeFolheto?.title || "").trim(),
+    title: String(sourceVersion?.title || text?.title || "Sextilha sem titulo").trim() || "Sextilha sem titulo",
+    theme: String(sourceVersion?.theme || text?.theme || "Tema livre").trim() || "Tema livre",
+    authorName: String(state.name || state.email || "Estudante").trim() || "Estudante",
+    verses,
+  };
+}
+
+function hydrateSocialPostcard(postcardData) {
+  if (!ui.socialPostcard) return;
+  if (ui.socialPostcardTitle) ui.socialPostcardTitle.textContent = postcardData.title;
+  if (ui.socialPostcardTheme) {
+    ui.socialPostcardTheme.textContent = postcardData.folhetoTitle
+      ? `Folheto: ${postcardData.folhetoTitle} · Tema: ${postcardData.theme || "Tema livre"}`
+      : postcardData.theme || "Tema livre";
+  }
+  if (ui.socialPostcardAuthor) ui.socialPostcardAuthor.textContent = `Por ${postcardData.authorName}`;
+  if (ui.socialPostcardVerses) {
+    ui.socialPostcardVerses.textContent = postcardData.verses.filter(Boolean).join("\n") || "Sua sextilha aparecera aqui.";
+  }
+}
+
+async function captureSocialPostcardImage(postcardData) {
+  if (typeof window.html2canvas !== "function" || !ui.socialPostcard) {
+    throw new Error("A captura do cartao postal ainda nao esta disponivel.");
+  }
+
+  hydrateSocialPostcard(postcardData);
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+
+  const canvas = await window.html2canvas(ui.socialPostcard, {
+    backgroundColor: null,
+    scale: 1.25,
+    useCORS: true,
+    logging: false,
+  });
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.84);
+  return {
+    dataUrl,
+    base64: String(dataUrl.split(",")[1] || ""),
+    mimeType: "image/jpeg",
+  };
+}
+
+async function sendSocialPostcardEmail(postcardData) {
+  if (!state.email) {
+    throw new Error("Seu e-mail de check-in nao foi encontrado para receber o cartao postal.");
+  }
+
+  const capture = await captureSocialPostcardImage(postcardData);
+  const fileStem = sanitizeSocialFileName(postcardData.title || postcardData.folhetoTitle || "sextilha-inanna");
+  return postAppAction("send_social_email", {
+    ...buildIdentityPayload(),
+    textId: postcardData.textId,
+    versionId: postcardData.versionId,
+    folhetoId: postcardData.folhetoId,
+    folhetoTitle: postcardData.folhetoTitle,
+    title: postcardData.title,
+    theme: postcardData.theme,
+    verses: postcardData.verses,
+    imageBase64: capture.base64,
+    imageMimeType: capture.mimeType,
+    fileName: `${fileStem}.jpg`,
+  });
 }
 
 function isTextConcluded(textLike) {
@@ -1516,6 +1826,11 @@ function applyEditorLockState(locked, text = state.activeText) {
   if (ui.btnFinalizeText) {
     ui.btnFinalizeText.disabled = nextLocked;
     ui.btnFinalizeText.hidden = nextLocked;
+  }
+
+  if (ui.btnResendSocialEmail) {
+    ui.btnResendSocialEmail.hidden = !nextLocked;
+    ui.btnResendSocialEmail.disabled = !nextLocked;
   }
 
   if (ui.btnRequestReopen) {
@@ -2503,9 +2818,16 @@ function goToPhase(n, options) {
 function applyDashboardPayload(payload) {
   state.userDashboard = payload;
   state.userTexts = Array.isArray(payload?.texts) ? payload.texts : [];
+  state.userFolhetos = buildFolhetoCollection(state.userTexts, payload?.folhetos || state.userFolhetos);
+  if (state.activeFolhetoId) {
+    state.activeFolheto = state.userFolhetos.find((item) => item.folhetoId === state.activeFolhetoId) || null;
+  }
 
   if (ui.dashboardGreeting) {
     ui.dashboardGreeting.textContent = state.name ? `${state.name}, este e seu caderno` : "Minhas sextilhas";
+  }
+  if (ui.dashboardFolhetoCount) {
+    ui.dashboardFolhetoCount.textContent = String(state.userFolhetos.length || 0);
   }
   if (ui.dashboardTextCount) {
     ui.dashboardTextCount.textContent = String(payload?.textCount || 0);
@@ -2521,11 +2843,16 @@ function applyDashboardPayload(payload) {
   }
 
   renderDashboardTexts();
+  if (state.view === "folhetoWorkspace") {
+    renderFolhetoWorkspace();
+  }
 }
 
 async function openSextilhaDashboard(options = {}) {
   const settings = { forceRefresh: false, ...options };
   state.selectedTrack = "sextilha";
+  state.activeFolhetoId = "";
+  state.activeFolheto = null;
   hideGameExperience();
   setView("sextilhaDashboard", ui.userDashboardSection);
 
@@ -2539,26 +2866,8 @@ async function openSextilhaDashboard(options = {}) {
   applyDashboardPayload(payload);
 }
 
-function renderDashboardTexts() {
-  if (!ui.dashboardTextList) return;
-
-  const filterValue = normalizeStatusValue(ui.dashboardStatusFilter?.value || state.dashboardFilter || "all");
-  state.dashboardFilter = filterValue;
-  const filteredTexts = state.userTexts.filter((text) => {
-    if (filterValue === "all") return true;
-    return normalizeStatusValue(text.status) === filterValue;
-  });
-
-  if (!filteredTexts.length) {
-    ui.dashboardTextList.innerHTML = `
-      <div class="workspace-empty">
-        ${filterValue === "all" ? "Nenhuma sextilha criada ainda. Comece um novo texto para abrir seu caderno." : "Nenhum texto encontrado para este status."}
-      </div>
-    `;
-    return;
-  }
-
-  ui.dashboardTextList.innerHTML = filteredTexts.map((text) => `
+function renderTextCardMarkup(text) {
+  return `
     <article class="text-card" data-text-id="${escapeHtml(text.textId)}">
       <div class="text-card__head">
         <div>
@@ -2578,13 +2887,152 @@ function renderDashboardTexts() {
         <button class="btn btn-ghost" type="button" data-action="archive-text" data-text-id="${escapeHtml(text.textId)}">Arquivar</button>
       </div>
     </article>
-  `).join("");
+  `;
 }
 
-async function createNewSextilha() {
-  if (ui.btnCreateText) {
-    ui.btnCreateText.disabled = true;
-    ui.btnCreateText.textContent = "Criando...";
+function renderFolhetoCardMarkup(folheto) {
+  const latestText = folheto.texts[folheto.texts.length - 1] || null;
+  return `
+    <article class="folheto-card" data-folheto-id="${escapeHtml(folheto.folhetoId)}">
+      <p class="folheto-card__eyebrow">${folheto.isLegacyBucket ? "Acervo legado" : "Folheto"}</p>
+      <div class="text-card__head">
+        <div>
+          <h3 class="text-card__title">${escapeHtml(folheto.title || "Folheto sem titulo")}</h3>
+          <p class="folheto-card__summary">${escapeHtml(folheto.isLegacyBucket ? "Seus textos anteriores continuam acessiveis aqui, sem perder historico." : "Abra o livrinho e siga adicionando sextilhas como paginas de um mesmo cordel.")}</p>
+        </div>
+        ${folheto.completedCount ? `<span class="status-badge status-concluida">${escapeHtml(`${folheto.completedCount} concluidas`)}</span>` : `<span class="status-badge status-rascunho">${escapeHtml(`${folheto.textCount} sextilhas`)}</span>`}
+      </div>
+      <div class="folheto-card__stats">
+        <span class="folheto-stat-pill">${escapeHtml(`${folheto.textCount} sextilhas`)}</span>
+        <span class="folheto-stat-pill">${escapeHtml(`${folheto.completedCount} concluidas`)}</span>
+      </div>
+      <p class="folheto-card__meta">
+        Ultima edicao: ${escapeHtml(folheto.updatedAt ? formatDateTime(folheto.updatedAt) : "Ainda sem edicoes")}
+        ${latestText ? `<br>Ultima sextilha: ${escapeHtml(latestText.title || "Sextilha sem titulo")}` : ""}
+      </p>
+      <div class="text-card__actions">
+        <button class="btn btn-primary" type="button" data-action="open-folheto" data-folheto-id="${escapeHtml(folheto.folhetoId)}">${folheto.isLegacyBucket ? "Abrir acervo" : "Abrir folheto"}</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderDashboardTexts() {
+  if (!ui.dashboardTextList) return;
+
+  const filterValue = normalizeStatusValue(ui.dashboardStatusFilter?.value || state.dashboardFilter || "all");
+  state.dashboardFilter = filterValue;
+  const filteredTexts = state.userTexts.filter((text) => {
+    if (filterValue === "all") return true;
+    return normalizeStatusValue(text.status) === filterValue;
+  });
+  const filteredFolhetos = buildFolhetoCollection(filteredTexts, state.userFolhetos)
+    .filter((folheto) => filterValue === "all" || folheto.textCount > 0);
+
+  if (!filteredFolhetos.length) {
+    ui.dashboardTextList.innerHTML = `
+      <div class="workspace-empty">
+        ${filterValue === "all" ? "Nenhum folheto criado ainda. Comece um novo folheto para abrir seu caderno." : "Nenhum folheto encontrado para este status."}
+      </div>
+    `;
+    return;
+  }
+
+  ui.dashboardTextList.innerHTML = filteredFolhetos.map(renderFolhetoCardMarkup).join("");
+}
+
+function renderFolhetoWorkspace() {
+  if (!state.activeFolheto || !ui.folhetoTextList) return;
+
+  if (ui.folhetoTitleHeading) {
+    ui.folhetoTitleHeading.textContent = state.activeFolheto.title || "Folheto sem titulo";
+  }
+  if (ui.folhetoSummaryText) {
+    ui.folhetoSummaryText.textContent = state.activeFolheto.isLegacyBucket
+      ? "Aqui ficam as sextilhas anteriores ao novo fluxo de folhetos. Elas continuam acessiveis e intactas."
+      : "Cada sextilha entra como uma nova pagina do seu cordel em andamento.";
+  }
+  if (ui.folhetoTextCount) {
+    ui.folhetoTextCount.textContent = String(state.activeFolheto.textCount || 0);
+  }
+  if (ui.folhetoCompletedCount) {
+    ui.folhetoCompletedCount.textContent = String(state.activeFolheto.completedCount || 0);
+  }
+  if (ui.folhetoLastEdited) {
+    ui.folhetoLastEdited.textContent = state.activeFolheto.updatedAt ? formatDateTime(state.activeFolheto.updatedAt) : "Ainda sem edicoes";
+  }
+
+  if (ui.btnCreateTextInFolheto) {
+    ui.btnCreateTextInFolheto.disabled = !!state.activeFolheto.isLegacyBucket;
+    ui.btnCreateTextInFolheto.textContent = state.activeFolheto.isLegacyBucket
+      ? "Acervo apenas para leitura"
+      : "Nova sextilha neste folheto";
+  }
+
+  if (!state.activeFolheto.texts.length) {
+    ui.folhetoTextList.innerHTML = `<div class="workspace-empty">Este folheto ainda nao tem sextilhas. Abra a primeira pagina quando quiser.</div>`;
+    return;
+  }
+
+  ui.folhetoTextList.innerHTML = state.activeFolheto.texts.map(renderTextCardMarkup).join("");
+}
+
+async function openFolhetoWorkspace(folhetoId) {
+  const folheto = buildFolhetoCollection(state.userTexts, state.userFolhetos)
+    .find((item) => item.folhetoId === folhetoId);
+  if (!folheto) {
+    await openSextilhaDashboard({ forceRefresh: true });
+    return;
+  }
+
+  state.activeFolhetoId = folheto.folhetoId;
+  state.activeFolheto = folheto;
+  hideGameExperience();
+  setView("folhetoWorkspace", ui.folhetoWorkspaceSection);
+  renderFolhetoWorkspace();
+}
+
+async function createNewFolheto() {
+  const title = window.prompt("Qual titulo deseja dar ao novo folheto?");
+  const normalizedTitle = String(title || "").trim();
+  if (!normalizedTitle) return;
+
+  if (ui.btnCreateFolheto) {
+    ui.btnCreateFolheto.disabled = true;
+    ui.btnCreateFolheto.textContent = "Criando folheto...";
+  }
+
+  try {
+    const result = await createFolhetoRecord({ title: normalizedTitle });
+    if (result?.folheto) {
+      upsertFolhetoInDashboardState(result.folheto);
+      await openFolhetoWorkspace(result.folheto.folhetoId);
+      setEditorFeedback(`Folheto "${normalizedTitle}" criado.`, "success");
+    }
+  } finally {
+    if (ui.btnCreateFolheto) {
+      ui.btnCreateFolheto.disabled = false;
+      ui.btnCreateFolheto.textContent = "Criar novo folheto";
+    }
+  }
+}
+
+function resolveNextFolhetoOrder(folhetoId) {
+  if (!folhetoId) return 0;
+  const folhetoTexts = state.userTexts.filter((text) => String(text?.folhetoId || "").trim() === String(folhetoId || "").trim());
+  const lastKnownOrder = Math.max(0, ...folhetoTexts.map((text) => Number(text?.folhetoOrder || 0)));
+  return lastKnownOrder + 1;
+}
+
+async function createNewSextilha(options = {}) {
+  const targetFolheto = options.folheto || state.activeFolheto || null;
+  const shouldAttachFolheto = !!(targetFolheto?.folhetoId && !targetFolheto?.isLegacyBucket);
+  const button = shouldAttachFolheto ? ui.btnCreateTextInFolheto : ui.btnCreateText;
+  const idleLabel = shouldAttachFolheto ? "Nova sextilha neste folheto" : "Nova sextilha avulsa";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Criando...";
   }
 
   try {
@@ -2593,15 +3041,23 @@ async function createNewSextilha() {
       theme: "",
       note: "",
       status: "rascunho",
+      folhetoId: shouldAttachFolheto ? targetFolheto.folhetoId : "",
+      folhetoTitle: shouldAttachFolheto ? targetFolheto.title : "",
+      folhetoOrder: shouldAttachFolheto ? resolveNextFolhetoOrder(targetFolheto.folhetoId) : 0,
     });
     upsertTextInDashboardState(result?.text);
+    if (shouldAttachFolheto) {
+      state.activeFolhetoId = targetFolheto.folhetoId;
+      state.activeFolheto = buildFolhetoCollection(state.userTexts, state.userFolhetos)
+        .find((item) => item.folhetoId === targetFolheto.folhetoId) || targetFolheto;
+    }
     state.activeTextId = result?.text?.textId || "";
     await openSextilhaEditor(state.activeTextId);
     setEditorFeedback("Novo rascunho criado. Voce ja pode escrever e salvar.", "success");
   } finally {
-    if (ui.btnCreateText) {
-      ui.btnCreateText.disabled = false;
-      ui.btnCreateText.textContent = "Nova sextilha";
+    if (button) {
+      button.disabled = false;
+      button.textContent = idleLabel;
     }
   }
 }
@@ -2611,6 +3067,7 @@ async function openSextilhaEditor(textId, draftVersion = null) {
 
   state.lastAiFeedback = null;
   state.aiFeedbackRequestKey = "";
+  state.aiFeedbackLoading = false;
   setEditorFeedback("Carregando texto...", "muted");
   renderEditorAiFeedback(state.lastAiFeedback);
 
@@ -2618,6 +3075,15 @@ async function openSextilhaEditor(textId, draftVersion = null) {
 
   state.activeTextId = textId;
   state.activeText = payload?.text || null;
+  const textFolhetoId = String(state.activeText?.folhetoId || "").trim();
+  if (textFolhetoId) {
+    state.activeFolhetoId = textFolhetoId;
+    state.activeFolheto = buildFolhetoCollection(state.userTexts, state.userFolhetos)
+      .find((item) => item.folhetoId === textFolhetoId) || state.activeFolheto;
+  } else {
+    state.activeFolhetoId = "";
+    state.activeFolheto = null;
+  }
   state.draftVersionSource = draftVersion;
   setView("sextilhaEditor", ui.sextilhaEditorSection);
   fillSextilhaEditor(payload?.text, draftVersion);
@@ -2627,6 +3093,7 @@ function fillSextilhaEditor(text, draftVersion = null) {
   const source = draftVersion || text?.latestVersion || text;
   if (!source) return;
   state.mutedVerseWarningIndexes = Array.from({ length: 6 }, () => false);
+  state.aiFeedbackLoading = false;
 
   if (ui.editorTitleHeading) {
     ui.editorTitleHeading.textContent = text?.title || draftVersion?.title || "Nova sextilha";
@@ -2660,6 +3127,7 @@ function fillSextilhaEditor(text, draftVersion = null) {
 
   applyEditorLockState(isEditorLocked(text || source), text || source);
   renderEditorAiFeedback(state.lastAiFeedback);
+  syncEditorInannaPresence();
   updateSextilhaIndicators();
 }
 
@@ -2703,6 +3171,7 @@ async function saveCurrentTextVersion(saveMode = "draft") {
 
   const finishSaveFeedback = beginTextPersistProgressiveFeedback(saveMode);
   state.aiFeedbackRequestKey = "";
+  let saveSucceeded = false;
 
   try {
     const nextRevisionCount = Number(state.activeText?.versionCount || 0) + 1;
@@ -2722,26 +3191,37 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     });
 
     const savedVersion = response?.version || null;
+    saveSucceeded = true;
     state.activeText = response?.text || state.activeText;
     state.lastAiFeedback = null;
     state.draftVersionSource = null;
     fillSextilhaEditor(state.activeText);
     upsertTextInDashboardState(state.activeText);
+    if (state.activeText?.folhetoId) {
+      state.activeFolheto = buildFolhetoCollection(state.userTexts, state.userFolhetos)
+        .find((item) => item.folhetoId === state.activeText.folhetoId) || state.activeFolheto;
+    }
     state.activeTextVersions = [savedVersion, ...state.activeTextVersions.filter((version) => version?.versionId !== savedVersion?.versionId)].filter(Boolean);
-    setEditorFeedback(
-      saveMode === "finalize"
-        ? "Sextilha finalizada com sucesso."
-        : `${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`,
-      "success"
-    );
+    if (saveMode === "finalize") {
+      setEditorFeedback("Sextilha finalizada. Preparando o cartao postal para o seu e-mail...", "muted");
+    } else {
+      setEditorFeedback(`${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`, "success");
+    }
     requestAiFeedbackForVersion(
       response?.text?.textId,
       savedVersion?.versionId,
       buildAiFeedbackRequestPayload(state.activeText, savedVersion)
     );
+    if (saveMode === "finalize") {
+      await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, savedVersion));
+      setEditorFeedback("Sextilha finalizada e cartao enviado para o seu e-mail.", "success");
+    }
   } catch (error) {
-    setEditorFeedback(error?.message || "Nao foi possivel salvar a versao.", "error");
-    if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
+    const fallbackMessage = saveMode === "finalize" && saveSucceeded
+      ? "A sextilha foi finalizada, mas o cartao postal nao conseguiu seguir por e-mail."
+      : "Nao foi possivel salvar a versao.";
+    setEditorFeedback(error?.message || fallbackMessage, "error");
+    if (!saveSucceeded && getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
       renderEditorAiFeedback({
         tone: "error",
         message: "O texto nao recebeu devolutiva agora. Verifique a configuracao da IA no Apps Script.",
@@ -2749,6 +3229,27 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     }
   } finally {
     finishSaveFeedback();
+  }
+}
+
+async function resendSocialPostcardEmail() {
+  if (!state.activeText || !isEditorLocked(state.activeText)) return;
+
+  if (ui.btnResendSocialEmail) {
+    ui.btnResendSocialEmail.disabled = true;
+    ui.btnResendSocialEmail.textContent = "Reenviando...";
+  }
+
+  try {
+    await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, state.activeText?.latestVersion));
+    setEditorFeedback("Cartao postal reenviado para o seu e-mail.", "success");
+  } catch (error) {
+    setEditorFeedback(error?.message || "Nao foi possivel reenviar o cartao postal.", "error");
+  } finally {
+    if (ui.btnResendSocialEmail) {
+      ui.btnResendSocialEmail.disabled = false;
+      ui.btnResendSocialEmail.textContent = "Reenviar cartao por e-mail";
+    }
   }
 }
 
@@ -2760,6 +3261,11 @@ async function archiveCurrentText() {
   const response = await archiveSextilhaTextRecord(state.activeTextId, { status: "arquivada" });
   if (response?.text) {
     upsertTextInDashboardState(response.text);
+  }
+
+  if (state.activeFolhetoId) {
+    await openFolhetoWorkspace(state.activeFolhetoId);
+    return;
   }
 
   await openSextilhaDashboard();
@@ -3056,7 +3562,14 @@ async function handleDashboardTextAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
 
-  const { action, textId } = button.dataset;
+  const { action, textId, folhetoId } = button.dataset;
+
+  if (action === "open-folheto") {
+    if (!folhetoId) return;
+    await openFolhetoWorkspace(folhetoId);
+    return;
+  }
+
   if (!textId) return;
 
   if (action === "open-text") {
@@ -3146,6 +3659,26 @@ if (ui.btnCreateText) {
   });
 }
 
+if (ui.btnCreateFolheto) {
+  ui.btnCreateFolheto.addEventListener("click", () => {
+    createNewFolheto().catch((error) => {
+      setEditorFeedback(error?.message || "Nao foi possivel criar o folheto agora.", "error");
+    });
+  });
+}
+
+if (ui.btnCreateTextInFolheto) {
+  ui.btnCreateTextInFolheto.addEventListener("click", async () => {
+    try {
+      await createNewSextilha({ folheto: state.activeFolheto });
+    } catch (error) {
+      if (ui.folhetoTextList) {
+        ui.folhetoTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel criar a sextilha neste folheto.")}</div>`;
+      }
+    }
+  });
+}
+
 if (ui.dashboardStatusFilter) {
   ui.dashboardStatusFilter.addEventListener("change", renderDashboardTexts);
 }
@@ -3160,9 +3693,31 @@ if (ui.dashboardTextList) {
   });
 }
 
+if (ui.folhetoTextList) {
+  ui.folhetoTextList.addEventListener("click", (event) => {
+    handleDashboardTextAction(event).catch((error) => {
+      if (ui.folhetoTextList) {
+        ui.folhetoTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel carregar esta sextilha.")}</div>`;
+      }
+    });
+  });
+}
+
+if (ui.btnBackToDashboardFromFolheto) {
+  ui.btnBackToDashboardFromFolheto.addEventListener("click", () => {
+    openSextilhaDashboard().catch((error) => {
+      setEditorFeedback(error?.message || "Nao foi possivel voltar ao caderno.", "error");
+    });
+  });
+}
+
 if (ui.btnBackToDashboard) {
   ui.btnBackToDashboard.addEventListener("click", async () => {
     try {
+      if (state.activeFolhetoId) {
+        await openFolhetoWorkspace(state.activeFolhetoId);
+        return;
+      }
       await openSextilhaDashboard();
     } catch (error) {
       setEditorFeedback(error?.message || "Nao foi possivel voltar ao caderno.", "error");
@@ -3179,6 +3734,12 @@ if (ui.btnSaveTextVersion) {
 if (ui.btnFinalizeText) {
   ui.btnFinalizeText.addEventListener("click", () => {
     saveCurrentTextVersion("finalize");
+  });
+}
+
+if (ui.btnResendSocialEmail) {
+  ui.btnResendSocialEmail.addEventListener("click", () => {
+    resendSocialPostcardEmail();
   });
 }
 
@@ -3217,6 +3778,10 @@ if (ui.btnBackToEditor) {
 if (ui.btnBackToDashboardFromVersions) {
   ui.btnBackToDashboardFromVersions.addEventListener("click", async () => {
     try {
+      if (state.activeFolhetoId) {
+        await openFolhetoWorkspace(state.activeFolhetoId);
+        return;
+      }
       await openSextilhaDashboard();
     } catch (error) {
       if (ui.versionHistoryList) {
@@ -3250,7 +3815,10 @@ if (ui.versionComparePanel) {
 
 getSextilhaVerseInputs().forEach((input) => {
   if (!input) return;
-  input.addEventListener("input", updateSextilhaIndicators);
+  input.addEventListener("input", () => {
+    updateSextilhaIndicators();
+    syncEditorInannaPresence();
+  });
   input.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
@@ -3262,8 +3830,14 @@ getSextilhaVerseInputs().forEach((input) => {
 [ui.editorTitleInput, ui.editorThemeInput, ui.editorNoteInput, ui.editorSharedWithEducator]
   .filter(Boolean)
   .forEach((input) => {
-    input.addEventListener("input", updateSextilhaIndicators);
-    input.addEventListener("change", updateSextilhaIndicators);
+    input.addEventListener("input", () => {
+      updateSextilhaIndicators();
+      syncEditorInannaPresence();
+    });
+    input.addEventListener("change", () => {
+      updateSextilhaIndicators();
+      syncEditorInannaPresence();
+    });
   });
 
 getSextilhaVerseMeterButtons().forEach((button) => {
