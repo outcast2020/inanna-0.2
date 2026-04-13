@@ -1820,7 +1820,6 @@ async function verifyCheckinEmail() {
   if (response?.ok && response?.status === "matched") {
     applyResolvedCheckinIdentity(response);
     updateWelcomeIdentityUI();
-    prewarmFirebaseSextilhaSession();
     if (ui.btnStart) ui.btnStart.focus();
     return;
   }
@@ -1905,6 +1904,7 @@ function showTrackChooser() {
   hideGameExperience();
   setView("chooser", ui.trackChooserSection);
   window.scrollTo({ top: 0, behavior: "smooth" });
+  prewarmFirebaseSextilhaSession();
 }
 
 function startGameTrack() {
@@ -4040,11 +4040,17 @@ if (ui.chooseGameTrackBtn) {
 
 if (ui.chooseSextilhaTrackBtn) {
   ui.chooseSextilhaTrackBtn.addEventListener("click", async () => {
+    const originalLabel = ui.chooseSextilhaTrackBtn.textContent;
+    ui.chooseSextilhaTrackBtn.disabled = true;
+    ui.chooseSextilhaTrackBtn.textContent = "Abrindo caderno...";
     try {
       await openSextilhaDashboard();
     } catch (error) {
-window.alert(error?.message || "Não foi possível abrir o caderno agora.");
+      window.alert(error?.message || "Não foi possível abrir o caderno agora.");
       showTrackChooser();
+    } finally {
+      ui.chooseSextilhaTrackBtn.disabled = false;
+      ui.chooseSextilhaTrackBtn.textContent = originalLabel;
     }
   });
 }
