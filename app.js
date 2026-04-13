@@ -232,7 +232,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyofnCcZ52DNe0p-5GdWSSP6QqtK4DWXFryfyxUBghMdRC5pzCWVCtvEuRf38KeIbo/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwFlg4rpDIKwTkSc1nSoFcEZdzB0h-QNnLKzoqx467cqJTN76y1h-j23bwipgjXhRIu/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
