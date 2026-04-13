@@ -356,3 +356,52 @@ Mesmo antes da virada ao Firestore, o caderno ja recebeu dois ganhos locais:
 - O app combina explicacao conceitual de IA com um jogo de escrita formal.
 - Mesmo quando o frontend calcula a pontuacao, o backend recalcula tudo na gravacao final.
 - O README antigo focava mais no conceito; este arquivo passa a cobrir tambem operacao, backend e check-in.
+
+
+## Conformidade com LGPD e privacidade
+
+Este projeto adota uma lógica de minimização de dados e busca tratar apenas as informações estritamente necessárias para identificação do participante, organização pedagógica e funcionamento do caderno de sextilhas, em consonância com o guia do Laboratório Cordel 2.0 (LABORATÓRIO CORDEL 2.0, 2026) e com as orientações do Ministério da Educação sobre tratamento de dados pessoais (BRASIL, 2025).
+
+No fluxo de uso, o laboratório prioriza a coleta mínima de dados, como nome ou pseudônimo, e-mail, produção textual, escola, turma ou oficina quando isso for relevante para organização pedagógica. Ao mesmo tempo, recomenda que não sejam inseridos dados sensíveis ou desnecessários, como endereço residencial, documentos, biometria, saúde, religião ou opinião política (LABORATÓRIO CORDEL 2.0, 2026).
+
+Em casos de placar, mostras, antologias, exposições ou circulação pública, a recomendação institucional é priorizar formas reduzidas de identificação, como apelido, primeiro nome ou pseudônimo. Também se prevê moderação prévia, ocultação, correção ou retirada de conteúdos quando isso for necessário para proteção dos participantes (LABORATÓRIO CORDEL 2.0, 2026).
+
+O titular, ou seu responsável legal quando aplicável, pode solicitar informação, correção, anonimização, revisão de exposição pública indevida e exclusão de dados nos limites legais e institucionais. Esse ponto reforça o alinhamento do projeto com a LGPD e com a noção de proteção de dados como direito fundamental no contexto educacional (BRASIL, 2025; BRASIL, [2026]).
+
+## Termos de uso e responsabilidade pedagógica
+
+Ao realizar o check-in, o participante ingressa em um ambiente explicitamente descrito como educativo, cultural e experimental, no qual a tecnologia funciona como apoio à criação, à análise e à reflexão, mas não substitui autoria humana, mediação pedagógica, responsabilidade ética nem identidade cultural (LABORATÓRIO CORDEL 2.0, 2026).
+
+No caso específico da Inanna, o próprio termo do laboratório define a ferramenta como uma “Proto-IA”, isto é, um dispositivo pedagógico voltado à exploração de padrões, previsões e combinações textuais. Isso dialoga diretamente com a arquitetura do app, em que o motor de previsão trabalha com contexto sintático, rima, coerência e frequência local, sem operar como um modelo generativo de linguagem completo.
+
+O participante também se compromete a usar o ambiente de forma ética e respeitosa. O laboratório veda conteúdo ofensivo, discriminatório ou violento, exposição de dados pessoais de terceiros sem autorização, simulação de identidade, violação de direitos autorais e qualquer uso voltado a assédio, humilhação, vigilância indevida ou dano moral (LABORATÓRIO CORDEL 2.0, 2026).
+
+Quando houver participação de crianças e adolescentes, o uso deve ocorrer com mediação pedagógica adequada, linguagem compatível com a faixa etária e atenção aos riscos de simplificação indevida, automação acrítica e reprodução de vieses. Além disso, todo conteúdo sugerido, previsto, classificado ou gerado por ferramenta do laboratório deve passar por validação humana antes de uso pedagógico decisivo, publicação ou circulação pública (LABORATÓRIO CORDEL 2.0, 2026; BRASIL, [2026]).
+
+## Diretrizes de IA do MEC e posicionamento do projeto
+
+O Referencial para Desenvolvimento e Uso Responsáveis de Inteligência Artificial na Educação, elaborado no âmbito do MEC, propõe que a adoção de IA no campo educacional esteja baseada em equidade, inclusão, centralidade dos educadores, transparência, explicabilidade e governança de dados para confiança, segurança e privacidade (BRASIL, [2026]).
+
+Esse mesmo referencial distingue oportunidades e desafios. Entre os desafios, estão a transparência dos sistemas, os vieses, a segurança e privacidade, os direitos autorais, o risco de plágio, as alucinações em IA generativa, a dependência excessiva e as desigualdades digitais. Por isso, o documento defende supervisão humana significativa e alinhamento da tecnologia às finalidades educacionais (BRASIL, [2026]).
+
+A arquitetura atual do Inanna é coerente com esse horizonte. No jogo de quadras, não há IA generativa escrevendo pelo participante. O que existe é um motor de previsão local, explicável e deliberadamente limitado, concebido como instrumento de letramento digital e de compreensão dos mecanismos de previsão textual. Já no caderno de sextilhas, a API Gemini 2.5 Flash aparece somente na etapa de devolutiva leve de progresso, sem assumir a escrita dos versos. Assim, a IA não ocupa o lugar do autor; ela apenas oferece uma análise breve orientada por indicadores já calculados pelo próprio backend.
+
+Esse desenho reforça quatro princípios importantes: centralidade da autoria humana; transparência sobre o uso de recursos algorítmicos; limitação funcional da IA no processo de escrita; e proteção dos dados do participante por meio da combinação entre Apps Script, autenticação customizada e Firestore (BRASIL, [2026]; LABORATÓRIO CORDEL 2.0, 2026).
+
+## Tecnologias e uso de IA
+
+A estrutura do projeto combina frontend estático, backend em Google Apps Script, autenticação e persistência opcional em Firebase/Firestore e uma chamada restrita à API Gemini 2.5 Flash para feedback curto de progresso. No frontend, os fluxos de quadra, dashboard e editor ficam visíveis em `index.html` e são orquestrados por `app.js`, enquanto a integração com Firebase é configurada em `firebase-config.js` e operacionalizada em `firebase-sextilhas.js`.
+
+O arquivo de configuração do Firebase já define o modo `firestore`, além de `collectionRoot = "participants"`, `textCollectionName = "texts"` e `versionCollectionName = "versions"`, o que confirma que o caderno de sextilhas foi pensado para armazenamento estruturado por participante. Já a ponte `firebase-sextilhas.js` cria autenticação com custom token, normaliza status editoriais, monta payloads de dashboard e restringe o acesso ao documento do próprio participante, reforçando a separação entre identidade e conteúdo autoral do caderno.
+
+Na camada de IA, o fluxo principal continua não generativo. O motor `prediction_engine_v2.js` trabalha com normalização lexical, banco de rimas, expectativas sintáticas, compatibilidade de rima e sugestão da palavra seguinte; seu papel é didático e explicável. O uso de IA generativa propriamente dita aparece apenas no endpoint `save_text_version`, onde uma devolutiva curta pode ser gerada via Gemini 2.5 Flash, desde que as propriedades `INANNA_AI_FEEDBACK_ENABLED`, `INANNA_GEMINI_API_KEY` e `INANNA_GEMINI_MODEL=gemini-2.5-flash` estejam configuradas.
+
+Em termos pedagógicos e éticos, isso significa que a escrita continua sendo do participante. A IA não faz o texto; ela oferece apenas um retorno leve sobre progresso, maturação e consistência, o que torna o desenho do projeto mais compatível com as recomendações de uso responsável de IA na educação (BRASIL, [2026]).
+
+## Referências
+
+BRASIL. Ministério da Educação. Tratamento de dados pessoais no MEC. Brasília, DF: MEC, 2025. Atualizado em: 26 mar. 2025. Disponível em: <https://www.gov.br/mec/pt-br/acesso-a-informacao/privacidade-e-protecao-de-dados-pessoais/tratamento-de-dados-pessoais-no-mec>. Acesso em: 13 abr. 2026.
+
+BRASIL. Ministério da Educação. Referencial para desenvolvimento e uso responsáveis de inteligência artificial na educação. Brasília, DF: MEC, [2026]. Disponível em: <https://www.gov.br/mec/pt-br/media/segape/referencial-oficial-pt.pdf>. Acesso em: 13 abr. 2026.
+
+LABORATÓRIO CORDEL 2.0. Guia de acesso, termos de uso, privacidade e créditos (v. 03/04/2026). Salvador: Cordel 2.0, 2026. Disponível em: <https://www.cordel2pontozero.com/s/laboratorio_cordel_2_0_termos_referencias_ABRIL2026.pdf>. Acesso em: 13 abr. 2026.

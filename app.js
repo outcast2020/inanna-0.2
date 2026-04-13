@@ -2073,6 +2073,27 @@ async function sendSocialPostcardEmail(postcardData) {
   });
 }
 
+function getFriendlySocialDeliveryErrorMessage(error) {
+  const rawMessage = String(error?.message || "").trim();
+  if (!rawMessage) {
+    return "A sextilha foi finalizada, mas o cartao postal nao conseguiu seguir por e-mail.";
+  }
+
+  if (/MailApp\.sendEmail|script\.send_mail|nao tem permissao para chamar MailApp/i.test(rawMessage)) {
+    return "A sextilha foi finalizada, mas o Web App do Apps Script ainda precisa ser reautorizado para enviar e-mails.";
+  }
+
+  if (/imagem do cartao postal nao chegou/i.test(rawMessage)) {
+    return "O cartao postal foi preparado, mas a imagem nao chegou corretamente ao Apps Script.";
+  }
+
+  if (/captura do cartao postal/i.test(rawMessage)) {
+    return "O cartao postal nao conseguiu ser renderizado no navegador.";
+  }
+
+  return rawMessage;
+}
+
 function isTextConcluded(textLike) {
   return normalizeStatusValue(textLike?.status || "") === "concluida";
 }
@@ -3530,9 +3551,9 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     }
   } catch (error) {
     const fallbackMessage = saveMode === "finalize" && saveSucceeded
-      ? "A sextilha foi finalizada, mas o cartao postal nao conseguiu seguir por e-mail."
+      ? getFriendlySocialDeliveryErrorMessage(error)
       : "Nao foi possivel salvar a versao.";
-    setEditorFeedback(error?.message || fallbackMessage, "error");
+    setEditorFeedback(saveMode === "finalize" && saveSucceeded ? fallbackMessage : (error?.message || fallbackMessage), "error");
     if (!saveSucceeded && getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
       renderEditorAiFeedback({
         tone: "error",
@@ -3556,7 +3577,7 @@ async function resendSocialPostcardEmail() {
     await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, state.activeText?.latestVersion));
     setEditorFeedback("Cartao postal reenviado para o seu e-mail.", "success");
   } catch (error) {
-    setEditorFeedback(error?.message || "Nao foi possivel reenviar o cartao postal.", "error");
+    setEditorFeedback(getFriendlySocialDeliveryErrorMessage(error), "error");
   } finally {
     if (ui.btnResendSocialEmail) {
       ui.btnResendSocialEmail.disabled = false;
