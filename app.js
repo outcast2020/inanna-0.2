@@ -239,9 +239,10 @@ const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
 const SYNTHETIC_LEGACY_FOLHETO_ID = "__legacy_folheto__";
 const DASHBOARD_CACHE_KEY_PREFIX = "inanna_dashboard_cache_v1";
-const DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS = 3500;
-const DASHBOARD_FIREBASE_SESSION_TIMEOUT_MS = 4500;
-const DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS = 7000;
+const DASHBOARD_SLOW_NOTICE_DELAY_MS = 3500;
+const DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS = 65000;
+const DASHBOARD_FIREBASE_SESSION_TIMEOUT_MS = 30000;
+const DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS = 65000;
 const INANNA_AVATAR_STATES = {
   observing: {
     src: "inanna_observando.webp",
@@ -3180,9 +3181,12 @@ async function openSextilhaDashboard(options = {}) {
   setView("sextilhaDashboard", ui.userDashboardSection);
   const identity = buildIdentityPayload();
   const cachedPayload = settings.forceRefresh ? null : readDashboardCache(identity);
+  const inMemoryPayload = state.userTexts.length && !settings.forceRefresh
+    ? buildDashboardPayloadFromState()
+    : null;
 
-  if (state.userTexts.length && !settings.forceRefresh) {
-    applyDashboardPayload(buildDashboardPayloadFromState());
+  if (inMemoryPayload) {
+    applyDashboardPayload(inMemoryPayload);
   } else if (cachedPayload) {
     applyDashboardPayload(cachedPayload);
     if (ui.dashboardLastEdited) {
@@ -3193,22 +3197,39 @@ async function openSextilhaDashboard(options = {}) {
   }
 
   let fastPayload = null;
+  const visibleBasePayload = inMemoryPayload || cachedPayload || null;
+  const slowNoticeTimer = window.setTimeout(() => {
+    if (requestId !== state.dashboardLoadRequestId) return;
+    if (!visibleBasePayload) {
+      renderDashboardSyncNotice("Seu caderno está demorando mais do que o normal para responder.");
+      return;
+    }
+    if (ui.dashboardLastEdited) {
+      ui.dashboardLastEdited.textContent = "Sincronizando seu caderno...";
+    }
+  }, DASHBOARD_SLOW_NOTICE_DELAY_MS);
+
   try {
     fastPayload = await loadUserDashboardData();
+    window.clearTimeout(slowNoticeTimer);
     if (requestId !== state.dashboardLoadRequestId) return;
-    if (!cachedPayload || payloadHasDashboardContent(fastPayload) || !payloadHasDashboardContent(cachedPayload)) {
-      applyDashboardPayload(fastPayload);
+    const mergedFastPayload = visibleBasePayload
+      ? mergeDashboardPayloads(visibleBasePayload, fastPayload)
+      : fastPayload;
+    if (!visibleBasePayload || payloadHasDashboardContent(mergedFastPayload) || !payloadHasDashboardContent(visibleBasePayload)) {
+      applyDashboardPayload(mergedFastPayload);
     }
   } catch (error) {
+    window.clearTimeout(slowNoticeTimer);
     if (requestId !== state.dashboardLoadRequestId) return;
-    if (!cachedPayload) {
+    if (!visibleBasePayload) {
       renderDashboardSyncNotice(error?.message || "Seu caderno está demorando um pouco mais para responder.");
     } else if (ui.dashboardLastEdited) {
       ui.dashboardLastEdited.textContent = "Sincronizando seu caderno...";
     }
   }
 
-  refreshDashboardInBackground(requestId, identity, fastPayload || cachedPayload).catch((error) => {
+  refreshDashboardInBackground(requestId, identity, fastPayload || visibleBasePayload).catch((error) => {
     console.warn("[dashboard] nao foi possivel concluir a sincronizacao em segundo plano", error);
   });
 }
