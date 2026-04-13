@@ -227,6 +227,7 @@ const state = {
   mutedVerseWarningIndexes: Array.from({ length: 6 }, () => false),
   editorAvatarState: "observing",
   editorAvatarLockedUntil: 0,
+  dashboardLoadRequestId: 0,
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
@@ -237,6 +238,10 @@ const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
 const SYNTHETIC_LEGACY_FOLHETO_ID = "__legacy_folheto__";
+const DASHBOARD_CACHE_KEY_PREFIX = "inanna_dashboard_cache_v1";
+const DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS = 3500;
+const DASHBOARD_FIREBASE_SESSION_TIMEOUT_MS = 4500;
+const DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS = 7000;
 const INANNA_AVATAR_STATES = {
   observing: {
     src: "inanna_observando.webp",
@@ -681,6 +686,14 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeLooseIdentityText(value) {
+  return norm(String(value || "")).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function normalizePersonIdentityText(value) {
+  return normalizeLooseIdentityText(value).replace(/\s+/g, " ").trim();
+}
+
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
@@ -922,6 +935,34 @@ function renderDashboardLoadingSkeleton() {
   }
 }
 
+function renderDashboardLoadError(message) {
+  if (ui.dashboardFolhetoCount) ui.dashboardFolhetoCount.textContent = "0";
+  if (ui.dashboardTextCount) ui.dashboardTextCount.textContent = "0";
+  if (ui.dashboardCompletedCount) ui.dashboardCompletedCount.textContent = "0";
+  if (ui.dashboardLastEdited) ui.dashboardLastEdited.textContent = "Nao foi possivel carregar agora";
+  if (ui.dashboardTextList) {
+    ui.dashboardTextList.innerHTML = `
+      <div class="workspace-empty">
+        ${escapeHtml(message || "Nao foi possivel abrir seu caderno agora.")}
+      </div>
+    `;
+  }
+}
+
+function renderDashboardSyncNotice(message) {
+  if (ui.dashboardFolhetoCount) ui.dashboardFolhetoCount.textContent = "...";
+  if (ui.dashboardTextCount) ui.dashboardTextCount.textContent = "...";
+  if (ui.dashboardCompletedCount) ui.dashboardCompletedCount.textContent = "...";
+  if (ui.dashboardLastEdited) ui.dashboardLastEdited.textContent = "Sincronizando o caderno...";
+  if (ui.dashboardTextList) {
+    ui.dashboardTextList.innerHTML = `
+      <div class="workspace-empty">
+        ${escapeHtml(message || "Seu caderno esta demorando um pouco mais para responder. Seguimos tentando recuperar o acervo em segundo plano.")}
+      </div>
+    `;
+  }
+}
+
 function renderVersionHistoryLoadingSkeleton() {
   if (ui.versionComparePanel) {
     ui.versionComparePanel.innerHTML = "";
@@ -1101,6 +1142,196 @@ function mergeDashboardPayloads(primaryPayload = {}, secondaryPayload = {}) {
   });
 }
 
+function buildDashboardCacheKey(identity = buildIdentityPayload()) {
+  const participantId = String(identity?.participantId || state.participantId || "").trim();
+  return participantId ? `${DASHBOARD_CACHE_KEY_PREFIX}:${participantId}` : "";
+}
+
+function payloadHasDashboardContent(payload = {}) {
+  return Number(payload?.textCount || 0) > 0
+    || Number(payload?.folhetoCount || 0) > 0
+    || !!String(payload?.lastEditedAt || "").trim();
+}
+
+function readDashboardCache(identity = buildIdentityPayload()) {
+  const cacheKey = buildDashboardCacheKey(identity);
+  if (!cacheKey || !window.localStorage) return null;
+
+  try {
+    const rawValue = window.localStorage.getItem(cacheKey);
+    if (!rawValue) return null;
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed?.texts) || !Array.isArray(parsed?.folhetos)) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function persistDashboardCache(identity = buildIdentityPayload(), payload = {}, options = {}) {
+  const cacheKey = buildDashboardCacheKey(identity);
+  if (!cacheKey || !window.localStorage) return;
+
+  const allowEmpty = !!options.allowEmpty;
+  const hasMeaningfulContent = payloadHasDashboardContent(payload);
+
+  if (!allowEmpty && !hasMeaningfulContent) return;
+
+  try {
+    window.localStorage.setItem(cacheKey, JSON.stringify(payload));
+  } catch (_) {
+    // Ignora indisponibilidade de storage local sem quebrar o caderno.
+  }
+}
+
+function withTimeout(promise, timeoutMs, errorMessage) {
+  if (!timeoutMs || timeoutMs <= 0) return promise;
+
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(errorMessage || "A operacao demorou mais do que o esperado."));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+async function sha256Hex(value) {
+  if (!window.crypto?.subtle || typeof window.TextEncoder === "undefined") {
+    throw new Error("Web Crypto indisponivel");
+  }
+
+  const encoded = new window.TextEncoder().encode(String(value || ""));
+  const digest = await window.crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest))
+    .map((item) => item.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function buildStableDashboardId(prefix, parts = []) {
+  const source = parts.map((part) => String(part || "").trim().toLowerCase()).join("|");
+  const digest = await sha256Hex(source);
+  return `${String(prefix || "id")}_${digest.slice(0, 16)}`;
+}
+
+async function buildDashboardIdentityVariants(identity = buildIdentityPayload()) {
+  const baseIdentity = {
+    ...identity,
+    email: String(identity?.email || "").trim(),
+  };
+  const variants = [baseIdentity];
+  const aliasIds = new Set();
+
+  try {
+    const normalizedEmail = normalizeEmail(baseIdentity.email);
+    if (baseIdentity.checkinUserId) {
+      aliasIds.add(await buildStableDashboardId("participant", ["checkin", baseIdentity.checkinUserId]));
+    }
+    if (normalizedEmail) {
+      aliasIds.add(await buildStableDashboardId("participant", ["email", normalizedEmail]));
+    }
+    if (baseIdentity.name || baseIdentity.municipio || baseIdentity.estado || baseIdentity.origem) {
+      aliasIds.add(await buildStableDashboardId("participant", [
+        "name",
+        normalizePersonIdentityText(baseIdentity.name),
+        normalizeLooseIdentityText(baseIdentity.municipio),
+        normalizeLooseIdentityText(baseIdentity.estado),
+        normalizeLooseIdentityText(baseIdentity.origem),
+      ]));
+    }
+  } catch (_) {
+    return variants;
+  }
+
+  aliasIds.forEach((participantId) => {
+    if (!participantId || participantId === baseIdentity.participantId) return;
+    variants.push({
+      ...baseIdentity,
+      participantId,
+      email: "",
+    });
+  });
+
+  return variants;
+}
+
+async function loadAppsScriptDashboardPayload(identity = buildIdentityPayload()) {
+  return fetchAppGet("get_user_dashboard", identity);
+}
+
+async function loadAppsScriptDashboardPayloads(identity = buildIdentityPayload(), options = {}) {
+  const settings = {
+    includeAliases: false,
+    timeoutMs: DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS,
+    ...options,
+  };
+  const variants = settings.includeAliases
+    ? await buildDashboardIdentityVariants(identity)
+    : [{ ...identity, email: String(identity?.email || "").trim() }];
+  const results = await Promise.allSettled(
+    variants.map((variant) => withTimeout(
+      loadAppsScriptDashboardPayload(variant),
+      settings.timeoutMs,
+      "Uma das consultas do caderno demorou mais do que o esperado."
+    ))
+  );
+
+  let mergedPayload = null;
+  results.forEach((result) => {
+    if (result.status !== "fulfilled") return;
+    mergedPayload = mergedPayload ? mergeDashboardPayloads(mergedPayload, result.value) : result.value;
+  });
+
+  if (mergedPayload) {
+    return mergedPayload;
+  }
+
+  throw results.find((result) => result.status === "rejected")?.reason || new Error("Nao foi possivel carregar o caderno no Apps Script.");
+}
+
+async function loadFirestoreDashboardPayload(identity = buildIdentityPayload()) {
+  await withTimeout(
+    ensureFirebaseSextilhaSession(),
+    DASHBOARD_FIREBASE_SESSION_TIMEOUT_MS,
+    "A sessao do Firebase demorou mais do que o esperado."
+  );
+  return withTimeout(
+    window.InannaFirebaseBridge.getUserDashboard(identity),
+    DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS,
+    "A leitura do Firebase demorou mais do que o esperado."
+  );
+}
+
+async function refreshDashboardInBackground(requestId, identity, basePayload = null) {
+  const tasks = [
+    loadAppsScriptDashboardPayloads(identity, { includeAliases: true }),
+  ];
+
+  if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
+    tasks.push(loadFirestoreDashboardPayload(identity));
+  }
+
+  const results = await Promise.allSettled(tasks);
+  let mergedPayload = basePayload || null;
+  results.forEach((result) => {
+    if (result.status !== "fulfilled") return;
+    mergedPayload = mergedPayload ? mergeDashboardPayloads(mergedPayload, result.value) : result.value;
+  });
+
+  if (!mergedPayload || requestId !== state.dashboardLoadRequestId) return;
+  if (!["sextilhaDashboard", "folhetoWorkspace"].includes(state.view)) return;
+
+  applyDashboardPayload(mergedPayload);
+}
+
 function buildDashboardPayloadFromState() {
   return buildDashboardPayloadFromCollections(state.userTexts, state.userFolhetos, {
     participantId: state.participantId,
@@ -1252,46 +1483,14 @@ async function runSextilhaStoreOperation(operationName, appsScriptFn, firebaseFn
 
 async function loadUserDashboardData() {
   const identity = buildIdentityPayload();
-  const loadAppsScriptDashboard = () => fetchAppGet("get_user_dashboard", identity);
-
-  if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
-    state.sextilhaStoreStatus = "apps-script";
-    return loadAppsScriptDashboard();
-  }
-
-  try {
-    await ensureFirebaseSextilhaSession();
-    const [firestoreResult, appsScriptResult] = await Promise.allSettled([
-      window.InannaFirebaseBridge.getUserDashboard(identity),
-      loadAppsScriptDashboard(),
-    ]);
-
-    const firestorePayload = firestoreResult.status === "fulfilled" ? firestoreResult.value : null;
-    const appsScriptPayload = appsScriptResult.status === "fulfilled" ? appsScriptResult.value : null;
-
-    if (firestorePayload && appsScriptPayload) {
-      state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-      return mergeDashboardPayloads(firestorePayload, appsScriptPayload);
-    }
-
-    if (firestorePayload) {
-      state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-      return firestorePayload;
-    }
-
-    if (appsScriptPayload) {
-      state.sextilhaStoreStatus = "apps-script";
-      state.firebaseSessionReady = false;
-      return appsScriptPayload;
-    }
-
-    throw firestoreResult.reason || appsScriptResult.reason || new Error("Nao foi possivel carregar o caderno.");
-  } catch (error) {
-    console.warn("[sextilha-store] fallback para Apps Script em get_user_dashboard", error);
-    state.sextilhaStoreStatus = "apps-script";
-    state.firebaseSessionReady = false;
-    return loadAppsScriptDashboard();
-  }
+  const payload = await withTimeout(
+    loadAppsScriptDashboardPayload(identity),
+    DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
+    "Seu caderno esta demorando mais do que o normal para responder."
+  );
+  state.sextilhaStoreStatus = "apps-script";
+  state.firebaseSessionReady = false;
+  return payload;
 }
 
 async function createSextilhaTextRecord(payload) {
@@ -2904,6 +3103,7 @@ function applyDashboardPayload(payload) {
   state.userDashboard = payload;
   state.userTexts = Array.isArray(payload?.texts) ? payload.texts : [];
   state.userFolhetos = buildFolhetoCollection(state.userTexts, payload?.folhetos || state.userFolhetos);
+  window.__INANNA_DEBUG_STORE_STATUS = state.sextilhaStoreStatus;
   if (state.activeFolhetoId) {
     state.activeFolheto = state.userFolhetos.find((item) => item.folhetoId === state.activeFolhetoId) || null;
   }
@@ -2928,6 +3128,7 @@ function applyDashboardPayload(payload) {
   }
 
   renderDashboardTexts();
+  persistDashboardCache(buildIdentityPayload(), payload);
   if (state.view === "folhetoWorkspace") {
     renderFolhetoWorkspace();
   }
@@ -2935,20 +3136,46 @@ function applyDashboardPayload(payload) {
 
 async function openSextilhaDashboard(options = {}) {
   const settings = { forceRefresh: false, ...options };
+  const requestId = state.dashboardLoadRequestId + 1;
+  state.dashboardLoadRequestId = requestId;
   state.selectedTrack = "sextilha";
   state.activeFolhetoId = "";
   state.activeFolheto = null;
   hideGameExperience();
   setView("sextilhaDashboard", ui.userDashboardSection);
+  const identity = buildIdentityPayload();
+  const cachedPayload = settings.forceRefresh ? null : readDashboardCache(identity);
 
   if (state.userTexts.length && !settings.forceRefresh) {
     applyDashboardPayload(buildDashboardPayloadFromState());
+  } else if (cachedPayload) {
+    applyDashboardPayload(cachedPayload);
+    if (ui.dashboardLastEdited) {
+      ui.dashboardLastEdited.textContent = "Atualizando seu caderno...";
+    }
   } else {
     renderDashboardLoadingSkeleton();
   }
 
-  const payload = await loadUserDashboardData();
-  applyDashboardPayload(payload);
+  let fastPayload = null;
+  try {
+    fastPayload = await loadUserDashboardData();
+    if (requestId !== state.dashboardLoadRequestId) return;
+    if (!cachedPayload || payloadHasDashboardContent(fastPayload) || !payloadHasDashboardContent(cachedPayload)) {
+      applyDashboardPayload(fastPayload);
+    }
+  } catch (error) {
+    if (requestId !== state.dashboardLoadRequestId) return;
+    if (!cachedPayload) {
+      renderDashboardSyncNotice(error?.message || "Seu caderno esta demorando um pouco mais para responder.");
+    } else if (ui.dashboardLastEdited) {
+      ui.dashboardLastEdited.textContent = "Sincronizando seu caderno...";
+    }
+  }
+
+  refreshDashboardInBackground(requestId, identity, fastPayload || cachedPayload).catch((error) => {
+    console.warn("[dashboard] nao foi possivel concluir a sincronizacao em segundo plano", error);
+  });
 }
 
 function renderTextCardMarkup(text) {
