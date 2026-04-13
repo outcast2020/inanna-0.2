@@ -251,7 +251,7 @@ const INANNA_AVATAR_STATES = {
   reading: {
     src: "inanna_lendo.webp",
     title: "Inanna lendo",
-    text: "Ela esta lendo sua sextilha com calma para responder com cuidado.",
+    text: "Ela está lendo sua sextilha com calma para responder com cuidado.",
   },
   celebrating: {
     src: "inanna_celebrando.webp",
@@ -261,8 +261,8 @@ const INANNA_AVATAR_STATES = {
 };
 const SEXTILHA_STATUS_LABELS = {
   "rascunho": "Rascunho",
-  "em revisao": "Em revisao",
-  "concluida": "Concluida",
+  "em revisao": "Em revisão",
+  "concluida": "Concluída",
   "compartilhada com educador": "Compartilhada com educador",
   "selecionada para antologia": "Selecionada para antologia",
   "arquivada": "Arquivada"
@@ -537,6 +537,27 @@ const FALLBACK_TOKENS = Object.values(BACKUP_TOKENS).flat();
 // ── Helpers ───────────────────────────────────────────────────────────
 function norm(s) {
   return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+function normalizeVerseAnalysisText(value) {
+  return norm(
+    String(value || "")
+      .replace(/_+/g, " ")
+      .replace(/[\p{P}\p{S}]+/gu, " ")
+  ).replace(/\s+/g, " ").trim();
+}
+
+function tokenizeVerseAnalysisText(value) {
+  return normalizeVerseAnalysisText(value).split(/\s+/).filter(Boolean);
+}
+
+function normalizeVerseForSyllableCount(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/_+/g, " ")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
@@ -939,11 +960,11 @@ function renderDashboardLoadError(message) {
   if (ui.dashboardFolhetoCount) ui.dashboardFolhetoCount.textContent = "0";
   if (ui.dashboardTextCount) ui.dashboardTextCount.textContent = "0";
   if (ui.dashboardCompletedCount) ui.dashboardCompletedCount.textContent = "0";
-  if (ui.dashboardLastEdited) ui.dashboardLastEdited.textContent = "Nao foi possivel carregar agora";
+  if (ui.dashboardLastEdited) ui.dashboardLastEdited.textContent = "Não foi possível carregar agora";
   if (ui.dashboardTextList) {
     ui.dashboardTextList.innerHTML = `
       <div class="workspace-empty">
-        ${escapeHtml(message || "Nao foi possivel abrir seu caderno agora.")}
+        ${escapeHtml(message || "Não foi possível abrir seu caderno agora.")}
       </div>
     `;
   }
@@ -957,7 +978,7 @@ function renderDashboardSyncNotice(message) {
   if (ui.dashboardTextList) {
     ui.dashboardTextList.innerHTML = `
       <div class="workspace-empty">
-        ${escapeHtml(message || "Seu caderno esta demorando um pouco mais para responder. Seguimos tentando recuperar o acervo em segundo plano.")}
+        ${escapeHtml(message || "Seu caderno está demorando um pouco mais para responder. Seguimos tentando recuperar o acervo em segundo plano.")}
       </div>
     `;
   }
@@ -984,7 +1005,7 @@ function renderEditorAiFeedback(feedback, options = {}) {
     ui.editorAiFeedback.className = "ai-feedback-card ai-feedback-card--idle";
     ui.editorAiFeedback.innerHTML = `
       <strong>Feedback breve</strong>
-      <p>Salve uma versao para receber uma devolutiva curta e encorajadora da Inanna.</p>
+      <p>Salve uma versão para receber uma devolutiva curta e encorajadora da Inanna.</p>
     `;
     if (state.view === "sextilhaEditor") {
       syncEditorInannaPresence();
@@ -998,7 +1019,7 @@ function renderEditorAiFeedback(feedback, options = {}) {
       ? "ai-feedback-card--loading"
       : "";
   const label = feedback.tone === "loading"
-    ? "Inanna esta lendo"
+    ? "Inanna está lendo"
     : feedback.source === "gemini"
       ? "Inanna + Gemini"
       : "Inanna acompanha";
@@ -1040,7 +1061,7 @@ function buildFolhetoCollection(texts = [], folhetos = []) {
     if (!folhetoId) return;
     registry.set(folhetoId, {
       folhetoId,
-      title: String(folheto?.title || "Folheto sem titulo").trim() || "Folheto sem titulo",
+      title: String(folheto?.title || "Folheto sem título").trim() || "Folheto sem título",
       createdAt: folheto?.createdAt || "",
       updatedAt: folheto?.updatedAt || "",
       textCount: Number(folheto?.textCount || 0),
@@ -1056,7 +1077,7 @@ function buildFolhetoCollection(texts = [], folhetos = []) {
       folhetoId,
       title: folhetoId === SYNTHETIC_LEGACY_FOLHETO_ID
         ? "Acervo anterior"
-        : String(text?.folhetoTitle || "Folheto sem titulo").trim() || "Folheto sem titulo",
+        : String(text?.folhetoTitle || "Folheto sem título").trim() || "Folheto sem título",
       createdAt: text?.createdAt || "",
       updatedAt: text?.updatedAt || "",
       textCount: 0,
@@ -1294,7 +1315,7 @@ async function loadAppsScriptDashboardPayloads(identity = buildIdentityPayload()
     return mergedPayload;
   }
 
-  throw results.find((result) => result.status === "rejected")?.reason || new Error("Nao foi possivel carregar o caderno no Apps Script.");
+  throw results.find((result) => result.status === "rejected")?.reason || new Error("Não foi possível carregar o caderno no Apps Script.");
 }
 
 async function loadFirestoreDashboardPayload(identity = buildIdentityPayload()) {
@@ -1359,7 +1380,7 @@ function upsertFolhetoInDashboardState(folheto) {
   if (!folheto?.folhetoId) return;
   const nextFolheto = {
     ...folheto,
-    title: String(folheto.title || "Folheto sem titulo").trim() || "Folheto sem titulo",
+    title: String(folheto.title || "Folheto sem título").trim() || "Folheto sem título",
   };
   const nextFolhetos = state.userFolhetos.filter((item) => item.folhetoId !== nextFolheto.folhetoId);
   nextFolhetos.unshift(nextFolheto);
@@ -1414,7 +1435,7 @@ async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
   renderEditorAiFeedback({
     source: "inanna",
     tone: "loading",
-    message: "Inanna esta lendo seu rascunho com calma para deixar um comentario breve e sutil.",
+    message: "Inanna está lendo seu rascunho com calma para deixar um comentário breve e sutil.",
   });
 
   try {
@@ -1432,10 +1453,10 @@ async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
     renderEditorAiFeedback(null);
   } catch (error) {
     if (!shouldApplyAiFeedbackResponse(requestKey, textId, versionId)) return;
-    setEditorFeedback(`${versionLabel} salva. A devolutiva ainda nao chegou.`, "muted");
+    setEditorFeedback(`${versionLabel} salva. A devolutiva ainda não chegou.`, "muted");
     renderEditorAiFeedback({
       tone: "error",
-      message: error?.message || "A Inanna nao conseguiu responder agora, mas o rascunho foi salvo.",
+      message: error?.message || "A Inanna não conseguiu responder agora, mas o rascunho foi salvo.",
     });
   }
 }
@@ -1486,7 +1507,7 @@ async function loadUserDashboardData() {
   const payload = await withTimeout(
     loadAppsScriptDashboardPayload(identity),
     DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
-    "Seu caderno esta demorando mais do que o normal para responder."
+    "Seu caderno está demorando mais do que o normal para responder."
   );
   state.sextilhaStoreStatus = "apps-script";
   state.firebaseSessionReady = false;
@@ -1917,12 +1938,12 @@ function getEditorBaselineVersion() {
 
 function buildSextilhaVersionLabel(versionLike) {
   const versionNumber = Number(versionLike?.versionNumber || versionLike?.versionCount || 0);
-  return versionNumber ? `Versao ${versionNumber}` : "Rascunho atual";
+  return versionNumber ? `Versão ${versionNumber}` : "Rascunho atual";
 }
 
 function describeSextilhaBaselineVersion(versionLike) {
   const versionNumber = Number(versionLike?.versionNumber || versionLike?.versionCount || 0);
-  return versionNumber ? `a Versao ${versionNumber}` : "este rascunho";
+  return versionNumber ? `a Versão ${versionNumber}` : "este rascunho";
 }
 
 function buildAiFeedbackRequestPayload(text, version) {
@@ -1965,7 +1986,7 @@ function buildAiFeedbackRequestPayload(text, version) {
 }
 
 function formatTextUpdatedLabel(text) {
-  return text?.updatedAt ? formatDateTime(text.updatedAt) : "Ainda sem edicoes";
+  return text?.updatedAt ? formatDateTime(text.updatedAt) : "Ainda sem edições";
 }
 
 function setEditorFeedback(message, tone = "muted", options = {}) {
@@ -2008,7 +2029,7 @@ function buildSocialPostcardData(text = state.activeText, version = null) {
     versionId: sourceVersion?.versionId || "",
     folhetoId: String(text?.folhetoId || "").trim(),
     folhetoTitle: String(text?.folhetoTitle || state.activeFolheto?.title || "").trim(),
-    title: String(sourceVersion?.title || text?.title || "Sextilha sem titulo").trim() || "Sextilha sem titulo",
+    title: String(sourceVersion?.title || text?.title || "Sextilha sem título").trim() || "Sextilha sem título",
     theme: String(sourceVersion?.theme || text?.theme || "Tema livre").trim() || "Tema livre",
     authorName: String(state.name || state.email || "Estudante").trim() || "Estudante",
     verses,
@@ -2025,13 +2046,13 @@ function hydrateSocialPostcard(postcardData) {
   }
   if (ui.socialPostcardAuthor) ui.socialPostcardAuthor.textContent = `Por ${postcardData.authorName}`;
   if (ui.socialPostcardVerses) {
-    ui.socialPostcardVerses.textContent = postcardData.verses.filter(Boolean).join("\n") || "Sua sextilha aparecera aqui.";
+    ui.socialPostcardVerses.textContent = postcardData.verses.filter(Boolean).join("\n") || "Sua sextilha aparecerá aqui.";
   }
 }
 
 async function captureSocialPostcardImage(postcardData) {
   if (typeof window.html2canvas !== "function" || !ui.socialPostcard) {
-    throw new Error("A captura do cartao postal ainda nao esta disponivel.");
+    throw new Error("A captura do cartão-postal ainda não está disponível.");
   }
 
   hydrateSocialPostcard(postcardData);
@@ -2053,7 +2074,7 @@ async function captureSocialPostcardImage(postcardData) {
 
 async function sendSocialPostcardEmail(postcardData) {
   if (!state.email) {
-    throw new Error("Seu e-mail de check-in nao foi encontrado para receber o cartao postal.");
+    throw new Error("Seu e-mail de check-in não foi encontrado para receber o cartão-postal.");
   }
 
   const capture = await captureSocialPostcardImage(postcardData);
@@ -2076,7 +2097,7 @@ async function sendSocialPostcardEmail(postcardData) {
 function getFriendlySocialDeliveryErrorMessage(error) {
   const rawMessage = String(error?.message || "").trim();
   if (!rawMessage) {
-    return "A sextilha foi finalizada, mas o cartao postal nao conseguiu seguir por e-mail.";
+    return "A sextilha foi finalizada, mas o cartão-postal não conseguiu seguir por e-mail.";
   }
 
   if (/MailApp\.sendEmail|script\.send_mail|nao tem permissao para chamar MailApp/i.test(rawMessage)) {
@@ -2084,11 +2105,11 @@ function getFriendlySocialDeliveryErrorMessage(error) {
   }
 
   if (/imagem do cartao postal nao chegou/i.test(rawMessage)) {
-    return "O cartao postal foi preparado, mas a imagem nao chegou corretamente ao Apps Script.";
+    return "O cartão-postal foi preparado, mas a imagem não chegou corretamente ao Apps Script.";
   }
 
   if (/captura do cartao postal/i.test(rawMessage)) {
-    return "O cartao postal nao conseguiu ser renderizado no navegador.";
+    return "O cartão-postal não conseguiu ser renderizado no navegador.";
   }
 
   return rawMessage;
@@ -2155,17 +2176,15 @@ function applyEditorLockState(locked, text = state.activeText) {
   }
 
   if (text?.reopenRequested) {
-    setEditorLockNotice("Texto finalizado e pedido de reabertura registrado para avaliacao futura do educador.", "success");
+    setEditorLockNotice("Texto finalizado e pedido de reabertura registrado para avaliação futura do educador.", "success");
     return;
   }
 
-  setEditorLockNotice("Texto finalizado. Agora ele fica bloqueado e so pode ser reaberto com avaliacao futura do educador.");
+  setEditorLockNotice("Texto finalizado. Agora ele fica bloqueado e só pode ser reaberto com avaliação futura do educador.");
 }
 
 function normalizeWordEnding(value) {
-  return norm(String(value || "").replace(/[.,;:!?…()[\]{}"'`´]+/g, " "))
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .trim();
+  return normalizeVerseAnalysisText(value);
 }
 
 function getVerseLastWord(value) {
@@ -2203,7 +2222,7 @@ function evaluateABCBDBRhyme(verses = []) {
 }
 
 function countGrammaticalSyllableGroups(value) {
-  const matches = String(value || "").match(/[aeiouáéíóúàâêôãõü]+/ig);
+  const matches = normalizeVerseForSyllableCount(value).match(/[aeiouáéíóúàâêôãõü]+/ig);
   return matches ? matches.length : 0;
 }
 
@@ -2244,8 +2263,8 @@ function applyVerseMeterFeedback(verses = []) {
     button.title = muted
       ? "Clique para reativar este aviso."
       : isWarning
-        ? "Clique para desligar este aviso se voce discordar da maquina."
-        : "A barra acompanha a contagem aproximada de silabas gramaticais.";
+        ? "Clique para desligar este aviso se você discordar da máquina."
+        : "A barra acompanha a contagem aproximada de sílabas gramaticais.";
 
     if (label) {
       if (!count) {
@@ -2253,7 +2272,7 @@ function applyVerseMeterFeedback(verses = []) {
       } else if (muted) {
         label.textContent = `${count} grupos vocálicos · aviso desligado`;
       } else if (isWarning) {
-        label.textContent = `${count} grupos vocálicos · toque para desligar o aviso`;
+        label.textContent = `Opa, verso longo! (${count} grupos)`;
       } else {
         label.textContent = `${count} grupos vocálicos`;
       }
@@ -2317,7 +2336,7 @@ function normalizeSpaces(value) {
 }
 
 function stripTrailingVersePunctuation(value) {
-  return String(value || "").replace(/[.,;:!?]+$/g, "").trim();
+  return String(value || "").replace(/[\p{P}\p{S}]+$/gu, "").trim();
 }
 
 function parseVerseStem(rawValue) {
@@ -3130,7 +3149,7 @@ function applyDashboardPayload(payload) {
   }
 
   if (ui.dashboardGreeting) {
-    ui.dashboardGreeting.textContent = state.name ? `${state.name}, este e seu caderno` : "Minhas sextilhas";
+    ui.dashboardGreeting.textContent = state.name ? `${state.name}, este é seu caderno` : "Minhas sextilhas";
   }
   if (ui.dashboardFolhetoCount) {
     ui.dashboardFolhetoCount.textContent = String(state.userFolhetos.length || 0);
@@ -3142,7 +3161,7 @@ function applyDashboardPayload(payload) {
     ui.dashboardCompletedCount.textContent = String(payload?.completedCount || 0);
   }
   if (ui.dashboardLastEdited) {
-    ui.dashboardLastEdited.textContent = payload?.lastEditedAt ? formatDateTime(payload.lastEditedAt) : "Ainda sem edicoes";
+    ui.dashboardLastEdited.textContent = payload?.lastEditedAt ? formatDateTime(payload.lastEditedAt) : "Ainda sem edições";
   }
   if (ui.dashboardStatusFilter) {
     ui.dashboardStatusFilter.value = state.dashboardFilter || "all";
@@ -3188,7 +3207,7 @@ async function openSextilhaDashboard(options = {}) {
   } catch (error) {
     if (requestId !== state.dashboardLoadRequestId) return;
     if (!cachedPayload) {
-      renderDashboardSyncNotice(error?.message || "Seu caderno esta demorando um pouco mais para responder.");
+      renderDashboardSyncNotice(error?.message || "Seu caderno está demorando um pouco mais para responder.");
     } else if (ui.dashboardLastEdited) {
       ui.dashboardLastEdited.textContent = "Sincronizando seu caderno...";
     }
@@ -3204,10 +3223,10 @@ function renderTextCardMarkup(text) {
     <article class="text-card" data-text-id="${escapeHtml(text.textId)}">
       <div class="text-card__head">
         <div>
-          <h3 class="text-card__title">${escapeHtml(text.title || "Sextilha sem titulo")}</h3>
+          <h3 class="text-card__title">${escapeHtml(text.title || "Sextilha sem título")}</h3>
           <p class="text-card__meta">
             ${escapeHtml(text.theme || "Tema livre")}<br>
-            Ultima edicao: ${escapeHtml(formatTextUpdatedLabel(text))}
+            Última edição: ${escapeHtml(formatTextUpdatedLabel(text))}
             ${text.reopenRequested ? "<br>Reabertura solicitada ao educador" : ""}
           </p>
         </div>
@@ -3216,7 +3235,7 @@ function renderTextCardMarkup(text) {
       <div class="text-card__indicators">${renderIndicatorChips(text.indicators)}${text.reopenRequested ? `<span class="indicator-chip">reabertura solicitada</span>` : ""}</div>
       <div class="text-card__actions">
         <button class="btn btn-primary" type="button" data-action="open-text" data-text-id="${escapeHtml(text.textId)}">${normalizeStatusValue(text.status) === "concluida" ? "Abrir" : "Continuar"}</button>
-        <button class="btn btn-secondary" type="button" data-action="view-versions" data-text-id="${escapeHtml(text.textId)}">Versoes</button>
+        <button class="btn btn-secondary" type="button" data-action="view-versions" data-text-id="${escapeHtml(text.textId)}">Versões</button>
         <button class="btn btn-ghost" type="button" data-action="archive-text" data-text-id="${escapeHtml(text.textId)}">Arquivar</button>
       </div>
     </article>
@@ -3230,18 +3249,18 @@ function renderFolhetoCardMarkup(folheto) {
       <p class="folheto-card__eyebrow">${folheto.isLegacyBucket ? "Acervo legado" : "Folheto"}</p>
       <div class="text-card__head">
         <div>
-          <h3 class="text-card__title">${escapeHtml(folheto.title || "Folheto sem titulo")}</h3>
-          <p class="folheto-card__summary">${escapeHtml(folheto.isLegacyBucket ? "Seus textos anteriores continuam acessiveis aqui, sem perder historico." : "Abra o livrinho e siga adicionando sextilhas como paginas de um mesmo cordel.")}</p>
+          <h3 class="text-card__title">${escapeHtml(folheto.title || "Folheto sem título")}</h3>
+          <p class="folheto-card__summary">${escapeHtml(folheto.isLegacyBucket ? "Seus textos anteriores continuam acessíveis aqui, sem perder histórico." : "Abra o livrinho e siga adicionando sextilhas como páginas de um mesmo cordel.")}</p>
         </div>
-        ${folheto.completedCount ? `<span class="status-badge status-concluida">${escapeHtml(`${folheto.completedCount} concluidas`)}</span>` : `<span class="status-badge status-rascunho">${escapeHtml(`${folheto.textCount} sextilhas`)}</span>`}
+        ${folheto.completedCount ? `<span class="status-badge status-concluida">${escapeHtml(`${folheto.completedCount} concluídas`)}</span>` : `<span class="status-badge status-rascunho">${escapeHtml(`${folheto.textCount} sextilhas`)}</span>`}
       </div>
       <div class="folheto-card__stats">
         <span class="folheto-stat-pill">${escapeHtml(`${folheto.textCount} sextilhas`)}</span>
-        <span class="folheto-stat-pill">${escapeHtml(`${folheto.completedCount} concluidas`)}</span>
+        <span class="folheto-stat-pill">${escapeHtml(`${folheto.completedCount} concluídas`)}</span>
       </div>
       <p class="folheto-card__meta">
-        Ultima edicao: ${escapeHtml(folheto.updatedAt ? formatDateTime(folheto.updatedAt) : "Ainda sem edicoes")}
-        ${latestText ? `<br>Ultima sextilha: ${escapeHtml(latestText.title || "Sextilha sem titulo")}` : ""}
+        Última edição: ${escapeHtml(folheto.updatedAt ? formatDateTime(folheto.updatedAt) : "Ainda sem edições")}
+        ${latestText ? `<br>Última sextilha: ${escapeHtml(latestText.title || "Sextilha sem título")}` : ""}
       </p>
       <div class="text-card__actions">
         <button class="btn btn-primary" type="button" data-action="open-folheto" data-folheto-id="${escapeHtml(folheto.folhetoId)}">${folheto.isLegacyBucket ? "Abrir acervo" : "Abrir folheto"}</button>
@@ -3278,12 +3297,12 @@ function renderFolhetoWorkspace() {
   if (!state.activeFolheto || !ui.folhetoTextList) return;
 
   if (ui.folhetoTitleHeading) {
-    ui.folhetoTitleHeading.textContent = state.activeFolheto.title || "Folheto sem titulo";
+    ui.folhetoTitleHeading.textContent = state.activeFolheto.title || "Folheto sem título";
   }
   if (ui.folhetoSummaryText) {
     ui.folhetoSummaryText.textContent = state.activeFolheto.isLegacyBucket
-      ? "Aqui ficam as sextilhas anteriores ao novo fluxo de folhetos. Elas continuam acessiveis e intactas."
-      : "Cada sextilha entra como uma nova pagina do seu cordel em andamento.";
+      ? "Aqui ficam as sextilhas anteriores ao novo fluxo de folhetos. Elas continuam acessíveis e intactas."
+      : "Cada sextilha entra como uma nova página do seu cordel em andamento.";
   }
   if (ui.folhetoTextCount) {
     ui.folhetoTextCount.textContent = String(state.activeFolheto.textCount || 0);
@@ -3292,7 +3311,7 @@ function renderFolhetoWorkspace() {
     ui.folhetoCompletedCount.textContent = String(state.activeFolheto.completedCount || 0);
   }
   if (ui.folhetoLastEdited) {
-    ui.folhetoLastEdited.textContent = state.activeFolheto.updatedAt ? formatDateTime(state.activeFolheto.updatedAt) : "Ainda sem edicoes";
+    ui.folhetoLastEdited.textContent = state.activeFolheto.updatedAt ? formatDateTime(state.activeFolheto.updatedAt) : "Ainda sem edições";
   }
 
   if (ui.btnCreateTextInFolheto) {
@@ -3303,7 +3322,7 @@ function renderFolhetoWorkspace() {
   }
 
   if (!state.activeFolheto.texts.length) {
-    ui.folhetoTextList.innerHTML = `<div class="workspace-empty">Este folheto ainda nao tem sextilhas. Abra a primeira pagina quando quiser.</div>`;
+    ui.folhetoTextList.innerHTML = `<div class="workspace-empty">Este folheto ainda não tem sextilhas. Abra a primeira página quando quiser.</div>`;
     return;
   }
 
@@ -3326,7 +3345,7 @@ async function openFolhetoWorkspace(folhetoId) {
 }
 
 async function createNewFolheto() {
-  const title = window.prompt("Qual titulo deseja dar ao novo folheto?");
+  const title = window.prompt("Qual título deseja dar ao novo folheto?");
   const normalizedTitle = String(title || "").trim();
   if (!normalizedTitle) return;
 
@@ -3386,7 +3405,7 @@ async function createNewSextilha(options = {}) {
     }
     state.activeTextId = result?.text?.textId || "";
     await openSextilhaEditor(state.activeTextId);
-    setEditorFeedback("Novo rascunho criado. Voce ja pode escrever e salvar.", "success");
+    setEditorFeedback("Novo rascunho criado. Você já pode escrever e salvar.", "success");
   } finally {
     if (button) {
       button.disabled = false;
@@ -3445,17 +3464,17 @@ function fillSextilhaEditor(text, draftVersion = null) {
   }
   if (ui.editorVersionMeta) {
     ui.editorVersionMeta.textContent = draftVersion?.versionNumber
-      ? `Versao ${draftVersion.versionNumber} carregada no editor.`
+      ? `Versão ${draftVersion.versionNumber} carregada no editor.`
       : text?.latestVersion?.versionNumber
-        ? `Versao ${text.latestVersion.versionNumber} e a mais recente no editor.`
+        ? `Versão ${text.latestVersion.versionNumber} é a mais recente no editor.`
       : text?.versionCount
-        ? `${text.versionCount} versoes registradas.`
-        : "Versao ainda nao salva.";
+        ? `${text.versionCount} versões registradas.`
+        : "Versão ainda não salva.";
   }
   if (ui.editorLastSaved) {
     ui.editorLastSaved.textContent = text?.updatedAt
-      ? `Ultima atualizacao: ${formatDateTime(text.updatedAt)}`
-      : "Ultima atualizacao: ainda sem registro.";
+      ? `Última atualização: ${formatDateTime(text.updatedAt)}`
+      : "Última atualização: ainda sem registro.";
   }
 
   applyEditorLockState(isEditorLocked(text || source), text || source);
@@ -3467,7 +3486,7 @@ function fillSextilhaEditor(text, draftVersion = null) {
 async function saveCurrentTextVersion(saveMode = "draft") {
   if (!state.activeTextId) return;
   if (isEditorLocked()) {
-    setEditorFeedback("Este texto ja foi finalizado e esta bloqueado para edicao.", "error");
+    setEditorFeedback("Este texto já foi finalizado e está bloqueado para edição.", "error");
     return;
   }
 
@@ -3489,7 +3508,7 @@ async function saveCurrentTextVersion(saveMode = "draft") {
       return;
     }
 
-    const confirmed = window.confirm("Tem certeza que vai finalizar o rascunho? Depois disso, voce nao podera modificar o texto sem avaliacao futura do educador.");
+  const confirmed = window.confirm("Tem certeza de que vai finalizar o rascunho? Depois disso, você não poderá modificar o texto sem avaliação futura do educador.");
     if (!confirmed) return;
   }
 
@@ -3498,7 +3517,7 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     baselineVersion &&
     buildComparableSextilhaDraftFingerprint(draft) === buildComparableSextilhaDraftFingerprint(baselineVersion)
   ) {
-    setEditorFeedback(`Nenhuma alteracao nova desde ${describeSextilhaBaselineVersion(baselineVersion)}. Ajuste algo antes de salvar outra etapa.`, "muted");
+    setEditorFeedback(`Nenhuma alteração nova desde ${describeSextilhaBaselineVersion(baselineVersion)}. Ajuste algo antes de salvar outra etapa.`, "muted");
     return;
   }
 
@@ -3536,7 +3555,7 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     }
     state.activeTextVersions = [savedVersion, ...state.activeTextVersions.filter((version) => version?.versionId !== savedVersion?.versionId)].filter(Boolean);
     if (saveMode === "finalize") {
-      setEditorFeedback("Sextilha finalizada. Preparando o cartao postal para o seu e-mail...", "muted");
+      setEditorFeedback("Sextilha finalizada. Preparando o cartão-postal para o seu e-mail...", "muted");
     } else {
       setEditorFeedback(`${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`, "success");
     }
@@ -3547,17 +3566,17 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     );
     if (saveMode === "finalize") {
       await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, savedVersion));
-      setEditorFeedback("Sextilha finalizada e cartao enviado para o seu e-mail.", "success");
+      setEditorFeedback("Sextilha finalizada e cartão enviado para o seu e-mail.", "success");
     }
   } catch (error) {
     const fallbackMessage = saveMode === "finalize" && saveSucceeded
       ? getFriendlySocialDeliveryErrorMessage(error)
-      : "Nao foi possivel salvar a versao.";
+        : "Não foi possível salvar a versão.";
     setEditorFeedback(saveMode === "finalize" && saveSucceeded ? fallbackMessage : (error?.message || fallbackMessage), "error");
     if (!saveSucceeded && getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
       renderEditorAiFeedback({
         tone: "error",
-        message: "O texto nao recebeu devolutiva agora. Verifique a configuracao da IA no Apps Script.",
+      message: "O texto não recebeu devolutiva agora. Verifique a configuração da IA no Apps Script.",
       });
     }
   } finally {
@@ -3575,20 +3594,20 @@ async function resendSocialPostcardEmail() {
 
   try {
     await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, state.activeText?.latestVersion));
-    setEditorFeedback("Cartao postal reenviado para o seu e-mail.", "success");
+    setEditorFeedback("Cartão-postal reenviado para o seu e-mail.", "success");
   } catch (error) {
     setEditorFeedback(getFriendlySocialDeliveryErrorMessage(error), "error");
   } finally {
     if (ui.btnResendSocialEmail) {
       ui.btnResendSocialEmail.disabled = false;
-      ui.btnResendSocialEmail.textContent = "Reenviar cartao por e-mail";
+      ui.btnResendSocialEmail.textContent = "Reenviar cartão por e-mail";
     }
   }
 }
 
 async function archiveCurrentText() {
   if (!state.activeTextId) return;
-  const confirmed = window.confirm("Arquivar este texto sem apagar o historico?");
+  const confirmed = window.confirm("Arquivar este texto sem apagar o histórico?");
   if (!confirmed) return;
 
   const response = await archiveSextilhaTextRecord(state.activeTextId, { status: "arquivada" });
@@ -3608,11 +3627,11 @@ async function requestTextReopen() {
   if (!state.activeTextId || !isEditorLocked()) return;
 
   if (state.activeText?.reopenRequested) {
-    setEditorFeedback("O pedido de reabertura ja foi registrado para avaliacao futura do educador.", "muted");
+    setEditorFeedback("O pedido de reabertura já foi registrado para avaliação futura do educador.", "muted");
     return;
   }
 
-  const confirmed = window.confirm("Deseja solicitar a reabertura deste texto para avaliacao futura do educador?");
+  const confirmed = window.confirm("Deseja solicitar a reabertura deste texto para avaliação futura do educador?");
   if (!confirmed) return;
 
   const response = await updateSextilhaTextStatusRecord(state.activeTextId, {
@@ -3627,7 +3646,7 @@ async function requestTextReopen() {
     fillSextilhaEditor(state.activeText);
   }
 
-  setEditorFeedback("Pedido de reabertura registrado para avaliacao futura do educador.", "success");
+  setEditorFeedback("Pedido de reabertura registrado para avaliação futura do educador.", "success");
 }
 
 async function openVersionHistory(textId = state.activeTextId) {
@@ -3684,14 +3703,14 @@ function renderVersionComparePanel() {
     ui.versionComparePanel.innerHTML = `
       <section class="version-compare version-compare--empty">
         <div>
-          <p class="workspace-kicker">Comparacao de versoes</p>
-          <h3>Escolha duas versoes para ver a evolucao lado a lado</h3>
-          <p class="workspace-meta">Selecione duas versoes no historico para comparar versos, status e indicadores.</p>
+          <p class="workspace-kicker">Comparação de versões</p>
+          <h3>Escolha duas versões para ver a evolução lado a lado</h3>
+          <p class="workspace-meta">Selecione duas versões no histórico para comparar versos, status e indicadores.</p>
         </div>
         <div class="version-compare__selection">
           ${selectedVersions.length
-            ? selectedVersions.map((version) => `<span class="version-compare__pill">Versao ${escapeHtml(version.versionNumber)}</span>`).join("")
-            : `<span class="version-compare__hint">Nenhuma versao selecionada ainda.</span>`}
+      ? selectedVersions.map((version) => `<span class="version-compare__pill">Versão ${escapeHtml(version.versionNumber)}</span>`).join("")
+      : `<span class="version-compare__hint">Nenhuma versão selecionada ainda.</span>`}
         </div>
       </section>
     `;
@@ -3706,23 +3725,23 @@ function renderVersionComparePanel() {
     <section class="version-compare">
       <div class="version-compare__head">
         <div>
-          <p class="workspace-kicker">Comparacao de versoes</p>
-          <h3>Versao ${escapeHtml(baseVersion.versionNumber)} x Versao ${escapeHtml(currentVersion.versionNumber)}</h3>
+          <p class="workspace-kicker">Comparação de versões</p>
+        <h3>Versão ${escapeHtml(baseVersion.versionNumber)} x Versão ${escapeHtml(currentVersion.versionNumber)}</h3>
           <p class="workspace-meta">Veja como a escrita mudou entre duas etapas do mesmo texto.</p>
         </div>
         <div class="workspace-actions">
-          <button class="btn btn-ghost" type="button" data-action="clear-compare">Limpar comparacao</button>
+          <button class="btn btn-ghost" type="button" data-action="clear-compare">Limpar comparação</button>
         </div>
       </div>
       <div class="version-compare__summary">
         <article class="version-compare__summary-card">
-          <p class="workspace-kicker">Versao ${escapeHtml(baseVersion.versionNumber)}</p>
+          <p class="workspace-kicker">Versão ${escapeHtml(baseVersion.versionNumber)}</p>
           <p class="workspace-meta">${escapeHtml(formatDateTime(baseVersion.createdAt))}</p>
           ${renderStatusBadge(baseVersion.status)}
           <div class="version-card__indicators">${renderIndicatorChips(baseVersion.indicators)}</div>
         </article>
         <article class="version-compare__summary-card">
-          <p class="workspace-kicker">Versao ${escapeHtml(currentVersion.versionNumber)}</p>
+          <p class="workspace-kicker">Versão ${escapeHtml(currentVersion.versionNumber)}</p>
           <p class="workspace-meta">${escapeHtml(formatDateTime(currentVersion.createdAt))}</p>
           ${renderStatusBadge(currentVersion.status)}
           <div class="version-card__indicators">${renderIndicatorChips(currentVersion.indicators)}</div>
@@ -3736,11 +3755,11 @@ function renderVersionComparePanel() {
           const changedClass = changed ? "version-compare__cell--changed" : "";
           return `
             <div class="version-compare__cell ${changedClass}">
-              <span class="version-compare__label">Versao ${escapeHtml(baseVersion.versionNumber)} · Verso ${index + 1}</span>
+                <span class="version-compare__label">Versão ${escapeHtml(baseVersion.versionNumber)} · Verso ${index + 1}</span>
               <p>${escapeHtml(leftVerse || "—")}</p>
             </div>
             <div class="version-compare__cell ${changedClass}">
-              <span class="version-compare__label">Versao ${escapeHtml(currentVersion.versionNumber)} · Verso ${index + 1}</span>
+                <span class="version-compare__label">Versão ${escapeHtml(currentVersion.versionNumber)} · Verso ${index + 1}</span>
               <p>${escapeHtml(rightVerse || "—")}</p>
             </div>
           `;
@@ -3752,7 +3771,7 @@ function renderVersionComparePanel() {
 
 function renderVersionHistory() {
   if (ui.versionHistoryTitle) {
-    ui.versionHistoryTitle.textContent = state.activeText?.title || "Versoes da sextilha";
+    ui.versionHistoryTitle.textContent = state.activeText?.title || "Versões da sextilha";
   }
   if (!ui.versionHistoryList) return;
 
@@ -3762,7 +3781,7 @@ function renderVersionHistory() {
   renderVersionComparePanel();
 
   if (!state.activeTextVersions.length) {
-    ui.versionHistoryList.innerHTML = `<div class="workspace-empty">Nenhuma versao salva ainda.</div>`;
+    ui.versionHistoryList.innerHTML = `<div class="workspace-empty">Nenhuma versão salva ainda.</div>`;
     return;
   }
 
@@ -3770,18 +3789,18 @@ function renderVersionHistory() {
     <article class="version-card ${state.versionCompareSelection.includes(version.versionId) ? "version-card--selected" : ""}">
       <div class="version-card__head">
         <div>
-          <h3 class="version-card__title">Versao ${version.versionNumber}</h3>
+        <h3 class="version-card__title">Versão ${version.versionNumber}</h3>
           <p class="version-card__meta">${escapeHtml(formatDateTime(version.createdAt))}</p>
         </div>
         ${renderStatusBadge(version.status)}
       </div>
       <div class="version-card__indicators">${renderIndicatorChips(version.indicators)}</div>
-      <pre>${escapeHtml((version.verses || []).filter(Boolean).join("\n") || "Sem versos registrados nesta versao.")}</pre>
+        <pre>${escapeHtml((version.verses || []).filter(Boolean).join("\n") || "Sem versos registrados nesta versão.")}</pre>
       <div class="version-card__actions">
         <button class="btn btn-secondary" type="button" data-action="toggle-compare" data-version-id="${escapeHtml(version.versionId)}">
-          ${state.versionCompareSelection.includes(version.versionId) ? "Remover da comparacao" : "Comparar"}
+          ${state.versionCompareSelection.includes(version.versionId) ? "Remover da comparação" : "Comparar"}
         </button>
-        <button class="btn btn-primary" type="button" data-action="restore-version" data-version-id="${escapeHtml(version.versionId)}">Usar esta versao no editor</button>
+        <button class="btn btn-primary" type="button" data-action="restore-version" data-version-id="${escapeHtml(version.versionId)}">Usar esta versão no editor</button>
       </div>
     </article>
   `).join("");
@@ -3795,8 +3814,8 @@ function restoreVersionToEditor(versionId) {
   fillSextilhaEditor(state.activeText, version);
   setEditorFeedback(
     isEditorLocked(state.activeText)
-      ? "Versao carregada para leitura. O texto segue bloqueado porque ja foi finalizado."
-      : "Versao carregada no editor. Salve para criar uma nova etapa do texto.",
+      ? "Versão carregada para leitura. O texto segue bloqueado porque já foi finalizado."
+      : "Versão carregada no editor. Salve para criar uma nova etapa do texto.",
     "success"
   );
 }
@@ -3806,16 +3825,11 @@ function buildLiveSextilhaIndicators(options = {}) {
   const verses = draft.verses;
   const filledVerses = verses.filter(Boolean);
   const targetRhyme = evaluateABCBDBRhyme(verses);
-  const finalWords = filledVerses.map((verse) => {
-    const tokens = norm(verse).split(/\s+/).filter(Boolean);
-    return tokens[tokens.length - 1] || "";
-  }).filter(Boolean);
+  const finalWords = filledVerses.map((verse) => getVerseLastWord(verse)).filter(Boolean);
 
-  const meaningfulThemeTokens = norm(`${draft.title} ${draft.theme} ${draft.note}`)
-    .split(/\s+/)
+  const meaningfulThemeTokens = tokenizeVerseAnalysisText(`${draft.title} ${draft.theme} ${draft.note}`)
     .filter((token) => token.length > 2);
-  const verseTokens = norm(verses.join(" "))
-    .split(/\s+/)
+  const verseTokens = tokenizeVerseAnalysisText(verses.join(" "))
     .filter((token) => token.length > 2);
 
   const completude = `${filledVerses.length}/6 versos preenchidos`;
@@ -3837,17 +3851,17 @@ function buildLiveSextilhaIndicators(options = {}) {
   } else if (targetRhyme.complete) {
     rimaStatus = "ABCBDB: revisar versos 2, 4 e 6";
   } else if (targetRhyme.partialMatch || targetRhyme.words.length >= 1) {
-    rimaStatus = "ABCBDB: rima B em formacao";
+    rimaStatus = "ABCBDB: rima B em formação";
   }
 
-  let coerenciaTematica = "tema em formacao";
+  let coerenciaTematica = "tema em formação";
   if (!meaningfulThemeTokens.length) {
     coerenciaTematica = filledVerses.length >= 3 ? "boa unidade do texto" : "tema em aberto";
   } else {
     const overlap = meaningfulThemeTokens.filter((token) => verseTokens.includes(token)).length;
-    if (overlap >= 2) coerenciaTematica = "boa unidade tematica";
+    if (overlap >= 2) coerenciaTematica = "boa unidade temática";
     else if (overlap >= 1) coerenciaTematica = "tema presente";
-    else if (filledVerses.length >= 3) coerenciaTematica = "reforcar unidade tematica";
+    else if (filledVerses.length >= 3) coerenciaTematica = "reforçar unidade temática";
   }
 
   const tokenFrequency = verseTokens.reduce((acc, token) => {
@@ -3856,9 +3870,9 @@ function buildLiveSextilhaIndicators(options = {}) {
   }, {});
   const highestFrequency = Math.max(0, ...Object.values(tokenFrequency));
   const repeticaoLexical = highestFrequency >= 4
-    ? "repeticao alta"
+    ? "repetição alta"
     : highestFrequency === 3
-      ? "alguma repeticao"
+      ? "alguma repetição"
       : "boa variedade lexical";
 
   const revisionCount = Number(options.revisionCount ?? state.activeText?.versionCount ?? 0);
@@ -3867,7 +3881,7 @@ function buildLiveSextilhaIndicators(options = {}) {
     : revisionCount >= 2
       ? "texto amadurecendo"
       : revisionCount === 1
-        ? "primeira versao registrada"
+        ? "primeira versão registrada"
         : "texto iniciando";
 
   return {
@@ -3918,7 +3932,7 @@ async function handleDashboardTextAction(event) {
   }
 
   if (action === "archive-text") {
-    const confirmed = window.confirm("Arquivar este texto sem apagar o historico?");
+  const confirmed = window.confirm("Arquivar este texto sem apagar o histórico?");
     if (!confirmed) return;
     const response = await archiveSextilhaTextRecord(textId, { status: "arquivada" });
     if (response?.text) {
@@ -3964,7 +3978,7 @@ if (ui.chooseSextilhaTrackBtn) {
     try {
       await openSextilhaDashboard();
     } catch (error) {
-      window.alert(error?.message || "Nao foi possivel abrir o caderno agora.");
+window.alert(error?.message || "Não foi possível abrir o caderno agora.");
       showTrackChooser();
     }
   });
@@ -3986,7 +4000,7 @@ if (ui.btnCreateText) {
       await createNewSextilha();
     } catch (error) {
       if (ui.dashboardTextList) {
-        ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel criar a sextilha agora.")}</div>`;
+    ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Não foi possível criar a sextilha agora.")}</div>`;
       }
     }
   });
@@ -3995,7 +4009,7 @@ if (ui.btnCreateText) {
 if (ui.btnCreateFolheto) {
   ui.btnCreateFolheto.addEventListener("click", () => {
     createNewFolheto().catch((error) => {
-      setEditorFeedback(error?.message || "Nao foi possivel criar o folheto agora.", "error");
+    setEditorFeedback(error?.message || "Não foi possível criar o folheto agora.", "error");
     });
   });
 }
@@ -4006,7 +4020,7 @@ if (ui.btnCreateTextInFolheto) {
       await createNewSextilha({ folheto: state.activeFolheto });
     } catch (error) {
       if (ui.folhetoTextList) {
-        ui.folhetoTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel criar a sextilha neste folheto.")}</div>`;
+    ui.folhetoTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Não foi possível criar a sextilha neste folheto.")}</div>`;
       }
     }
   });
@@ -4020,7 +4034,7 @@ if (ui.dashboardTextList) {
   ui.dashboardTextList.addEventListener("click", (event) => {
     handleDashboardTextAction(event).catch((error) => {
       if (ui.dashboardTextList) {
-        ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel carregar este texto.")}</div>`;
+    ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Não foi possível carregar este texto.")}</div>`;
       }
     });
   });
@@ -4030,7 +4044,7 @@ if (ui.folhetoTextList) {
   ui.folhetoTextList.addEventListener("click", (event) => {
     handleDashboardTextAction(event).catch((error) => {
       if (ui.folhetoTextList) {
-        ui.folhetoTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel carregar esta sextilha.")}</div>`;
+    ui.folhetoTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Não foi possível carregar esta sextilha.")}</div>`;
       }
     });
   });
@@ -4039,7 +4053,7 @@ if (ui.folhetoTextList) {
 if (ui.btnBackToDashboardFromFolheto) {
   ui.btnBackToDashboardFromFolheto.addEventListener("click", () => {
     openSextilhaDashboard().catch((error) => {
-      setEditorFeedback(error?.message || "Nao foi possivel voltar ao caderno.", "error");
+    setEditorFeedback(error?.message || "Não foi possível voltar ao caderno.", "error");
     });
   });
 }
@@ -4053,7 +4067,7 @@ if (ui.btnBackToDashboard) {
       }
       await openSextilhaDashboard();
     } catch (error) {
-      setEditorFeedback(error?.message || "Nao foi possivel voltar ao caderno.", "error");
+    setEditorFeedback(error?.message || "Não foi possível voltar ao caderno.", "error");
     }
   });
 }
@@ -4079,7 +4093,7 @@ if (ui.btnResendSocialEmail) {
 if (ui.btnRequestReopen) {
   ui.btnRequestReopen.addEventListener("click", () => {
     requestTextReopen().catch((error) => {
-      setEditorFeedback(error?.message || "Nao foi possivel registrar o pedido de reabertura.", "error");
+      setEditorFeedback(error?.message || "Não foi possível registrar o pedido de reabertura.", "error");
     });
   });
 }
@@ -4087,7 +4101,7 @@ if (ui.btnRequestReopen) {
 if (ui.btnArchiveText) {
   ui.btnArchiveText.addEventListener("click", () => {
     archiveCurrentText().catch((error) => {
-      setEditorFeedback(error?.message || "Nao foi possivel arquivar este texto.", "error");
+      setEditorFeedback(error?.message || "Não foi possível arquivar este texto.", "error");
     });
   });
 }
@@ -4095,7 +4109,7 @@ if (ui.btnArchiveText) {
 if (ui.btnOpenVersionHistory) {
   ui.btnOpenVersionHistory.addEventListener("click", () => {
     openVersionHistory().catch((error) => {
-      setEditorFeedback(error?.message || "Nao foi possivel abrir o historico.", "error");
+      setEditorFeedback(error?.message || "Não foi possível abrir o histórico.", "error");
     });
   });
 }
@@ -4118,7 +4132,7 @@ if (ui.btnBackToDashboardFromVersions) {
       await openSextilhaDashboard();
     } catch (error) {
       if (ui.versionHistoryList) {
-        ui.versionHistoryList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Nao foi possivel voltar ao caderno.")}</div>`;
+        ui.versionHistoryList.innerHTML = `<div class="workspace-empty">${escapeHtml(error?.message || "Não foi possível voltar ao caderno.")}</div>`;
       }
     }
   });

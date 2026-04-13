@@ -54,7 +54,7 @@
           : revisionCount >= 2
             ? "texto amadurecendo"
             : revisionCount === 1
-              ? "primeira versao registrada"
+              ? "primeira versão registrada"
               : "texto iniciando",
     };
   }
@@ -119,7 +119,7 @@
   async function ensureClients() {
     const config = getConfig();
     if (!config || !config.apiKey || !config.projectId || !config.appId) {
-      throw new Error("Firebase ainda nao foi configurado para o caderno de sextilhas.");
+      throw new Error("Firebase ainda não foi configurado para o caderno de sextilhas.");
     }
 
     const firebase = await loadModules();
@@ -134,7 +134,7 @@
 
   function assertOwner(identity, record) {
     if (!record || String(record.participantId || "").trim() !== String(identity.participantId || "").trim()) {
-      throw new Error("O participante nao tem acesso a este texto.");
+      throw new Error("O participante não tem acesso a este texto.");
     }
   }
 
@@ -293,7 +293,7 @@
       await new Promise((resolve) => window.setTimeout(resolve, 250));
     }
 
-    throw new Error("As claims do Firebase ainda nao ficaram prontas para este participante.");
+    throw new Error("As claims do Firebase ainda não ficaram prontas para este participante.");
   }
 
   async function getUserDashboard(identity) {
@@ -326,7 +326,7 @@
       participantId: identity.participantId,
       checkinUserId: identity.checkinUserId,
       teacherGroup: identity.teacherGroup || "",
-      title: String(payload.title || "").trim() || "Folheto sem titulo",
+      title: String(payload.title || "").trim() || "Folheto sem título",
       createdAt: now,
       updatedAt: now,
       textCount: 0,
@@ -382,7 +382,7 @@
     );
     if (folhetoId) {
       await touchFolhetoRecord(firebase, db, identity, folhetoId, {
-        title: folhetoTitle || "Folheto sem titulo",
+        title: folhetoTitle || "Folheto sem título",
       });
     }
 
@@ -398,7 +398,7 @@
     const textRef = firebase.doc(db, ...getTextCollectionPath(identity.participantId), textId);
     const snapshot = await firebase.getDoc(textRef);
     if (!snapshot.exists()) {
-      throw new Error("Texto nao encontrado.");
+      throw new Error("Texto não encontrado.");
     }
 
     const textRecord = mapTextRecord(snapshot.data());
@@ -435,7 +435,7 @@
     const textRef = firebase.doc(db, ...getTextCollectionPath(identity.participantId), textId);
     const textSnapshot = await firebase.getDoc(textRef);
     if (!textSnapshot.exists()) {
-      throw new Error("Texto nao encontrado.");
+    throw new Error("Texto não encontrado.");
     }
 
     const currentText = mapTextRecord(textSnapshot.data());
@@ -492,7 +492,7 @@
     await firebase.setDoc(textRef, nextTextRecord, { merge: true });
     if (nextTextRecord.folhetoId) {
       await touchFolhetoRecord(firebase, db, identity, nextTextRecord.folhetoId, {
-        title: nextTextRecord.folhetoTitle || "Folheto sem titulo",
+        title: nextTextRecord.folhetoTitle || "Folheto sem título",
       });
     }
 
@@ -519,7 +519,7 @@
     const textRef = firebase.doc(db, ...getTextCollectionPath(identity.participantId), textId);
     const snapshot = await firebase.getDoc(textRef);
     if (!snapshot.exists()) {
-      throw new Error("Texto nao encontrado.");
+    throw new Error("Texto não encontrado.");
     }
 
     const currentText = mapTextRecord(snapshot.data());
@@ -561,7 +561,7 @@
     }
     if (nextTextRecord.folhetoId) {
       await touchFolhetoRecord(firebase, db, identity, nextTextRecord.folhetoId, {
-        title: nextTextRecord.folhetoTitle || "Folheto sem titulo",
+        title: nextTextRecord.folhetoTitle || "Folheto sem título",
       });
     }
 
