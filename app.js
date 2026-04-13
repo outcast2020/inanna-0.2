@@ -221,6 +221,7 @@ const state = {
   draftVersionSource: null,
   sextilhaStoreStatus: "idle",
   firebaseSessionReady: false,
+  firebaseSessionPromise: null,
   lastAiFeedback: null,
   aiFeedbackRequestKey: "",
   aiFeedbackLoading: false,
@@ -1327,14 +1328,22 @@ async function loadFirestoreDashboardPayload(identity = buildIdentityPayload()) 
   );
 }
 
-async function refreshDashboardInBackground(requestId, identity, basePayload = null) {
-  const tasks = [
-    loadAppsScriptDashboardPayloads(identity, { includeAliases: true }),
-  ];
+async function refreshDashboardInBackground(requestId, identity, basePayload = null, options = {}) {
+  const settings = {
+    preferFirestoreOnly: false,
+    ...options,
+  };
+  const tasks = [];
+
+  if (!settings.preferFirestoreOnly) {
+    tasks.push(loadAppsScriptDashboardPayloads(identity, { includeAliases: true }));
+  }
 
   if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
     tasks.push(loadFirestoreDashboardPayload(identity));
   }
+
+  if (!tasks.length) return;
 
   const results = await Promise.allSettled(tasks);
   let mergedPayload = basePayload || null;
@@ -1469,16 +1478,41 @@ async function ensureFirebaseSextilhaSession() {
     return { provider: FIREBASE_SEXTILHA_MODE };
   }
 
-  const tokenPayload = await fetchAppGet("get_firebase_custom_token", identity);
-  await window.InannaFirebaseBridge.initializeSession({
-    customToken: tokenPayload?.customToken,
-    identity,
+  if (state.firebaseSessionPromise) {
+    return state.firebaseSessionPromise;
+  }
+
+  const sessionPromise = (async () => {
+    const tokenPayload = await fetchAppGet("get_firebase_custom_token", identity);
+    await window.InannaFirebaseBridge.initializeSession({
+      customToken: tokenPayload?.customToken,
+      identity,
+    });
+
+    state.firebaseSessionReady = true;
+    state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
+
+    return tokenPayload;
+  })();
+
+  state.firebaseSessionPromise = sessionPromise;
+
+  try {
+    return await sessionPromise;
+  } finally {
+    if (state.firebaseSessionPromise === sessionPromise) {
+      state.firebaseSessionPromise = null;
+    }
+  }
+}
+
+function prewarmFirebaseSextilhaSession() {
+  if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) return;
+  if (!state.participantId || !state.checkinUserId) return;
+
+  ensureFirebaseSextilhaSession().catch((error) => {
+    console.warn("[firebase] nao foi possivel aquecer a sessao antecipadamente", error);
   });
-
-  state.firebaseSessionReady = true;
-  state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-
-  return tokenPayload;
 }
 
 async function runSextilhaStoreOperation(operationName, appsScriptFn, firebaseFn) {
@@ -1623,6 +1657,7 @@ function clearResolvedCheckinIdentity(nextEmail = "") {
   state.checkinLookupStatus = "idle";
   state.checkinLookupMessage = "";
   state.firebaseSessionReady = false;
+  state.firebaseSessionPromise = null;
   state.lastAiFeedback = null;
   state.aiFeedbackRequestKey = "";
 }
@@ -1785,6 +1820,7 @@ async function verifyCheckinEmail() {
   if (response?.ok && response?.status === "matched") {
     applyResolvedCheckinIdentity(response);
     updateWelcomeIdentityUI();
+    prewarmFirebaseSextilhaSession();
     if (ui.btnStart) ui.btnStart.focus();
     return;
   }
@@ -3240,7 +3276,9 @@ async function openSextilhaDashboard(options = {}) {
     }
   }
 
-  refreshDashboardInBackground(requestId, identity, fastPayload || visibleBasePayload).catch((error) => {
+  refreshDashboardInBackground(requestId, identity, fastPayload || visibleBasePayload, {
+    preferFirestoreOnly: state.sextilhaStoreStatus === FIREBASE_SEXTILHA_MODE,
+  }).catch((error) => {
     console.warn("[dashboard] nao foi possivel concluir a sincronizacao em segundo plano", error);
   });
 }
