@@ -230,7 +230,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx_HUtyNsqKrYwWLYLRkOfNZkC3KmftUxMBwdBVkSTnwWjmgpY69JDnLL9v0_Nj2yw4/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxd8l3vr7MMlCH54VKqa1xvFTaPjEkCc8dO4I-0L4tiSlBnM_9YaBpYvpAsjMu1QDzg/exec";
 const APP_VARIANT = "inanna-main";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
@@ -1047,18 +1047,68 @@ function buildFolhetoCollection(texts = [], folhetos = []) {
     .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
 }
 
-function buildDashboardPayloadFromState() {
-  const texts = [...state.userTexts].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
-  const folhetos = buildFolhetoCollection(texts, state.userFolhetos);
+function sortDashboardRecordsByDate(records = [], fields = ["updatedAt", "createdAt"]) {
+  return [...(Array.isArray(records) ? records : [])].sort((left, right) => {
+    const leftDate = fields.map((field) => left?.[field]).find(Boolean);
+    const rightDate = fields.map((field) => right?.[field]).find(Boolean);
+    return new Date(rightDate || 0).getTime() - new Date(leftDate || 0).getTime();
+  });
+}
+
+function mergeDashboardRecordsByKey(primaryRecords = [], secondaryRecords = [], keyName) {
+  const merged = new Map();
+  [primaryRecords, secondaryRecords].forEach((group) => {
+    (Array.isArray(group) ? group : []).forEach((record) => {
+      const key = String(record?.[keyName] || "").trim();
+      if (!key || merged.has(key)) return;
+      merged.set(key, record);
+    });
+  });
+  return Array.from(merged.values());
+}
+
+function buildDashboardPayloadFromCollections(texts = [], folhetos = [], basePayload = {}) {
+  const sortedTexts = sortDashboardRecordsByDate(texts);
+  const sortedFolhetos = sortDashboardRecordsByDate(folhetos);
+  const groupedFolhetos = buildFolhetoCollection(sortedTexts, sortedFolhetos);
+
   return {
     status: "success",
-    folhetoCount: folhetos.length,
-    textCount: texts.length,
-    completedCount: texts.filter((text) => normalizeStatusValue(text.status) === "concluida").length,
-    lastEditedAt: texts[0]?.updatedAt || "",
-    folhetos,
-    texts,
+    participantId: String(basePayload?.participantId || "").trim(),
+    checkinUserId: String(basePayload?.checkinUserId || "").trim(),
+    name: String(basePayload?.name || "").trim(),
+    email: String(basePayload?.email || "").trim(),
+    teacherGroup: String(basePayload?.teacherGroup || "").trim(),
+    folhetoCount: groupedFolhetos.length,
+    textCount: sortedTexts.length,
+    completedCount: sortedTexts.filter((text) => normalizeStatusValue(text.status) === "concluida").length,
+    lastEditedAt: sortedTexts[0]?.updatedAt || sortedTexts[0]?.createdAt || "",
+    folhetos: groupedFolhetos,
+    texts: sortedTexts,
   };
+}
+
+function mergeDashboardPayloads(primaryPayload = {}, secondaryPayload = {}) {
+  const mergedTexts = mergeDashboardRecordsByKey(primaryPayload?.texts, secondaryPayload?.texts, "textId");
+  const mergedFolhetos = mergeDashboardRecordsByKey(primaryPayload?.folhetos, secondaryPayload?.folhetos, "folhetoId");
+
+  return buildDashboardPayloadFromCollections(mergedTexts, mergedFolhetos, {
+    participantId: primaryPayload?.participantId || secondaryPayload?.participantId || state.participantId,
+    checkinUserId: primaryPayload?.checkinUserId || secondaryPayload?.checkinUserId || state.checkinUserId,
+    name: primaryPayload?.name || secondaryPayload?.name || state.name,
+    email: primaryPayload?.email || secondaryPayload?.email || state.email,
+    teacherGroup: primaryPayload?.teacherGroup || secondaryPayload?.teacherGroup || state.teacherGroup,
+  });
+}
+
+function buildDashboardPayloadFromState() {
+  return buildDashboardPayloadFromCollections(state.userTexts, state.userFolhetos, {
+    participantId: state.participantId,
+    checkinUserId: state.checkinUserId,
+    name: state.name,
+    email: state.email,
+    teacherGroup: state.teacherGroup,
+  });
 }
 
 function upsertTextInDashboardState(text) {
@@ -1202,11 +1252,46 @@ async function runSextilhaStoreOperation(operationName, appsScriptFn, firebaseFn
 
 async function loadUserDashboardData() {
   const identity = buildIdentityPayload();
-  return runSextilhaStoreOperation(
-    "get_user_dashboard",
-    () => fetchAppGet("get_user_dashboard", identity),
-    (bridge) => bridge.getUserDashboard(identity)
-  );
+  const loadAppsScriptDashboard = () => fetchAppGet("get_user_dashboard", identity);
+
+  if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
+    state.sextilhaStoreStatus = "apps-script";
+    return loadAppsScriptDashboard();
+  }
+
+  try {
+    await ensureFirebaseSextilhaSession();
+    const [firestoreResult, appsScriptResult] = await Promise.allSettled([
+      window.InannaFirebaseBridge.getUserDashboard(identity),
+      loadAppsScriptDashboard(),
+    ]);
+
+    const firestorePayload = firestoreResult.status === "fulfilled" ? firestoreResult.value : null;
+    const appsScriptPayload = appsScriptResult.status === "fulfilled" ? appsScriptResult.value : null;
+
+    if (firestorePayload && appsScriptPayload) {
+      state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
+      return mergeDashboardPayloads(firestorePayload, appsScriptPayload);
+    }
+
+    if (firestorePayload) {
+      state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
+      return firestorePayload;
+    }
+
+    if (appsScriptPayload) {
+      state.sextilhaStoreStatus = "apps-script";
+      state.firebaseSessionReady = false;
+      return appsScriptPayload;
+    }
+
+    throw firestoreResult.reason || appsScriptResult.reason || new Error("Nao foi possivel carregar o caderno.");
+  } catch (error) {
+    console.warn("[sextilha-store] fallback para Apps Script em get_user_dashboard", error);
+    state.sextilhaStoreStatus = "apps-script";
+    state.firebaseSessionReady = false;
+    return loadAppsScriptDashboard();
+  }
 }
 
 async function createSextilhaTextRecord(payload) {
