@@ -1,0 +1,29 @@
+# Environment files
+.env
+.env.*
+
+# Credential JSONs
+inanna-ia-*.json
+*-firebase-adminsdk-*.json
+firebase-adminsdk-*.json
+*service-account*.json
+*credentials*.json
+*.secret.json
+
+# Key and certificate material
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+
+# Local dumps and exports
+dumps/
+exports/
+backups/
+*.dump
+*.bak
