@@ -77,6 +77,25 @@
     return new Date().toISOString();
   }
 
+  function recordFirebaseDebugSnapshot(context, details = {}) {
+    const snapshot = {
+      context: String(context || "").trim() || "firebase",
+      at: isoNow(),
+      participantId: String(details.participantId || "").trim(),
+      tokenParticipantId: String(details.tokenParticipantId || "").trim(),
+      uid: String(details.uid || "").trim(),
+      attempt: Number(details.attempt || 0),
+    };
+    const debugLog = Array.isArray(window.__INANNA_FIREBASE_DEBUG_LOG)
+      ? window.__INANNA_FIREBASE_DEBUG_LOG
+      : [];
+    debugLog.push(snapshot);
+    window.__INANNA_FIREBASE_DEBUG_LOG = debugLog.slice(-20);
+    window.__INANNA_FIREBASE_DEBUG = snapshot;
+    console.info("[firebase]", snapshot);
+    return snapshot;
+  }
+
   function buildEntityId(prefix) {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
       return `${prefix}_${window.crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -241,7 +260,16 @@
     }
 
     const participantId = String(identity?.participantId || "").trim();
+    recordFirebaseDebugSnapshot("initialize_session_start", {
+      participantId,
+      uid: String(auth.currentUser?.uid || "").trim(),
+    });
     if (auth.currentUser && session.currentParticipantId === participantId) {
+      await ensureParticipantClaimsReadyRobust(auth, participantId);
+      recordFirebaseDebugSnapshot("initialize_session_reused", {
+        participantId,
+        uid: String(auth.currentUser?.uid || "").trim(),
+      });
       return {
         status: "success",
         provider: "firestore",
@@ -261,9 +289,15 @@
       session.lastCustomToken = customToken;
     }
 
-    await ensureParticipantClaimsReady(auth, participantId);
+    const claimsResult = await ensureParticipantClaimsReadyRobust(auth, participantId);
 
     session.currentParticipantId = participantId;
+    recordFirebaseDebugSnapshot("initialize_session_ready", {
+      participantId,
+      tokenParticipantId: claimsResult?.tokenParticipantId,
+      uid: String(auth.currentUser?.uid || "").trim(),
+      attempt: claimsResult?.attempt,
+    });
 
     return {
       status: "success",
@@ -294,6 +328,44 @@
     }
 
     throw new Error("As claims do Firebase ainda não ficaram prontas para este participante.");
+  }
+
+  async function ensureParticipantClaimsReadyRobust(auth, participantId) {
+    const currentParticipantId = String(participantId || "").trim();
+    if (!auth?.currentUser || !currentParticipantId) return null;
+
+    let lastTokenParticipantId = "";
+    const maxAttempts = 16;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await auth.currentUser.getIdToken(true);
+      const tokenResult = await auth.currentUser.getIdTokenResult();
+      lastTokenParticipantId = String(tokenResult?.claims?.participantId || "").trim();
+      if (lastTokenParticipantId === currentParticipantId) {
+        recordFirebaseDebugSnapshot("claims_ready", {
+          participantId: currentParticipantId,
+          tokenParticipantId: lastTokenParticipantId,
+          uid: String(auth.currentUser?.uid || "").trim(),
+          attempt: attempt + 1,
+        });
+        return {
+          attempt: attempt + 1,
+          tokenParticipantId: lastTokenParticipantId,
+        };
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 350 + (attempt * 150)));
+    }
+
+    recordFirebaseDebugSnapshot("claims_timeout", {
+      participantId: currentParticipantId,
+      tokenParticipantId: lastTokenParticipantId,
+      uid: String(auth.currentUser?.uid || "").trim(),
+      attempt: maxAttempts,
+    });
+    throw new Error(`As claims do Firebase ainda nao ficaram prontas para este participante. Esperado ${currentParticipantId} e recebido ${lastTokenParticipantId || "vazio"}.`);
+  }
+
+  async function ensureParticipantClaimsReady(auth, participantId) {
+    return ensureParticipantClaimsReadyRobust(auth, participantId);
   }
 
   async function getUserDashboard(identity) {

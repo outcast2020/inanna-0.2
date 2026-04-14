@@ -894,6 +894,71 @@ function buildIdentityPayload() {
   };
 }
 
+function recordIdentityDebugSnapshot(context, details = {}) {
+  const snapshot = {
+    context: String(context || "").trim() || "identity",
+    at: new Date().toISOString(),
+    participantId: String(details.participantId || state.participantId || "").trim(),
+    rebuiltParticipantId: String(details.rebuiltParticipantId || "").trim(),
+    checkinUserId: String(details.checkinUserId || state.checkinUserId || "").trim(),
+    checkinUserIdSource: String(details.checkinUserIdSource || "").trim(),
+    participantIdSource: String(details.participantIdSource || "").trim(),
+    email: String(details.email || state.email || "").trim(),
+    checkinRowNumber: Number(details.checkinRowNumber || 0),
+  };
+  const debugLog = Array.isArray(window.__INANNA_IDENTITY_DEBUG_LOG)
+    ? window.__INANNA_IDENTITY_DEBUG_LOG
+    : [];
+  debugLog.push(snapshot);
+  window.__INANNA_IDENTITY_DEBUG_LOG = debugLog.slice(-20);
+  window.__INANNA_IDENTITY_DEBUG = snapshot;
+  console.info("[identity]", snapshot);
+}
+
+function reconcileAuthoritativeIdentity(source = {}) {
+  const nextParticipantId = String(source?.participantId || "").trim();
+  const nextCheckinUserId = String(source?.checkinUserId || "").trim();
+  const nextTeacherGroup = String(source?.teacherGroup || "").trim();
+  const nextParticipantIdSource = String(source?.participantIdSource || "").trim();
+  const nextRebuiltParticipantId = String(source?.rebuiltParticipantId || "").trim();
+  let didChange = false;
+
+  if (nextParticipantId && nextParticipantId !== state.participantId) {
+    state.participantId = nextParticipantId;
+    didChange = true;
+  }
+  if (nextCheckinUserId && nextCheckinUserId !== state.checkinUserId) {
+    state.checkinUserId = nextCheckinUserId;
+    didChange = true;
+  }
+  if (nextTeacherGroup && nextTeacherGroup !== state.teacherGroup) {
+    state.teacherGroup = nextTeacherGroup;
+    didChange = true;
+  }
+
+  if (state.playerData) {
+    if (nextParticipantId) {
+      state.playerData.participantId = nextParticipantId;
+    }
+    if (nextCheckinUserId) {
+      state.playerData.checkinUserId = nextCheckinUserId;
+    }
+    if (nextTeacherGroup) {
+      state.playerData.teacherGroup = nextTeacherGroup;
+    }
+  }
+
+  if (didChange) {
+    recordIdentityDebugSnapshot("identity_reconciled", {
+      participantId: nextParticipantId || state.participantId,
+      rebuiltParticipantId: nextRebuiltParticipantId,
+      checkinUserId: nextCheckinUserId || state.checkinUserId,
+      checkinUserIdSource: String(source?.checkinUserIdSource || "").trim(),
+      participantIdSource: nextParticipantIdSource,
+    });
+  }
+}
+
 async function requestAppAction(action, payload = {}, fallbackMessage = "Erro ao consultar o backend.") {
   const response = await fetch(WEB_APP_URL, {
     method: "POST",
@@ -1322,7 +1387,7 @@ async function loadFirestoreDashboardPayload(identity = buildIdentityPayload()) 
     "A sessao do Firebase demorou mais do que o esperado."
   );
   return withTimeout(
-    window.InannaFirebaseBridge.getUserDashboard(identity),
+    window.InannaFirebaseBridge.getUserDashboard(buildIdentityPayload()),
     DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS,
     "A leitura do Firebase demorou mais do que o esperado."
   );
@@ -1471,7 +1536,7 @@ async function ensureFirebaseSextilhaSession() {
     return { provider: "apps-script" };
   }
 
-  const identity = buildIdentityPayload();
+  let identity = buildIdentityPayload();
   if (window.InannaFirebaseBridge?.hasActiveSession?.(identity.participantId)) {
     state.firebaseSessionReady = true;
     state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
@@ -1484,6 +1549,15 @@ async function ensureFirebaseSextilhaSession() {
 
   const sessionPromise = (async () => {
     const tokenPayload = await fetchAppGet("get_firebase_custom_token", identity);
+    reconcileAuthoritativeIdentity(tokenPayload);
+    identity = buildIdentityPayload();
+    recordIdentityDebugSnapshot("firebase_token_received", {
+      participantId: tokenPayload?.participantId,
+      rebuiltParticipantId: tokenPayload?.rebuiltParticipantId,
+      checkinUserId: tokenPayload?.checkinUserId,
+      checkinUserIdSource: tokenPayload?.checkinUserIdSource,
+      participantIdSource: tokenPayload?.participantIdSource,
+    });
     await window.InannaFirebaseBridge.initializeSession({
       customToken: tokenPayload?.customToken,
       identity,
@@ -1537,19 +1611,43 @@ async function loadUserDashboardData() {
   if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
     try {
       const firebasePayload = await loadFirestoreDashboardPayload(identity);
+      if (!payloadHasDashboardContent(firebasePayload)) {
+        console.warn("[dashboard] Firestore retornou vazio; consultando aliases no Apps Script antes de aceitar o vazio", {
+          participantId: identity.participantId,
+          checkinUserId: identity.checkinUserId,
+        });
+        const appsScriptAliasPayload = await loadAppsScriptDashboardPayloads(buildIdentityPayload(), {
+          includeAliases: true,
+          timeoutMs: DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
+        }).catch((error) => {
+          console.warn("[dashboard] nao foi possivel recuperar acervo por alias no Apps Script", error);
+          return null;
+        });
+        if (appsScriptAliasPayload && payloadHasDashboardContent(appsScriptAliasPayload)) {
+          const mergedPayload = mergeDashboardPayloads(firebasePayload, appsScriptAliasPayload);
+          state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
+          state.firebaseSessionReady = true;
+          recordIdentityDebugSnapshot("dashboard_alias_recovery", {
+            participantId: state.participantId,
+            checkinUserId: state.checkinUserId,
+          });
+          return mergedPayload;
+        }
+      }
       state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
       state.firebaseSessionReady = true;
       return firebasePayload;
     } catch (error) {
-      console.warn("[dashboard] fallback para Apps Script apos falha no Firestore", error);
+      console.warn("[dashboard] leitura do Firestore falhou; mantendo modo de sincronizacao sem fallback silencioso", error);
+      state.firebaseSessionReady = false;
+      throw error;
     }
   }
 
-  const payload = await withTimeout(
-    loadAppsScriptDashboardPayload(identity),
-    DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
-    "Seu caderno está demorando mais do que o normal para responder."
-  );
+  const payload = await loadAppsScriptDashboardPayloads(identity, {
+    includeAliases: true,
+    timeoutMs: DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
+  });
   state.sextilhaStoreStatus = "apps-script";
   state.firebaseSessionReady = false;
   return payload;
@@ -1675,6 +1773,15 @@ function applyResolvedCheckinIdentity(identity) {
   state.teacherGroup = String(identity?.teacherGroup || "").trim();
   state.checkinLookupStatus = "matched";
   state.checkinLookupMessage = "";
+  recordIdentityDebugSnapshot("checkin_lookup_matched", {
+    participantId: identity?.participantId,
+    rebuiltParticipantId: identity?.rebuiltParticipantId,
+    checkinUserId: identity?.checkinUserId,
+    checkinUserIdSource: identity?.checkinUserIdSource,
+    participantIdSource: identity?.participantIdSource,
+    email: identity?.email,
+    checkinRowNumber: identity?.checkinRowNumber,
+  });
 }
 
 function renderWelcomeIdentityStatus() {
@@ -3277,7 +3384,7 @@ async function openSextilhaDashboard(options = {}) {
   }
 
   refreshDashboardInBackground(requestId, identity, fastPayload || visibleBasePayload, {
-    preferFirestoreOnly: state.sextilhaStoreStatus === FIREBASE_SEXTILHA_MODE,
+    preferFirestoreOnly: state.sextilhaStoreStatus === FIREBASE_SEXTILHA_MODE && payloadHasDashboardContent(fastPayload),
   }).catch((error) => {
     console.warn("[dashboard] nao foi possivel concluir a sincronizacao em segundo plano", error);
   });
