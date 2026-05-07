@@ -1406,6 +1406,17 @@ select:focus-visible,
   line-height: 1.7;
 }
 
+.track-card__notice {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(249, 115, 22, 0.22);
+  background: rgba(249, 115, 22, 0.08);
+  color: #fed7aa;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .dashboard-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

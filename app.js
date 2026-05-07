@@ -38,6 +38,7 @@ const ui = {
   trackChooserSection: $("trackChooserSection"),
   chooseGameTrackBtn: $("chooseGameTrackBtn"),
   chooseSextilhaTrackBtn: $("chooseSextilhaTrackBtn"),
+  sextilhaAccessNotice: $("sextilhaAccessNotice"),
   trackChooserBackBtn: $("trackChooserBackBtn"),
   userDashboardSection: $("userDashboardSection"),
   dashboardGreeting: $("dashboardGreeting"),
@@ -232,8 +233,10 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwFlg4rpDIKwTkSc1nSoFcEZdzB0h-QNnLKzoqx467cqJTN76y1h-j23bwipgjXhRIu/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyvxmMdrntmVrbsSnOxW_rE4E4yoWRSydAlCpIq0c38c790LdfFPeRb0dzdQFfRFAdk/exec";
 const APP_VARIANT = "inanna-main";
+const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
+const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
 const FIREBASE_SEXTILHA_MODE = "firestore";
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
@@ -707,6 +710,36 @@ function setStartHint(msg, color) {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function canAccessSextilhaWorkspace(email = state.email) {
+  return SEXTILHA_ALLOWED_EMAILS.has(normalizeEmail(email));
+}
+
+function syncSextilhaTrackAccess(options = {}) {
+  const hasAccess = canAccessSextilhaWorkspace();
+
+  if (ui.chooseSextilhaTrackBtn) {
+    ui.chooseSextilhaTrackBtn.disabled = !hasAccess;
+    ui.chooseSextilhaTrackBtn.title = hasAccess ? "" : SEXTILHA_LOCKED_NOTICE;
+  }
+
+  if (ui.sextilhaAccessNotice) {
+    ui.sextilhaAccessNotice.textContent = hasAccess ? "" : SEXTILHA_LOCKED_NOTICE;
+    ui.sextilhaAccessNotice.hidden = hasAccess;
+  }
+
+  if (!hasAccess && options.toast) {
+    showToast(SEXTILHA_LOCKED_NOTICE, "muted", { duration: 4000 });
+  }
+
+  return hasAccess;
+}
+
+function assertSextilhaWorkspaceAccess() {
+  if (canAccessSextilhaWorkspace()) return;
+  syncSextilhaTrackAccess();
+  throw new Error(SEXTILHA_LOCKED_NOTICE);
 }
 
 function normalizeLooseIdentityText(value) {
@@ -1535,6 +1568,7 @@ async function ensureFirebaseSextilhaSession() {
   if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
     return { provider: "apps-script" };
   }
+  assertSextilhaWorkspaceAccess();
 
   let identity = buildIdentityPayload();
   if (window.InannaFirebaseBridge?.hasActiveSession?.(identity.participantId)) {
@@ -1583,6 +1617,7 @@ async function ensureFirebaseSextilhaSession() {
 function prewarmFirebaseSextilhaSession() {
   if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) return;
   if (!state.participantId || !state.checkinUserId) return;
+  if (!canAccessSextilhaWorkspace()) return;
 
   ensureFirebaseSextilhaSession().catch((error) => {
     console.warn("[firebase] nao foi possivel aquecer a sessao antecipadamente", error);
@@ -1590,6 +1625,8 @@ function prewarmFirebaseSextilhaSession() {
 }
 
 async function runSextilhaStoreOperation(operationName, appsScriptFn, firebaseFn) {
+  assertSextilhaWorkspaceAccess();
+
   if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
     state.sextilhaStoreStatus = "apps-script";
     return appsScriptFn();
@@ -2010,6 +2047,7 @@ function showTrackChooser() {
   resetSextilhaState();
   hideGameExperience();
   setView("chooser", ui.trackChooserSection);
+  syncSextilhaTrackAccess();
   window.scrollTo({ top: 0, behavior: "smooth" });
   prewarmFirebaseSextilhaSession();
 }
@@ -3325,6 +3363,8 @@ function applyDashboardPayload(payload) {
 }
 
 async function openSextilhaDashboard(options = {}) {
+  assertSextilhaWorkspaceAccess();
+
   const settings = { forceRefresh: false, ...options };
   const requestId = state.dashboardLoadRequestId + 1;
   state.dashboardLoadRequestId = requestId;
@@ -4147,6 +4187,8 @@ if (ui.chooseGameTrackBtn) {
 
 if (ui.chooseSextilhaTrackBtn) {
   ui.chooseSextilhaTrackBtn.addEventListener("click", async () => {
+    if (!syncSextilhaTrackAccess({ toast: true })) return;
+
     const originalLabel = ui.chooseSextilhaTrackBtn.textContent;
     ui.chooseSextilhaTrackBtn.disabled = true;
     ui.chooseSextilhaTrackBtn.textContent = "Abrindo caderno...";

@@ -6,8 +6,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function ownsParticipant(participantId) {
+    function hasSextilhaAccess() {
       return isSignedIn()
+        && request.auth.token.sextilhaAccess == true;
+    }
+
+    function ownsParticipant(participantId) {
+      return hasSextilhaAccess()
         && request.auth.token.participantId != null
         && request.auth.token.participantId == participantId;
     }
