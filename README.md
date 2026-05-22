@@ -147,6 +147,7 @@ No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar d
 
 - `doPost(e)`: recebe a quadra e grava o registro.
 - `doGet(e)` com `action=getPlacar`: devolve o placar em JSON.
+- `doPost(e)` com `action=react_placar`: registra uma reacao no placar, limitada a 3 reacoes por visitante em cada quadra.
 - `doGet(e)` com `action=checkin_lookup`: devolve identidade por JSONP.
 - `doGet(e)` com `action=get_user_dashboard`: devolve o resumo do caderno de sextilhas.
 - `doGet(e)` com `action=get_text`: devolve um texto da trilha de sextilhas.
@@ -199,11 +200,22 @@ No frontend, o cronometro de escrita substitui a antiga medida visual de confian
 - `Bonus Esquema`
 - `Timestamp`
 
+`PLACAR_REACTIONS` registra as reacoes do placar:
+
+- `ENTRY_KEY`
+- `REACTION`
+- `VIEWER_KEY`
+- `PARTICIPANT_ID`
+- `CHECKIN_USER_ID`
+- `CREATED_AT`
+
 Regras:
 
 - ordenacao por maior pontuacao;
 - desempate pelo registro mais recente;
 - exibicao do Top 20.
+- reacoes por quadra com polegar, coracao e surpresa;
+- limite de 3 reacoes por visitante em cada quadra, podendo repetir ou misturar os emojis.
 
 ### Check-in
 

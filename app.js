@@ -237,6 +237,13 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwxVRpqU9lCW-oFK1e1
 const APP_VARIANT = "inanna-main";
 const PLACAR_VISIBLE_LIMIT = 20;
 const PLACAR_PREVIEW_LIMIT = 3;
+const PLACAR_REACTION_LIMIT = 3;
+const PLACAR_REACTION_VIEWER_STORAGE_KEY = "inanna_placar_reaction_viewer_v1";
+const PLACAR_REACTIONS = [
+  { key: "thumb", emoji: "👍", label: "Polegar para cima" },
+  { key: "heart", emoji: "❤️", label: "Coração" },
+  { key: "wow", emoji: "😮", label: "Boca de surpresa" },
+];
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
 const FIREBASE_SEXTILHA_MODE = "firestore";
@@ -708,6 +715,31 @@ function setStartHint(msg, color) {
   if (!ui.startHint) return;
   ui.startHint.textContent = msg || "";
   ui.startHint.style.color = color || "var(--muted)";
+}
+
+function buildLocalViewerKey() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID().replace(/[^A-Za-z0-9_-]+/g, "");
+  }
+  return `viewer_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getPlacarReactionViewerKey() {
+  if (!window.localStorage) {
+    window.__INANNA_PLACAR_VIEWER_KEY = window.__INANNA_PLACAR_VIEWER_KEY || buildLocalViewerKey();
+    return window.__INANNA_PLACAR_VIEWER_KEY;
+  }
+
+  try {
+    var existing = window.localStorage.getItem(PLACAR_REACTION_VIEWER_STORAGE_KEY);
+    if (existing) return existing;
+    var created = buildLocalViewerKey();
+    window.localStorage.setItem(PLACAR_REACTION_VIEWER_STORAGE_KEY, created);
+    return created;
+  } catch (_) {
+    window.__INANNA_PLACAR_VIEWER_KEY = window.__INANNA_PLACAR_VIEWER_KEY || buildLocalViewerKey();
+    return window.__INANNA_PLACAR_VIEWER_KEY;
+  }
 }
 
 function normalizeEmail(value) {
@@ -4450,6 +4482,65 @@ getSextilhaVerseMeterButtons().forEach((button) => {
 });
 
 // ── Placar e Envio ───────────────────────────────────────────────────
+function normalizePlacarReactionState(item) {
+  const counts = item?.reactions || {};
+  const viewer = item?.viewerReactions || {};
+
+  return {
+    counts: {
+      thumb: Number(counts.thumb || 0),
+      heart: Number(counts.heart || 0),
+      wow: Number(counts.wow || 0),
+      total: Number(counts.total || 0),
+    },
+    viewer: {
+      thumb: Number(viewer.thumb || 0),
+      heart: Number(viewer.heart || 0),
+      wow: Number(viewer.wow || 0),
+      total: Number(viewer.total || 0),
+    },
+  };
+}
+
+function renderPlacarReactionControls(item) {
+  const entryKey = String(item?.entryKey || "").trim();
+  if (!entryKey) return "";
+
+  const reactionState = normalizePlacarReactionState(item);
+  const viewerTotal = Math.min(PLACAR_REACTION_LIMIT, reactionState.viewer.total);
+  const remaining = Math.max(0, PLACAR_REACTION_LIMIT - viewerTotal);
+
+  const buttons = PLACAR_REACTIONS.map((reaction) => {
+    const count = Number(reactionState.counts[reaction.key] || 0);
+    const viewerCount = Number(reactionState.viewer[reaction.key] || 0);
+    const disabled = remaining <= 0 ? " disabled" : "";
+    const usedClass = viewerCount > 0 ? " is-used" : "";
+    const reactionWord = count === 1 ? "reação" : "reações";
+    const title = remaining > 0
+      ? `${reaction.label}: ${count} ${reactionWord}`
+      : "Limite de 3 reações atingido nesta quadra";
+
+    return `
+      <button class="placar-reaction-btn${usedClass}" type="button"
+        data-action="placar-reaction"
+        data-entry-key="${escapeHtml(entryKey)}"
+        data-reaction="${escapeHtml(reaction.key)}"
+        aria-label="${escapeHtml(title)}"
+        title="${escapeHtml(title)}"${disabled}>
+        <span class="placar-reaction-emoji" aria-hidden="true">${reaction.emoji}</span>
+        <span class="placar-reaction-count">${count}</span>
+      </button>
+    `;
+  }).join("");
+
+  return `
+    <div class="placar-reactions" data-entry-key="${escapeHtml(entryKey)}">
+      <div class="placar-reaction-buttons">${buttons}</div>
+      <span class="placar-reaction-quota" title="Reações usadas neste navegador">${viewerTotal}/${PLACAR_REACTION_LIMIT}</span>
+    </div>
+  `;
+}
+
 function renderPlacarItems(data) {
   ui.placarList.innerHTML = "";
   if (ui.fullPlacarList) ui.fullPlacarList.innerHTML = "";
@@ -4495,6 +4586,7 @@ function renderPlacarItems(data) {
         </div>
         <div class="placar-autor">${escapeHtml(item.autor)}</div>
         <div class="placar-verso">${renderQuadraVerses(item.verso)}</div>
+        ${renderPlacarReactionControls(item)}
       `;
       container.appendChild(div);
     });
@@ -4517,7 +4609,9 @@ function loadPlacar() {
 
   ui.placarList.innerHTML = "<p style='text-align: center; color: var(--muted); margin-top:20px;'>Carregando placar...</p>";
 
-  fetchAppGet("getPlacar")
+  fetchAppGet("getPlacar", {
+    viewerKey: getPlacarReactionViewerKey(),
+  })
     .then(data => {
       if (data && typeof data === "object" && !Array.isArray(data)) {
         if (data.status === "error") {
@@ -4536,6 +4630,50 @@ function loadPlacar() {
     });
 }
 ui.btnRefreshPlacar.addEventListener("click", loadPlacar);
+
+async function handlePlacarReactionClick(button) {
+  const entryKey = String(button?.dataset?.entryKey || "").trim();
+  const reaction = String(button?.dataset?.reaction || "").trim();
+  if (!entryKey || !reaction || button.disabled) return;
+
+  const controls = button.closest(".placar-reactions");
+  const allButtons = controls ? Array.from(controls.querySelectorAll("button")) : [button];
+  allButtons.forEach((item) => { item.disabled = true; });
+  if (controls) controls.classList.add("is-loading");
+
+  try {
+    const result = await postAppAction("react_placar", {
+      entryKey,
+      reaction,
+      viewerKey: getPlacarReactionViewerKey(),
+      participantId: state.participantId || state.playerData?.participantId || "",
+      checkinUserId: state.checkinUserId || state.playerData?.checkinUserId || "",
+      appVariant: APP_VARIANT,
+    });
+
+    if (Array.isArray(result?.placar)) {
+      renderPlacarItems(result.placar);
+    } else {
+      await loadPlacar();
+    }
+    showToast("Reação registrada no placar.", "success", { duration: 1600 });
+  } catch (error) {
+    console.error(error);
+    showToast(error?.message || "Não foi possível registrar a reação.", "error", { duration: 3200 });
+    allButtons.forEach((item) => { item.disabled = false; });
+    if (controls) controls.classList.remove("is-loading");
+  }
+}
+
+[ui.placarList, ui.fullPlacarList].filter(Boolean).forEach((container) => {
+  container.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action='placar-reaction']");
+    if (!button || !container.contains(button)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    handlePlacarReactionClick(button);
+  });
+});
 
 ui.btnSubmitPoem.addEventListener("click", () => {
   if (!state.playerData) return;
