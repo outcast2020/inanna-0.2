@@ -233,8 +233,10 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyvxmMdrntmVrbsSnOxW_rE4E4yoWRSydAlCpIq0c38c790LdfFPeRb0dzdQFfRFAdk/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwxVRpqU9lCW-oFK1e19lp017t3TLTePZC3VNJ1gDBaK2EIZBRLNmnHt3GaxSfG9BPo/exec";
 const APP_VARIANT = "inanna-main";
+const PLACAR_VISIBLE_LIMIT = 20;
+const PLACAR_PREVIEW_LIMIT = 3;
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
 const FIREBASE_SEXTILHA_MODE = "firestore";
@@ -3060,11 +3062,31 @@ function lastWordOf(verse) {
 // Pontuação bruta do par de rima
 function rhymePairScore(a, b) {
   if (!a || !b) return -1;
-  if (a === b && a.length > 1) return 3;                              // idênticas
+  if (a === b && a.length > 1) return -2;                             // palavra repetida
   if (a.length >= 3 && b.length >= 3 && a.slice(-3) === b.slice(-3)) return 3;  // 3 letras
   if (a.length >= 2 && b.length >= 2 && a.slice(-2) === b.slice(-2)) return 2;  // 2 letras
   if (a.slice(-1) === b.slice(-1)) return 1;                          // 1 letra
   return -1;
+}
+
+function analyzeRepeatedEndingPenalty(words) {
+  var counts = {};
+  var repeatedWords = [];
+  var repeatedCount = 0;
+
+  words.forEach(function (word) {
+    if (!word || word.length <= 1) return;
+    counts[word] = (counts[word] || 0) + 1;
+    if (counts[word] > 1) {
+      repeatedCount += 1;
+      if (!repeatedWords.includes(word)) repeatedWords.push(word);
+    }
+  });
+
+  return {
+    penalty: Math.min(4, repeatedCount),
+    words: repeatedWords
+  };
 }
 
 function extractVerseTokens(verse) {
@@ -3146,8 +3168,9 @@ function analyzeRhyme(lines) {
     if (total > bestScore) { bestScore = total; best = s; bestPairScores = ps; }
   });
 
+  var repeatedEnding = analyzeRepeatedEndingPenalty(words);
   var allRhyming = bestPairScores.every(function (s) { return s > 0; });
-  var strongScheme = bestPairScores.every(function (s) { return s >= 2; });
+  var strongScheme = bestPairScores.every(function (s) { return s >= 2; }) && repeatedEnding.penalty === 0;
   var bonus = strongScheme ? 2 : 0;
 
   return {
@@ -3155,7 +3178,10 @@ function analyzeRhyme(lines) {
     pairs: best.pairs,
     pairScores: bestPairScores,
     words: words,
-    pairScoreTotal: bestScore,
+    rawPairScoreTotal: bestScore,
+    pairScoreTotal: bestScore - repeatedEnding.penalty,
+    repeatedEndingPenalty: repeatedEnding.penalty,
+    repeatedEndingWords: repeatedEnding.words,
     schemeBonus: bonus,
     allRhyming: allRhyming,
     strongScheme: strongScheme
@@ -3201,7 +3227,8 @@ function calculateChallengeScore(lines) {
 // Gera HTML do feedback de rima e pontuação
 function rhymeFeedbackHTML(result, challengeMode) {
   var r = result.rhyme;
-  function icon(s) { return s >= 3 ? "🔥 +3" : s === 2 ? "✨ +2" : s === 1 ? "👍 +1" : "❌ −1"; }
+  function icon(s) { return s === -2 ? "🔁 −2" : s >= 3 ? "🔥 +3" : s === 2 ? "✨ +2" : s === 1 ? "👍 +1" : "❌ −1"; }
+  function signed(value) { return (value >= 0 ? "+" : "") + value; }
   var colors = { AABB: "#f97316", ABAB: "#a855f7", ABBA: "#06b6d4" };
   var color = colors[r.scheme] || "var(--primary)";
   var pairsIdx = { AABB: [[0, 1], [2, 3]], ABAB: [[0, 2], [1, 3]], ABBA: [[0, 3], [1, 2]] }[r.scheme];
@@ -3220,6 +3247,12 @@ function rhymeFeedbackHTML(result, challengeMode) {
   var creativityLine = result.creativity.bonus > 0
     ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✨ Criatividade autoral: <strong>+' + result.creativity.bonus + '</strong> (palavra fora das sugestões e ainda sustentando a rima)</div>'
     : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Criatividade autoral: <strong>+0</strong></div>';
+  var repeatedWords = r.repeatedEndingWords && r.repeatedEndingWords.length
+    ? ' (' + r.repeatedEndingWords.join(", ") + ')'
+    : '';
+  var repetitionLine = r.repeatedEndingPenalty > 0
+    ? '<div style="margin-top:8px;font-size:13px;color:#ef4444;">🔁 Penalidade por palavra final repetida: <strong>-' + r.repeatedEndingPenalty + '</strong>' + repeatedWords + '</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Penalidade por palavra final repetida: <strong>0</strong></div>';
   var scoreTitle = challengeMode ? 'Pontuação do Desafio' : 'No Modo Desafio, esta quadra valeria';
 
   return '<div style="margin-top:18px;padding:14px 18px;background:rgba(255,255,255,0.05);border-radius:12px;border-left:4px solid ' + color + ';">' +
@@ -3227,9 +3260,10 @@ function rhymeFeedbackHTML(result, challengeMode) {
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + r.desc + '</div>' +
     pairLines +
     structureLine +
-    '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Rima final: <strong style="color:var(--text);">' + (r.pairScoreTotal >= 0 ? "+" : "") + r.pairScoreTotal + '</strong></div>' +
+    '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Rima final ajustada: <strong style="color:var(--text);">' + signed(r.pairScoreTotal) + '</strong></div>' +
     schemeLine +
     creativityLine +
+    repetitionLine +
     '<div style="margin-top:12px;font-size:16px;font-weight:900;color:' + totalColor + ';">' + scoreTitle + ': +' + result.total + '</div>' +
     '</div>';
 }
@@ -4445,8 +4479,8 @@ function renderPlacarItems(data) {
     item.posicao = (index + 1) + "º";
   });
 
-  const top10 = sortedData.slice(0, 10);
-  const top3 = top10.slice(0, 3);
+  const topVisible = sortedData.slice(0, PLACAR_VISIBLE_LIMIT);
+  const topPreview = topVisible.slice(0, PLACAR_PREVIEW_LIMIT);
 
   const populateList = (list, container) => {
     container.innerHTML = "";
@@ -4466,8 +4500,8 @@ function renderPlacarItems(data) {
     });
   };
 
-  populateList(top3, ui.placarList);
-  if (ui.fullPlacarList) populateList(top10, ui.fullPlacarList);
+  populateList(topPreview, ui.placarList);
+  if (ui.fullPlacarList) populateList(topVisible, ui.fullPlacarList);
 }
 
 function loadPlacar() {
@@ -4691,7 +4725,7 @@ if (ui.closeRules && ui.rulesModal) {
   });
 }
 
-// Modal Placar Top 10
+// Modal Placar Top 20
 function openPlacarModal() {
   if (ui.placarModal) ui.placarModal.showModal();
 }

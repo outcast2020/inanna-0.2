@@ -40,8 +40,10 @@
         <li><strong style="color:#f97316;">🔥 +3 pts</strong> por par — 3 letras finais iguais (rima rica)</li>
         <li><strong style="color:#a855f7;">✨ +2 pts</strong> por par — 2 letras finais iguais (rima boa)</li>
         <li><strong style="color:var(--text);">👍 +1 pt</strong> por par — 1 letra final igual (rima leve)</li>
+        <li><strong style="color:#ef4444;">🔁 −2 pts</strong> por par — palavra final repetida não conta como rima criativa</li>
         <li><strong style="color:#ef4444;">❌ −1 pt</strong> por par — sem rima alguma</li>
-        <li><strong style="color:#22c55e;">✅ Bônus +2</strong> — se os dois pares tiverem pelo menos rima boa.</li>
+        <li><strong style="color:#ef4444;">⚠️ −1 pt</strong> por repetição extra de palavra final na quadra. Máximo <strong>−4</strong>.</li>
+        <li><strong style="color:#22c55e;">✅ Bônus +2</strong> — se os dois pares tiverem pelo menos rima boa e sem palavra final repetida.</li>
         <li><strong style="color:#06b6d4;">✨ Criatividade +1</strong> por palavra fora das sugestões que ainda sustente a rima. Máximo <strong>+2</strong>.</li>
       </ul>
       <p style="text-align: left; margin: 2px 25px 14px; font-size: 12px; color: var(--muted);">
@@ -51,7 +53,7 @@
       </p>
       <div
         style="background:rgba(249,115,22,0.08);border-radius:10px;padding:10px 14px;margin-bottom:18px;font-size:13px;color:var(--muted);border-left:3px solid var(--primary);">
-        💡 <strong>Pontuação máxima por quadra: <span style="color:var(--primary);">+12 pts</span></strong><br>
+        💡 <strong>Pontuação máxima por quadra sem penalidades: <span style="color:var(--primary);">+12 pts</span></strong><br>
         Forma + rima final + bônus de esquema + criatividade autoral
       </div>
 
@@ -65,9 +67,9 @@
   <!-- Modal do Placar Completo -->
       <dialog id="placarModal" class="rules-modal placar-modal" style="max-height: 85vh; overflow-y: auto;">
         <div class="rules-content">
-          <h3>🏆 Top 10 do Modo Desafio</h3>
+          <h3>🏆 Top 20 do Modo Desafio</h3>
           <p style="font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 20px;">
-            Aqui estão as 10 quadras mais bem colocadas no modo desafio.
+            Aqui estão as 20 quadras mais bem colocadas no modo desafio.
           </p>
           <div id="fullPlacarList" class="placar-list"></div>
       <div style="text-align: center; margin-top: 24px;">
@@ -546,10 +548,10 @@
 
       <!-- Lado Direito: Placar -->
         <aside class="ranking-area ranking-openable" id="rankingArea" tabindex="0"
-          aria-label="Abrir Top 10 do modo desafio">
+          aria-label="Abrir Top 20 do modo desafio">
           <div class="step-header">
             <h2>🏆 Top 3 do Modo Desafio</h2>
-            <p class="step-desc" style="font-size: 13px;">Clique no placar para abrir o Top 10 completo.</p>
+            <p class="step-desc" style="font-size: 13px;">Clique no placar para abrir o Top 20 completo.</p>
             <button id="btnRefreshPlacar" class="btn btn-ghost"
               style="margin-top: 5px; font-size: 12px; padding: 4px 8px;">🔄 Atualizar</button>
           </div>

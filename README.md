@@ -102,7 +102,7 @@ O app tambem inclui:
 
 - modal de vetor;
 - modal pedagogico de embeddings;
-- modal de placar Top 10.
+- modal de placar Top 20.
 
 ## Motor preditivo
 
@@ -133,6 +133,9 @@ O modo desafio trabalha com:
 - qualidade das rimas;
 - bonus de esquema;
 - criatividade autoral.
+- penalidade para palavra final repetida como atalho de rima.
+
+Palavras finais repetidas nao pontuam como rima criativa: par com palavra final identica recebe penalidade, e repeticoes extras de palavra final reduzem a nota de rima da quadra.
 
 No frontend, a quadra e pontuada apos o quarto verso.
 
@@ -200,7 +203,7 @@ Regras:
 
 - ordenacao por maior pontuacao;
 - desempate pelo registro mais recente;
-- exibicao do Top 10.
+- exibicao do Top 20.
 
 ### Check-in
 
