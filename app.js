@@ -233,7 +233,7 @@ const state = {
 };
 
 // COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwxVRpqU9lCW-oFK1e19lp017t3TLTePZC3VNJ1gDBaK2EIZBRLNmnHt3GaxSfG9BPo/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytj_rKL1Yd8K7ybqoEtHftl6Urdh2EgBoid2hNaIW9LyMX0LEinYJRUsMz0uJ_Osgi/exec";
 const APP_VARIANT = "inanna-main";
 const PLACAR_VISIBLE_LIMIT = 20;
 const PLACAR_PREVIEW_LIMIT = 3;
