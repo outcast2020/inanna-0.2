@@ -794,10 +794,18 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
       </section>
     </div>
   </dialog>
+  <script>
+    window.INANNA_APP_CONFIG = {
+      supabaseUrl: "%VITE_SUPABASE_URL%",
+      supabaseAnonKey: "%VITE_SUPABASE_ANON_KEY%",
+      aiEnabled: "%VITE_INANNA_AI_ENABLED%",
+      socialEmailEnabled: "%VITE_INANNA_SOCIAL_EMAIL_ENABLED%"
+    };
+  </script>
   <script src="cordel_rhyme_bank.js"></script>
   <script src="prediction_engine_v2.js"></script>
-  <script src="firebase-config.js"></script>
-  <script src="firebase-sextilhas.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-client.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="app.js"></script>
 </body>
