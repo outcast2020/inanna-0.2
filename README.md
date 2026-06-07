@@ -29,6 +29,7 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - `supabase/migrations/003_participant_profile_legacy_import.sql` adiciona perfil estatistico de primeiro acesso, fingerprint legado e RPC de perfil.
 - `supabase/migrations/004_profile_race_age.sql` acrescenta identificacao racial e faixa etaria ao perfil estatistico.
 - `scripts/import-legacy-quadras.mjs` importa check-in e quadras historicas do Google Sheets de forma idempotente.
+- `supabase/functions/inanna-public-config` fornece configuracao publica em runtime para o navegador quando a build da Vercel nao substitui `VITE_*`.
 - `.env.example` lista apenas variaveis publicas `VITE_*` para frontend.
 - IA das sextilhas e envio por e-mail ficam desligados nesta fase (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
 
@@ -223,7 +224,8 @@ O script exige `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em ambiente local ou
 3. Importe o repositorio GitHub na Vercel ou mantenha a integracao existente.
 4. Configure o preset como Vite, build `pnpm build` e output `dist`.
 5. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
-6. Valide o preview antes de promover para production.
+6. Mantenha a Edge Function `inanna-public-config` implantada no Supabase como fallback publico de runtime config.
+7. Valide o preview antes de promover para production.
 
 O projeto de producao deve ser criado/importado a partir do repositorio GitHub na Vercel. O dominio proprio fica apontado para a Vercel; nao use GitHub Pages para este app em producao.
 
@@ -231,6 +233,7 @@ O projeto de producao deve ser criado/importado a partir do repositorio GitHub n
 
 - Rodar `pnpm build` antes de publicar mudancas.
 - Conferir se as quatro envs `VITE_*` existem em Production na Vercel.
+- Conferir se `https://ifhagjcarefdkcmjvknf.supabase.co/functions/v1/inanna-public-config` responde JavaScript valido.
 - Verificar `placar_publico` apos importacoes ou alteracoes de scoring.
 - Rodar o importador em `IMPORT_DRY_RUN=true` antes de qualquer nova carga historica.
 - Nunca commitar `.env.local`, `not-commit-supabaseInanna.txt`, service role keys, tokens ou dumps.
