@@ -27,6 +27,19 @@ const ui = {
   playerType: $("playerType"),
   verifyCheckinBtn: $("verifyCheckinBtn"),
   welcomeIdentity: $("welcomeIdentity"),
+  profileCompletionPanel: $("profileCompletionPanel"),
+  profileWorkshopYes: $("profileWorkshopYes"),
+  profileWorkshopNo: $("profileWorkshopNo"),
+  profileAiChatbotYes: $("profileAiChatbotYes"),
+  profileAiChatbotNo: $("profileAiChatbotNo"),
+  profileGender: $("profileGender"),
+  profileRace: $("profileRace"),
+  profileAgeRange: $("profileAgeRange"),
+  profileMunicipioInput: $("profileMunicipioInput"),
+  profileMunicipioOptions: $("profileMunicipioOptions"),
+  profileOutsideBrazil: $("profileOutsideBrazil"),
+  saveProfileBtn: $("saveProfileBtn"),
+  profileStatus: $("profileStatus"),
   startHint: $("startHint"),
   btnSubmitPoem: $("btnSubmitPoem"),
   submitResponse: $("submitResponse"),
@@ -187,6 +200,18 @@ const state = {
   municipio: "",
   estadoUF: "",
   origem: "",
+  pais: "BR",
+  oficinaCordel20: null,
+  usouChatbotIa: null,
+  genero: "",
+  identificacaoRacial: "",
+  faixaEtaria: "",
+  profileComplete: false,
+  profileSaving: false,
+  profileFormParticipantId: "",
+  municipiosBrasilLoaded: false,
+  municipiosBrasilLoading: false,
+  municipiosBrasilError: "",
   participantId: "",
   checkinUserId: "",
   checkinMatchStatus: "",
@@ -238,6 +263,8 @@ const PLACAR_VISIBLE_LIMIT = 20;
 const PLACAR_PREVIEW_LIMIT = 3;
 const PLACAR_REACTION_LIMIT = 3;
 const PLACAR_REACTION_VIEWER_STORAGE_KEY = "inanna_placar_reaction_viewer_v1";
+const MUNICIPIOS_BR_API_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios";
+const MUNICIPIOS_BR_CACHE_KEY = "inanna_municipios_br_v1";
 const PLACAR_REACTIONS = [
   { key: "thumb", emoji: "👍", label: "Polegar para cima" },
   { key: "heart", emoji: "❤️", label: "Coração" },
@@ -255,6 +282,8 @@ const DASHBOARD_CACHE_KEY_PREFIX = "inanna_dashboard_cache_v1";
 const DASHBOARD_SLOW_NOTICE_DELAY_MS = 3500;
 const DASHBOARD_SUPABASE_SESSION_TIMEOUT_MS = 30000;
 const DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS = 65000;
+let municipiosBrasil = [];
+let municipiosBrasilPromise = null;
 const INANNA_AVATAR_STATES = {
   observing: {
     src: "inanna_observando.webp",
@@ -1663,12 +1692,294 @@ function renderStatusBadge(status) {
   return `<span class="status-badge ${statusClassName(status)}">${escapeHtml(getStatusLabel(status))}</span>`;
 }
 
+function normalizeProfileGender(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["feminino", "masculino", "outro", "prefiro_nao_dizer"].includes(normalized) ? normalized : "";
+}
+
+function normalizeProfileRace(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["negro", "branco", "pardo", "indigena", "outro"].includes(normalized) ? normalized : "";
+}
+
+function normalizeProfileAgeRange(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["menos_de_11", "12_14", "15_17", "18_29", "30_44", "45_59", "maior_de_60"].includes(normalized) ? normalized : "";
+}
+
+function normalizeLegacyAgeRange(value) {
+  const normalized = norm(value).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!normalized) return "";
+  if (["menor", "menos_de_11", "ate_11", "0_11"].includes(normalized)) return "menos_de_11";
+  if (["12_14", "12_a_14"].includes(normalized)) return "12_14";
+  if (["15_17", "15_a_17"].includes(normalized)) return "15_17";
+  if (["18_29", "18_a_29", "maior"].includes(normalized)) return "18_29";
+  if (["30_44", "30_a_44"].includes(normalized)) return "30_44";
+  if (["45_59", "45_a_59"].includes(normalized)) return "45_59";
+  if (["maior_de_60", "60_mais", "acima_de_60"].includes(normalized)) return "maior_de_60";
+  return "";
+}
+
+function normalizeBooleanProfileValue(value) {
+  if (value === true || value === false) return value;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["sim", "yes", "true", "1"].includes(normalized)) return true;
+  if (["nao", "não", "no", "false", "0"].includes(normalized)) return false;
+  return null;
+}
+
+function needsProfileCompletion() {
+  return state.checkinLookupStatus === "matched" && !state.profileComplete;
+}
+
+function setProfileStatus(message = "", color = "var(--muted)") {
+  if (!ui.profileStatus) return;
+  ui.profileStatus.textContent = message;
+  ui.profileStatus.style.color = color;
+}
+
+function getSelectedWorkshopValue() {
+  if (ui.profileWorkshopYes?.checked) return true;
+  if (ui.profileWorkshopNo?.checked) return false;
+  return null;
+}
+
+function getSelectedAiChatbotValue() {
+  if (ui.profileAiChatbotYes?.checked) return true;
+  if (ui.profileAiChatbotNo?.checked) return false;
+  return null;
+}
+
+function syncProfileFormFromState() {
+  if (!state.participantId || state.profileFormParticipantId === state.participantId) return;
+
+  if (ui.profileWorkshopYes) ui.profileWorkshopYes.checked = state.oficinaCordel20 === true;
+  if (ui.profileWorkshopNo) ui.profileWorkshopNo.checked = state.oficinaCordel20 === false;
+  if (ui.profileAiChatbotYes) ui.profileAiChatbotYes.checked = state.usouChatbotIa === true;
+  if (ui.profileAiChatbotNo) ui.profileAiChatbotNo.checked = state.usouChatbotIa === false;
+  if (ui.profileGender) ui.profileGender.value = normalizeProfileGender(state.genero);
+  if (ui.profileRace) ui.profileRace.value = normalizeProfileRace(state.identificacaoRacial);
+  if (ui.profileAgeRange) ui.profileAgeRange.value = normalizeProfileAgeRange(state.faixaEtaria) || normalizeLegacyAgeRange(state.faixaEtaria);
+  if (ui.profileMunicipioInput) {
+    const municipioLabel = state.estadoUF && state.estadoUF !== "EX"
+      ? `${state.municipio} - ${state.estadoUF}`
+      : state.municipio;
+    ui.profileMunicipioInput.value = municipioLabel.trim();
+  }
+  if (ui.profileOutsideBrazil) ui.profileOutsideBrazil.checked = state.pais === "FORA_BRASIL" || state.estadoUF === "EX";
+
+  state.profileFormParticipantId = state.participantId;
+}
+
+function renderProfileCompletionPanel() {
+  if (!ui.profileCompletionPanel) return;
+
+  const shouldShow = needsProfileCompletion();
+  ui.profileCompletionPanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    setProfileStatus("");
+    return;
+  }
+
+  syncProfileFormFromState();
+  if (ui.saveProfileBtn) {
+    ui.saveProfileBtn.disabled = state.profileSaving;
+    ui.saveProfileBtn.textContent = state.profileSaving ? "Salvando..." : "Salvar perfil";
+  }
+}
+
+function renderMunicipioOptions() {
+  if (!ui.profileMunicipioOptions || !municipiosBrasil.length) return;
+  ui.profileMunicipioOptions.innerHTML = municipiosBrasil
+    .map((item) => `<option value="${escapeHtml(item.label)}"></option>`)
+    .join("");
+}
+
+async function loadMunicipiosBrasil() {
+  if (state.municipiosBrasilLoaded || municipiosBrasil.length) {
+    renderMunicipioOptions();
+    return municipiosBrasil;
+  }
+  if (municipiosBrasilPromise) return municipiosBrasilPromise;
+
+  state.municipiosBrasilLoading = true;
+  state.municipiosBrasilError = "";
+  municipiosBrasilPromise = (async () => {
+    try {
+      const cached = window.localStorage?.getItem(MUNICIPIOS_BR_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length) {
+          municipiosBrasil = parsed;
+          state.municipiosBrasilLoaded = true;
+          renderMunicipioOptions();
+          return municipiosBrasil;
+        }
+      }
+    } catch (_) {
+      // Cache corrompido nao deve bloquear o cadastro.
+    }
+
+    try {
+      const response = await fetch(MUNICIPIOS_BR_API_URL, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(`IBGE ${response.status}`);
+      const data = await response.json();
+      municipiosBrasil = (Array.isArray(data) ? data : [])
+        .map((item) => {
+          const municipio = String(item?.nome || "").trim();
+          const estado = String(item?.microrregiao?.mesorregiao?.UF?.sigla || "").trim().toUpperCase();
+          if (!municipio || !estado) return null;
+          return { municipio, estado, label: `${municipio} - ${estado}` };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+      state.municipiosBrasilLoaded = true;
+      try {
+        window.localStorage?.setItem(MUNICIPIOS_BR_CACHE_KEY, JSON.stringify(municipiosBrasil));
+      } catch (_) {
+        // Lista grande demais para cache local em alguns navegadores.
+      }
+      renderMunicipioOptions();
+      return municipiosBrasil;
+    } catch (error) {
+      console.warn("Nao foi possivel carregar municipios do IBGE.", error);
+      state.municipiosBrasilError = "municipios_unavailable";
+      return [];
+    } finally {
+      state.municipiosBrasilLoading = false;
+    }
+  })();
+
+  return municipiosBrasilPromise;
+}
+
+function parseMunicipioProfileInput() {
+  const rawMunicipio = String(ui.profileMunicipioInput?.value || "").trim();
+  const outsideBrazil = !!ui.profileOutsideBrazil?.checked;
+
+  if (outsideBrazil) {
+    return {
+      ok: !!rawMunicipio,
+      municipio: rawMunicipio || "Fora do Brasil",
+      estado: "EX",
+      pais: "FORA_BRASIL",
+      error: rawMunicipio ? "" : "Informe o país/cidade fora do Brasil."
+    };
+  }
+
+  const exact = municipiosBrasil.find((item) => item.label.toLowerCase() === rawMunicipio.toLowerCase());
+  if (exact) return { ok: true, municipio: exact.municipio, estado: exact.estado, pais: "BR", error: "" };
+
+  const typedMatch = rawMunicipio.match(/^(.+?)\s+-\s+([a-z]{2})$/i);
+  if (typedMatch) {
+    return {
+      ok: true,
+      municipio: typedMatch[1].trim(),
+      estado: typedMatch[2].trim().toUpperCase(),
+      pais: "BR",
+      error: ""
+    };
+  }
+
+  if (state.municipiosBrasilLoaded) {
+    return { ok: false, municipio: rawMunicipio, estado: "", pais: "BR", error: "Selecione um município da lista ou marque Fora do Brasil." };
+  }
+
+  return { ok: !!rawMunicipio, municipio: rawMunicipio, estado: "", pais: "BR", error: rawMunicipio ? "" : "Informe seu município." };
+}
+
+async function saveParticipantProfile() {
+  if (!needsProfileCompletion()) return;
+  if (!window.InannaSupabaseBridge?.completeParticipantProfile) {
+    setProfileStatus("Atualize a ponte Supabase para salvar o perfil.", "var(--danger)");
+    return;
+  }
+
+  const oficinaCordel20 = getSelectedWorkshopValue();
+  const usouChatbotIa = getSelectedAiChatbotValue();
+  const genero = normalizeProfileGender(ui.profileGender?.value || "");
+  const identificacaoRacial = normalizeProfileRace(ui.profileRace?.value || "");
+  const faixaEtaria = normalizeProfileAgeRange(ui.profileAgeRange?.value || "");
+  const municipio = parseMunicipioProfileInput();
+
+  if (oficinaCordel20 === null) {
+    setProfileStatus("Marque se participa das oficinas Cordel 2.0.", "var(--primary)");
+    return;
+  }
+  if (usouChatbotIa === null) {
+    setProfileStatus("Marque se já usou algum chatbot de IA.", "var(--primary)");
+    return;
+  }
+  if (!genero) {
+    setProfileStatus("Selecione uma opção de gênero.", "var(--primary)");
+    return;
+  }
+  if (!identificacaoRacial) {
+    setProfileStatus("Selecione uma opção de identificação racial.", "var(--primary)");
+    return;
+  }
+  if (!faixaEtaria) {
+    setProfileStatus("Selecione uma faixa etária.", "var(--primary)");
+    return;
+  }
+  if (!municipio.ok) {
+    setProfileStatus(municipio.error, "var(--primary)");
+    return;
+  }
+
+  state.profileSaving = true;
+  setProfileStatus("Salvando perfil...", "var(--muted)");
+  renderProfileCompletionPanel();
+
+  try {
+    const response = await withTimeout(
+      window.InannaSupabaseBridge.completeParticipantProfile({
+        participantId: state.participantId,
+        email: state.email,
+        oficinaCordel20,
+        usouChatbotIa,
+        genero,
+        identificacaoRacial,
+        faixaEtaria,
+        municipio: municipio.municipio,
+        estado: municipio.estado,
+        pais: municipio.pais,
+      }),
+      15000,
+      "O salvamento do perfil demorou demais."
+    );
+
+    if (!response?.ok) throw new Error(response?.error || "Nao foi possivel salvar o perfil.");
+    applyResolvedCheckinIdentity(response);
+    setProfileStatus("");
+    setStartHint("");
+    updateWelcomeIdentityUI();
+    if (ui.btnStart) ui.btnStart.focus();
+  } catch (error) {
+    console.error(error);
+    setProfileStatus(error?.message || "Nao foi possivel salvar o perfil.", "var(--danger)");
+  } finally {
+    state.profileSaving = false;
+    renderProfileCompletionPanel();
+    updateWelcomeIdentityUI();
+  }
+}
+
 function clearResolvedCheckinIdentity(nextEmail = "") {
   state.email = String(nextEmail || "").trim();
   state.name = "";
   state.municipio = "";
   state.estadoUF = "";
   state.origem = "";
+  state.pais = "BR";
+  state.oficinaCordel20 = null;
+  state.usouChatbotIa = null;
+  state.genero = "";
+  state.identificacaoRacial = "";
+  state.faixaEtaria = "";
+  state.profileComplete = false;
+  state.profileSaving = false;
+  state.profileFormParticipantId = "";
   state.participantId = "";
   state.checkinUserId = "";
   state.checkinMatchStatus = "";
@@ -1688,6 +1999,13 @@ function applyResolvedCheckinIdentity(identity) {
   state.municipio = String(identity?.municipio || "").trim();
   state.estadoUF = normalizeUFOrInternational(identity?.estado || "");
   state.origem = normalizeOrigem(identity?.origem || "");
+  state.pais = String(identity?.pais || (state.estadoUF === "EX" ? "FORA_BRASIL" : "BR")).trim() || "BR";
+  state.oficinaCordel20 = normalizeBooleanProfileValue(identity?.oficinaCordel20 ?? identity?.oficina_cordel20);
+  state.usouChatbotIa = normalizeBooleanProfileValue(identity?.usouChatbotIa ?? identity?.usou_chatbot_ia);
+  state.genero = normalizeProfileGender(identity?.genero || "");
+  state.identificacaoRacial = normalizeProfileRace(identity?.identificacaoRacial || identity?.identificacao_racial || "");
+  state.faixaEtaria = normalizeProfileAgeRange(identity?.faixaEtaria || identity?.faixa_etaria || "") || normalizeLegacyAgeRange(identity?.faixaEtaria || identity?.faixa_etaria || "");
+  state.profileComplete = !!(identity?.profileComplete ?? identity?.perfil_completo);
   state.participantId = String(identity?.participantId || "").trim();
   state.checkinUserId = String(identity?.checkinUserId || "").trim();
   state.checkinMatchStatus = String(identity?.status || "matched").trim() || "matched";
@@ -1722,7 +2040,8 @@ function renderWelcomeIdentityStatus() {
     const details = [
       state.municipio ? `Município: ${escapeHtml(state.municipio)}` : "",
       state.estadoUF ? `Estado: ${escapeHtml(state.estadoUF)}` : "",
-      state.teacherGroup ? `Turma/oficina: ${escapeHtml(state.teacherGroup)}` : ""
+      state.teacherGroup ? `Turma/oficina: ${escapeHtml(state.teacherGroup)}` : "",
+      state.profileComplete ? "Perfil rápido completo" : "Perfil rápido pendente"
     ].filter(Boolean);
 
     return `
@@ -1781,8 +2100,17 @@ function updateWelcomeIdentityUI() {
   }
 
   if (ui.btnStart) {
-    ui.btnStart.disabled = !(state.checkinLookupStatus === "matched" && state.name && state.participantId && state.checkinUserId);
+    ui.btnStart.disabled = !(
+      state.checkinLookupStatus === "matched"
+      && state.name
+      && state.participantId
+      && state.checkinUserId
+      && !needsProfileCompletion()
+      && !state.profileSaving
+    );
   }
+
+  renderProfileCompletionPanel();
 }
 
 async function requestCheckinIdentityViaSupabase(email) {
@@ -1823,7 +2151,13 @@ async function verifyCheckinEmail() {
   if (response?.ok && response?.status === "matched") {
     applyResolvedCheckinIdentity(response);
     updateWelcomeIdentityUI();
-    if (ui.btnStart) ui.btnStart.focus();
+    if (needsProfileCompletion()) {
+      loadMunicipiosBrasil();
+      setStartHint("Complete o perfil rápido para liberar a jornada.", "var(--muted)");
+      if (ui.profileWorkshopYes) ui.profileWorkshopYes.focus();
+    } else if (ui.btnStart) {
+      ui.btnStart.focus();
+    }
     return;
   }
 
@@ -1863,6 +2197,12 @@ function handleStartJourney() {
     return;
   }
 
+  if (needsProfileCompletion()) {
+    setStartHint("Complete o perfil rápido antes de começar.", "var(--primary)");
+    updateWelcomeIdentityUI();
+    return;
+  }
+
   setStartHint("");
   state.playerData = {
     nome: state.name,
@@ -1875,7 +2215,14 @@ function handleStartJourney() {
     teacherGroup: state.teacherGroup,
     municipio: state.municipio,
     estado: state.estadoUF,
-    origem: state.origem
+    origem: state.origem,
+    pais: state.pais,
+    oficinaCordel20: state.oficinaCordel20,
+    usouChatbotIa: state.usouChatbotIa,
+    genero: state.genero,
+    identificacaoRacial: state.identificacaoRacial,
+    faixaEtaria: state.faixaEtaria,
+    profileComplete: state.profileComplete
   };
   showTrackChooser();
 }
@@ -4075,6 +4422,41 @@ if (ui.playerEmail) {
   });
 }
 
+if (ui.saveProfileBtn) {
+  ui.saveProfileBtn.addEventListener("click", saveParticipantProfile);
+}
+
+[
+  ui.profileWorkshopYes,
+  ui.profileWorkshopNo,
+  ui.profileAiChatbotYes,
+  ui.profileAiChatbotNo,
+  ui.profileGender,
+  ui.profileRace,
+  ui.profileAgeRange,
+  ui.profileMunicipioInput,
+  ui.profileOutsideBrazil
+].filter(Boolean).forEach((field) => {
+  field.addEventListener("input", () => {
+    setProfileStatus("");
+    renderProfileCompletionPanel();
+    if (field === ui.profileMunicipioInput) loadMunicipiosBrasil();
+  });
+  field.addEventListener("change", () => {
+    setProfileStatus("");
+    if (field === ui.profileOutsideBrazil && ui.profileMunicipioInput) {
+      ui.profileMunicipioInput.placeholder = ui.profileOutsideBrazil.checked
+        ? "Digite cidade/país"
+        : "Digite para buscar cidade - UF";
+    }
+    renderProfileCompletionPanel();
+  });
+});
+
+if (ui.profileMunicipioInput) {
+  ui.profileMunicipioInput.addEventListener("focus", loadMunicipiosBrasil);
+}
+
 if (ui.chooseGameTrackBtn) {
   ui.chooseGameTrackBtn.addEventListener("click", startGameTrack);
 }
@@ -4517,6 +4899,12 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
     teacherGroup: state.teacherGroup || state.playerData.teacherGroup || "",
     municipio: state.municipio || state.playerData.municipio || "",
     estado: state.estadoUF || state.playerData.estado || "",
+    pais: state.pais || state.playerData.pais || "BR",
+    oficinaCordel20: state.oficinaCordel20 ?? state.playerData.oficinaCordel20 ?? null,
+    usouChatbotIa: state.usouChatbotIa ?? state.playerData.usouChatbotIa ?? null,
+    genero: state.genero || state.playerData.genero || "",
+    identificacaoRacial: state.identificacaoRacial || state.playerData.identificacaoRacial || "",
+    faixaEtaria: state.faixaEtaria || state.playerData.faixaEtaria || "",
     origem: state.origem || state.playerData.origem || "",
     verso: textoQuada,
     modo: state.modeChallenge ? "Desafio" : "Didático",

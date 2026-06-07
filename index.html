@@ -130,7 +130,7 @@
       <div class="steps-connector"></div>
       <div class="step-indicator" data-step="3">
         <div class="step-num">3</div>
-        <div class="step-lbl">Complete com IA</div>
+        <div class="step-lbl">Complete o Verso</div>
       </div>
       <div class="steps-connector"></div>
       <div class="step-indicator" data-step="4">
@@ -158,6 +158,61 @@
             <button id="verifyCheckinBtn" class="btn"
               style="width: 100%; justify-content: center;">Verificar e-mail</button>
             <div id="welcomeIdentity" class="start-identity" aria-live="polite"></div>
+            <div id="profileCompletionPanel" class="profile-panel" hidden>
+              <div class="profile-row">
+                <span class="field-label">Estou nas oficinas Cordel 2.0</span>
+                <div class="segmented-choice" role="radiogroup" aria-label="Participa das oficinas Cordel 2.0">
+                  <label><input type="radio" name="profileWorkshop" id="profileWorkshopYes" value="yes">Sim</label>
+                  <label><input type="radio" name="profileWorkshop" id="profileWorkshopNo" value="no">Não</label>
+                </div>
+              </div>
+              <div class="profile-row">
+                <span class="field-label">Já usei algum chatbot de IA</span>
+                <div class="segmented-choice" role="radiogroup" aria-label="Já usou algum chatbot de IA">
+                  <label><input type="radio" name="profileAiChatbot" id="profileAiChatbotYes" value="yes">Sim</label>
+                  <label><input type="radio" name="profileAiChatbot" id="profileAiChatbotNo" value="no">Não</label>
+                </div>
+              </div>
+              <label class="field-label" for="profileGender">Gênero</label>
+              <select id="profileGender" class="input-row">
+                <option value="">Selecione</option>
+                <option value="feminino">Feminino</option>
+                <option value="masculino">Masculino</option>
+                <option value="outro">Outro</option>
+                <option value="prefiro_nao_dizer">Prefiro não dizer</option>
+              </select>
+              <label class="field-label" for="profileRace">Identificação racial</label>
+              <select id="profileRace" class="input-row">
+                <option value="">Selecione</option>
+                <option value="negro">Negro</option>
+                <option value="branco">Branco</option>
+                <option value="pardo">Pardo</option>
+                <option value="indigena">Indígena</option>
+                <option value="outro">Outro</option>
+              </select>
+              <label class="field-label" for="profileAgeRange">Faixa etária</label>
+              <select id="profileAgeRange" class="input-row">
+                <option value="">Selecione</option>
+                <option value="menos_de_11">Menos de 11</option>
+                <option value="12_14">12-14</option>
+                <option value="15_17">15-17</option>
+                <option value="18_29">18-29</option>
+                <option value="30_44">30-44</option>
+                <option value="45_59">45-59</option>
+                <option value="maior_de_60">Maior de 60</option>
+              </select>
+              <label class="field-label" for="profileMunicipioInput">Município</label>
+              <input id="profileMunicipioInput" class="input-row" list="profileMunicipioOptions"
+                placeholder="Digite para buscar cidade - UF">
+              <datalist id="profileMunicipioOptions"></datalist>
+              <label class="profile-check">
+                <input type="checkbox" id="profileOutsideBrazil">
+                <span>Fora do Brasil</span>
+              </label>
+              <button id="saveProfileBtn" class="btn btn-secondary" type="button"
+                style="width: 100%; justify-content: center;">Salvar perfil</button>
+              <p id="profileStatus" class="verse-hint form-hint" aria-live="polite"></p>
+            </div>
             <button id="btnStart" class="btn btn-primary" style="width: 100%; justify-content: center;" disabled>🚀
               Começar jornada</button>
             <p id="startHint" class="verse-hint form-hint" aria-live="polite"></p>

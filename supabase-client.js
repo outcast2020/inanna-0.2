@@ -255,8 +255,65 @@
       tipoParticipante: data.tipo_participante || "",
       municipio: data.municipio || "",
       estado: data.estado || "",
+      pais: data.pais || "BR",
       origem: data.origem || "",
       teacherGroup: data.teacher_group || "",
+      oficinaCordel20: data.oficina_cordel20,
+      usouChatbotIa: data.usou_chatbot_ia,
+      genero: data.genero || "",
+      identificacaoRacial: data.identificacao_racial || "",
+      faixaEtaria: data.faixa_etaria || "",
+      profileComplete: !!data.perfil_completo,
+    };
+  }
+
+  async function completeParticipantProfile(payload = {}) {
+    const participantId = normalizeUuid(payload.participantId);
+    const normalizedEmail = String(payload.email || "").trim().toLowerCase();
+    if (!participantId || !normalizedEmail) {
+      return { ok: false, status: "error", error: "participant_profile_invalid" };
+    }
+
+    const { data, error } = await getBaseClient()
+      .rpc("registrar_perfil_participante", {
+        p_participante_id: participantId,
+        p_email: normalizedEmail,
+        p_oficina_cordel20: !!payload.oficinaCordel20,
+        p_usou_chatbot_ia: !!payload.usouChatbotIa,
+        p_genero: String(payload.genero || "").trim(),
+        p_identificacao_racial: String(payload.identificacaoRacial || "").trim(),
+        p_faixa_etaria: String(payload.faixaEtaria || "").trim(),
+        p_municipio: String(payload.municipio || "").trim(),
+        p_estado: String(payload.estado || "").trim(),
+        p_pais: String(payload.pais || "BR").trim(),
+      })
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return { ok: false, status: "error", error: "participant_profile_not_saved" };
+
+    return {
+      ok: true,
+      status: "matched",
+      participantId: data.id,
+      checkinUserId: data.checkin_user_id || data.id,
+      participantIdSource: "supabase",
+      checkinUserIdSource: "supabase",
+      matchMethod: "email",
+      name: data.nome || "Participante",
+      email: data.email || normalizedEmail,
+      tipoParticipante: data.tipo_participante || "",
+      municipio: data.municipio || "",
+      estado: data.estado || "",
+      pais: data.pais || "BR",
+      origem: data.origem || "",
+      teacherGroup: data.teacher_group || "",
+      oficinaCordel20: data.oficina_cordel20,
+      usouChatbotIa: data.usou_chatbot_ia,
+      genero: data.genero || "",
+      identificacaoRacial: data.identificacao_racial || "",
+      faixaEtaria: data.faixa_etaria || "",
+      profileComplete: !!data.perfil_completo,
     };
   }
 
@@ -273,6 +330,12 @@
       tipo_participante: String(payload.tipoAcesso || payload.tipoParticipante || "").trim(),
       municipio: String(payload.municipio || "").trim(),
       estado: String(payload.estado || "").trim(),
+      pais: String(payload.pais || "").trim(),
+      oficina_cordel20: payload.oficinaCordel20 === true ? true : payload.oficinaCordel20 === false ? false : null,
+      usou_chatbot_ia: payload.usouChatbotIa === true ? true : payload.usouChatbotIa === false ? false : null,
+      genero: String(payload.genero || "").trim(),
+      identificacao_racial: String(payload.identificacaoRacial || "").trim(),
+      faixa_etaria: String(payload.faixaEtaria || "").trim(),
       origem: String(payload.origem || "").trim(),
       teacher_group: String(payload.teacherGroup || "").trim(),
       verso: String(payload.verso || "").trim(),
@@ -335,7 +398,7 @@
     const { data, error } = await getBaseClient()
       .from("placar_publico")
       .select("*")
-      .order("pontos", { ascending: false })
+      .order("posicao", { ascending: true })
       .limit(20);
 
     if (error) throw error;
@@ -662,6 +725,7 @@
       return "supabase";
     },
     lookupParticipantByEmail,
+    completeParticipantProfile,
     submitQuadra,
     loadPlacar,
     reactPlacar,

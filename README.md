@@ -1,6 +1,16 @@
 # Inanna
 
-Inanna e um app educativo de quadras em cordel com explicacao pedagogica de previsao de proxima palavra. O projeto agora esta preparado para Supabase como backend de dados, Vercel como plataforma de producao e GitHub como repositorio/CI.
+Inanna e um app educativo de quadras em cordel com explicacao pedagogica de previsao de proxima palavra. O projeto esta em producao com Supabase como backend de dados, Vercel como plataforma de hospedagem e GitHub como repositorio/CI.
+
+## Status de producao
+
+- URL oficial: https://inanna.cordel2pontozero.com
+- URL Vercel secundaria: https://inanna-five.vercel.app
+- Branch principal da migracao: `feat/supabase-game`.
+- Backend ativo: Supabase.
+- Hosting ativo: Vercel.
+- GitHub Pages, Firebase, Firestore e Google Apps Script foram removidos do fluxo de producao.
+- IA generativa das sextilhas e envio social por e-mail estao suspensos por env (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
 
 ## Arquitetura
 
@@ -16,6 +26,9 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - `supabase-client.js` cria a ponte do frontend com Supabase.
 - `supabase/migrations/001_inanna_game_schema.sql` cria tabelas, view publica do placar e funcoes RPC.
 - `supabase/migrations/002_inanna_game_rls.sql` ativa RLS e grants minimos para o app publico.
+- `supabase/migrations/003_participant_profile_legacy_import.sql` adiciona perfil estatistico de primeiro acesso, fingerprint legado e RPC de perfil.
+- `supabase/migrations/004_profile_race_age.sql` acrescenta identificacao racial e faixa etaria ao perfil estatistico.
+- `scripts/import-legacy-quadras.mjs` importa check-in e quadras historicas do Google Sheets de forma idempotente.
 - `.env.example` lista apenas variaveis publicas `VITE_*` para frontend.
 - IA das sextilhas e envio por e-mail ficam desligados nesta fase (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
 
@@ -44,14 +57,16 @@ O usuario pode:
 ## Fluxo da experiencia
 
 1. A pessoa informa e-mail e precisa validar identidade pelo lookup de check-in.
-2. Escolhe um tema.
-3. Escreve um verso sem a ultima palavra.
-4. O app reconstrui o verso com `___`.
-5. O motor sugere candidatos com probabilidade.
-6. A pessoa escolhe uma sugestao ou digita uma palavra propria.
-7. Depois de 4 versos, a quadra e fechada.
-8. No modo desafio, a quadra recebe pontuacao e pode entrar no placar.
-9. A quadra pode ser copiada, continuada ou enviada para o Supabase.
+2. No primeiro acesso, completa perfil rapido: oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF ou fora do Brasil.
+3. Nos acessos seguintes, o perfil ja salvo no Supabase libera a escolha de trilha.
+4. Escolhe a trilha de quadras e um tema.
+5. Escreve um verso sem a ultima palavra.
+6. O app reconstrui o verso com `___`.
+7. O motor sugere candidatos com probabilidade.
+8. A pessoa escolhe uma sugestao ou digita uma palavra propria.
+9. Depois de 4 versos, a quadra e fechada.
+10. No modo desafio, a quadra recebe pontuacao e pode entrar no placar.
+11. A quadra pode ser copiada, continuada ou enviada para o Supabase.
 
 ## Frontend
 
@@ -66,6 +81,7 @@ O usuario pode:
 O estado principal guarda:
 
 - identidade resolvida pelo check-in;
+- perfil estatistico de primeiro acesso;
 - tema escolhido;
 - versos acumulados;
 - predicao atual;
@@ -151,7 +167,9 @@ No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar d
 
 ## Backend Supabase
 
-O check-in consulta `lookup_participante_por_email`, uma RPC que retorna apenas os dados publicos necessarios para liberar a jornada. A submissao de quadras insere em `quadras`, o placar le a view `placar_publico`, e as reacoes usam a RPC `registrar_reacao_placar` para manter o limite de 3 reacoes por visitante em cada quadra.
+O check-in consulta `lookup_participante_por_email`, uma RPC que retorna apenas os dados necessarios para liberar a jornada. Quando o perfil rapido ainda esta pendente, o frontend chama `registrar_perfil_participante` para salvar oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF. A submissao de quadras insere em `quadras`, o placar le a view `placar_publico`, e as reacoes usam a RPC `registrar_reacao_placar` para manter o limite de 3 reacoes por visitante em cada quadra.
+
+`placar_publico` nao expoe e-mail nem campos estatisticos. A view publica somente autor, verso, pontos, breakdown, timestamp, origem legada e contagem de reacoes.
 
 O caderno de sextilhas usa:
 
@@ -180,17 +198,43 @@ pnpm preview
 
 Use `.env.local` com as mesmas chaves de `.env.example`. Somente variaveis `VITE_*` entram no frontend.
 
-## Deploy recomendado
+## Importacao do placar legado
+
+O acervo historico foi importado da planilha Google em 2026-06-07:
+
+- 18 participantes de `USERS_checkin`;
+- 44 quadras historicas;
+- 0 erros de parsing;
+- segunda execucao idempotente: 0 importadas, 44 ignoradas por duplicidade.
+
+Para repetir ou auditar:
+
+```bash
+IMPORT_DRY_RUN=true pnpm import:legacy-quadras
+pnpm import:legacy-quadras
+```
+
+O script exige `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em ambiente local ou arquivo ignorado pelo Git. Mais detalhes em `supabase/importacao-placar-legado.md`.
+
+## Deploy Vercel
 
 1. Crie/aplique o schema Supabase usando `supabase/migrations`.
-2. Importe participantes/check-in para `participantes`.
-3. Exporte o placar historico do Google Sheets como CSV e importe em `quadras` com `legado_google_sheet=true`.
-4. Importe o repositorio GitHub na Vercel.
-5. Configure o preset como Vite, build `pnpm build` e output `dist`.
-6. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
-7. Valide o preview antes de promover para production.
+2. Importe participantes/check-in e quadras historicas com `pnpm import:legacy-quadras`.
+3. Importe o repositorio GitHub na Vercel ou mantenha a integracao existente.
+4. Configure o preset como Vite, build `pnpm build` e output `dist`.
+5. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
+6. Valide o preview antes de promover para production.
 
-O workflow de GitHub Pages tambem roda `pnpm build` e publica `dist`, desde que os secrets `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` existam no repositorio.
+O projeto de producao deve ser criado/importado a partir do repositorio GitHub na Vercel. O dominio proprio fica apontado para a Vercel; nao use GitHub Pages para este app em producao.
+
+## Checklist de manutencao
+
+- Rodar `pnpm build` antes de publicar mudancas.
+- Conferir se as quatro envs `VITE_*` existem em Production na Vercel.
+- Verificar `placar_publico` apos importacoes ou alteracoes de scoring.
+- Rodar o importador em `IMPORT_DRY_RUN=true` antes de qualquer nova carga historica.
+- Nunca commitar `.env.local`, `not-commit-supabaseInanna.txt`, service role keys, tokens ou dumps.
+- Manter IA generativa e e-mail social desligados ate a fase Cloudflare Agents + Maritaca API.
 
 ## Caderno de sextilhas
 
