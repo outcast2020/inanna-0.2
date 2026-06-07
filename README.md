@@ -1,14 +1,23 @@
 # Inanna
 
-Inanna e um app educativo de quadras em cordel com explicacao pedagogica de previsao de proxima palavra. O projeto mistura frontend estatico, um motor preditivo simplificado, banco local de rimas e backend em Google Apps Script para registro e placar.
+Inanna e um app educativo de quadras em cordel com explicacao pedagogica de previsao de proxima palavra. O projeto agora esta preparado para Supabase como backend de dados, Vercel como plataforma de producao e GitHub como repositorio/CI.
 
 ## Arquitetura
 
 - Frontend: `index.html`, `styles.css`, `app.js`.
 - Motor de previsao: `prediction_engine_v2.js`.
 - Banco lexical de rimas: `cordel_rhyme_bank.js`.
-- Backend e placar: `Code.gs`.
+- Backend, check-in, placar e caderno de sextilhas: Supabase.
+- Build/deploy: Vite em `dist`, pronto para importacao do repositorio GitHub na Vercel.
 - Midias e embeds: imagens, video e snippet de footer na propria pasta.
+
+## Backend atual
+
+- `supabase-client.js` cria a ponte do frontend com Supabase.
+- `supabase/migrations/001_inanna_game_schema.sql` cria tabelas, view publica do placar e funcoes RPC.
+- `supabase/migrations/002_inanna_game_rls.sql` ativa RLS e grants minimos para o app publico.
+- `.env.example` lista apenas variaveis publicas `VITE_*` para frontend.
+- IA das sextilhas e envio por e-mail ficam desligados nesta fase (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
 
 ## Licenciamento
 
@@ -42,7 +51,7 @@ O usuario pode:
 6. A pessoa escolhe uma sugestao ou digita uma palavra propria.
 7. Depois de 4 versos, a quadra e fechada.
 8. No modo desafio, a quadra recebe pontuacao e pode entrar no placar.
-9. A quadra pode ser copiada, continuada ou enviada para a planilha.
+9. A quadra pode ser copiada, continuada ou enviada para o Supabase.
 
 ## Frontend
 
@@ -50,9 +59,8 @@ O usuario pode:
 
 `app.js` usa:
 
-- `WEB_APP_URL`: URL do Web App Apps Script.
 - `APP_VARIANT`: `inanna-main`.
-- `PLACAR_LIBRARY`: fallback local para placar quando nao houver backend ativo.
+- `PLACAR_LIBRARY`: fallback local para placar quando o Supabase ainda nao estiver configurado.
 - `THEMES`: curadoria local de temas e vocabulario.
 
 O estado principal guarda:
@@ -141,225 +149,56 @@ No frontend, a quadra e pontuada apos o quarto verso.
 
 No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar dependencia do calculo do cliente.
 
-## Backend em `Code.gs`
+## Backend Supabase
 
-### Endpoints
+O check-in consulta `lookup_participante_por_email`, uma RPC que retorna apenas os dados publicos necessarios para liberar a jornada. A submissao de quadras insere em `quadras`, o placar le a view `placar_publico`, e as reacoes usam a RPC `registrar_reacao_placar` para manter o limite de 3 reacoes por visitante em cada quadra.
 
-- `doPost(e)`: recebe a quadra e grava o registro.
-- `doGet(e)` com `action=getPlacar`: devolve o placar em JSON.
-- `doPost(e)` com `action=react_placar`: registra uma reacao no placar, limitada a 3 reacoes por visitante em cada quadra.
-- `doGet(e)` com `action=checkin_lookup`: devolve identidade por JSONP.
-- `doGet(e)` com `action=get_user_dashboard`: devolve o resumo do caderno de sextilhas.
-- `doGet(e)` com `action=get_text`: devolve um texto da trilha de sextilhas.
-- `doGet(e)` com `action=get_text_versions`: devolve o historico de versoes.
-- `doGet(e)` com `action=get_firebase_custom_token`: devolve um custom token para autenticar o frontend no Firebase.
-- `doPost(e)` com `action=create_text`: cria um novo rascunho de sextilha.
-- `doPost(e)` com `action=save_text_version`: salva uma nova versao e pode gerar devolutiva curta da Inanna via Gemini.
-- `doPost(e)` com `action=archive_text`: arquiva um texto sem apagar seu historico.
+O caderno de sextilhas usa:
 
-### Planilha principal
+- `sextilha_folhetos`;
+- `sextilha_texts`;
+- `sextilha_versions`;
+- `ai_feedback` reservado para fase futura com Cloudflare Agents + Maritaca API.
 
-`FORM_HEADERS` inclui campos como:
-
-- `Nome`
-- `Email`
-- `Tipo de Participante`
-- `Verso`
-- `Modo`
-- `Tempo Escrita (ms)`
-- `Tempo Escrita`
-- `Pontos`
-- `Esquema de Rima`
-- `Pts Rima`
-- `Pts Forma`
-- `Pts Criatividade`
-- `Bonus Esquema`
-- `PARTICIPANT_ID`
-- `CHECKIN_USER_ID`
-- `CHECKIN_MATCH_STATUS`
-- `CHECKIN_MATCH_METHOD`
-- `TEACHER_GROUP`
-- `MUNICIPIO`
-- `ESTADO`
-- `ORIGEM`
-- `APP_VARIANT`
-
-No frontend, o cronometro de escrita substitui a antiga medida visual de confianca. O cliente envia ao backend os campos `tempoEscritaMs` e `tempoEscritaFormatado`, para registro sem efeito na pontuacao.
-
-### Placar
-
-`PLACAR_HEADERS` inclui:
-
-- `Posicao`
-- `Autor`
-- `Verso`
-- `Pontos`
-- `Pts Rima`
-- `Pts Forma`
-- `Pts Criatividade`
-- `Bonus Esquema`
-- `Timestamp`
-
-`PLACAR_REACTIONS` registra as reacoes do placar:
-
-- `ENTRY_KEY`
-- `REACTION`
-- `VIEWER_KEY`
-- `PARTICIPANT_ID`
-- `CHECKIN_USER_ID`
-- `CREATED_AT`
-
-Regras:
-
-- ordenacao por maior pontuacao;
-- desempate pelo registro mais recente;
-- exibicao do Top 20.
-- reacoes por quadra com polegar, coracao e surpresa;
-- limite de 3 reacoes por visitante em cada quadra, podendo repetir ou misturar os emojis.
-
-### Check-in
-
-O backend tenta casar identidade por:
-
-1. e-mail
-2. nome + coorte
-3. nome + municipio
-
-As propriedades opcionais para a planilha de check-in sao:
-
-- `IZA_CHECKIN_SPREADSHEET_ID`
-- `IZA_CHECKIN_SHEET_NAME`
-- `IZA_DEBUG_CHECKIN_EMAIL`
-
-### Triggers e manutencao
-
-Funcoes operacionais importantes:
-
-- `setupInicial()`
-- `reconstruirPlacar()`
-- `instalarTriggersDoPlacar()`
-- `limparTriggersDoPlacar()`
-- `resetPlacarERegistrosComBackup()`
-
-Os triggers instalados mantem o placar sincronizado em:
-
-- `onFormSubmit`
-- `onEdit`
-
-Antes de resetar o placar e os registros, o script cria abas de backup com timestamp.
+No frontend, o cronometro de escrita envia `tempoEscritaMs` e `tempoEscritaFormatado` para registro, sem efeito direto na pontuacao.
 
 ## Execucao local
 
-Como o frontend e estatico, voce pode:
-
-1. abrir `index.html` no navegador;
-2. ou servir a pasta com um servidor estatico simples.
-
-Exemplos:
+Instale dependencias e rode o dev server:
 
 ```bash
-npx http-server ./ -p 8080
+pnpm install
+pnpm dev
 ```
 
+Para simular producao:
+
 ```bash
-python -m http.server 8080
+pnpm build
+pnpm preview
 ```
+
+Use `.env.local` com as mesmas chaves de `.env.example`. Somente variaveis `VITE_*` entram no frontend.
 
 ## Deploy recomendado
 
-1. Atualize `Code.gs` no Apps Script.
-2. Rode `setupInicial()` e `reconfigurarPlanilhaInanna()` na primeira configuracao.
-3. Rode `instalarTriggersDoPlacar()` se precisar reinstalar os gatilhos.
-4. Publique o Web App.
-5. Atualize `WEB_APP_URL` em `app.js` se a URL mudar.
+1. Crie/aplique o schema Supabase usando `supabase/migrations`.
+2. Importe participantes/check-in para `participantes`.
+3. Exporte o placar historico do Google Sheets como CSV e importe em `quadras` com `legado_google_sheet=true`.
+4. Importe o repositorio GitHub na Vercel.
+5. Configure o preset como Vite, build `pnpm build` e output `dist`.
+6. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
+7. Valide o preview antes de promover para production.
+
+O workflow de GitHub Pages tambem roda `pnpm build` e publica `dist`, desde que os secrets `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` existam no repositorio.
 
 ## Caderno de sextilhas
 
-O frontend agora tem uma camada de dados unica para a trilha de sextilhas.
-
-- Se `window.INANNA_FIREBASE_OPTIONS.mode` estiver como `apps-script`, o caderno continua lendo e gravando pelo Web App.
-- Se `window.INANNA_FIREBASE_OPTIONS.mode` estiver como `firestore` e o Firebase estiver configurado, o app tenta autenticar no Firebase com custom token e passa a ler e gravar o caderno direto no Firestore.
-- Em caso de falha na camada Firebase, o frontend faz fallback automatico para o Apps Script.
-
-Arquivos novos dessa fase:
-
-- `firebase-config.js`: chave de configuracao local da camada Firebase.
-- `firebase-sextilhas.js`: ponte do frontend para Firestore.
-
-## Fase 1: feedback leve com Gemini
-
-O `save_text_version` pode gerar uma devolutiva curta da Inanna usando os indicadores ja calculados pelo proprio backend.
-
-Propriedades esperadas no Apps Script:
-
-- `INANNA_AI_FEEDBACK_ENABLED=true`
-- `INANNA_GEMINI_API_KEY=...`
-- `INANNA_GEMINI_MODEL=gemini-2.5-flash`
-
-Teste rapido no Apps Script:
-
-- execute `testarInannaAi()` no editor do Apps Script;
-- a funcao verifica se a IA esta habilitada, se a chave existe e faz uma chamada de smoke test ao Gemini;
-- o retorno aparece em `Executions` e tambem no `Logger`, incluindo `sampleFeedback` quando a resposta vier correta.
-
-Com isso ativo, cada salvamento relevante:
-
-- registra a nova versao na aba `TEXT_VERSIONS`;
-- salva a devolutiva gerada na aba `TEXT_FEEDBACK`;
-- devolve `aiFeedback` no JSON para o frontend mostrar no editor.
-
-## Fase 2: preparo para Firestore
-
-O fluxo seguro recomendado e:
-
-1. O aluno valida o e-mail pelo Apps Script.
-2. O frontend pede `action=get_firebase_custom_token`.
-3. O Apps Script verifica `participantId`, `checkinUserId` e e-mail.
-4. O Apps Script assina um custom token do Firebase com claims como `participantId`.
-5. O frontend usa esse token para autenticar no Firebase e acessar apenas `/participants/{participantId}/texts/...`.
-
-Observacao:
-
-- o custom token serve para o login inicial no Firebase;
-- depois disso, o proprio SDK web mantem a sessao do usuario na aba e renova seu ID token internamente.
-
-Propriedades esperadas no Apps Script para o token:
-
-- `INANNA_FIREBASE_PROJECT_ID`
-- `INANNA_FIREBASE_SERVICE_ACCOUNT_EMAIL`
-- `INANNA_FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY`
-
-No frontend, preencha `window.INANNA_FIREBASE_CONFIG` com os dados publicos do app Web do Firebase e troque `mode` para `firestore`.
-
-No modelo atual, o status `arquivada` fica apenas no documento pai do texto. As versoes salvas em `/versions/{versionId}` continuam imutaveis.
-
-## Regras sugeridas do Firestore
-
-```txt
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isOwner(participantId) {
-      return request.auth != null
-        && request.auth.token.participantId == participantId;
-    }
-
-    match /participants/{participantId}/texts/{textId} {
-      allow read, create, update: if isOwner(participantId);
-      allow delete: if false;
-
-      match /versions/{versionId} {
-        allow read, create: if isOwner(participantId);
-        allow update, delete: if false;
-      }
-    }
-  }
-}
-```
+O frontend grava rascunhos, folhetos, versoes, status e historico no Supabase. A devolutiva automatica de IA e o envio por e-mail estao suspensos nesta fase para evitar chaves sensiveis no navegador.
 
 ## UX imediata
 
-Mesmo antes da virada ao Firestore, o caderno ja recebeu dois ganhos locais:
+Mesmo antes da virada ao Supabase, o caderno ja recebeu ganhos locais:
 
 - skeleton loaders no dashboard e no historico de versoes;
 - menos round-trips apos `save_text_version`, porque o editor reaproveita o retorno do proprio salvamento em vez de consultar tudo de novo;
@@ -399,17 +238,17 @@ O Referencial para Desenvolvimento e Uso Responsáveis de Inteligência Artifici
 
 Esse mesmo referencial distingue oportunidades e desafios. Entre os desafios, estão a transparência dos sistemas, os vieses, a segurança e privacidade, os direitos autorais, o risco de plágio, as alucinações em IA generativa, a dependência excessiva e as desigualdades digitais. Por isso, o documento defende supervisão humana significativa e alinhamento da tecnologia às finalidades educacionais (BRASIL, [2026]).
 
-A arquitetura atual do Inanna é coerente com esse horizonte. No jogo de quadras, não há IA generativa escrevendo pelo participante. O que existe é um motor de previsão local, explicável e deliberadamente limitado, concebido como instrumento de letramento digital e de compreensão dos mecanismos de previsão textual. Já no caderno de sextilhas, a API Gemini 2.5 Flash aparece somente na etapa de devolutiva leve de progresso, sem assumir a escrita dos versos. Assim, a IA não ocupa o lugar do autor; ela apenas oferece uma análise breve orientada por indicadores já calculados pelo próprio backend.
+A arquitetura atual do Inanna é coerente com esse horizonte. No jogo de quadras, não há IA generativa escrevendo pelo participante. O que existe é um motor de previsão local, explicável e deliberadamente limitado, concebido como instrumento de letramento digital e de compreensão dos mecanismos de previsão textual. Já no caderno de sextilhas, a devolutiva automatica de IA fica suspensa nesta fase; a camada futura deve ser isolada fora do frontend, com Cloudflare Agents + Maritaca API.
 
-Esse desenho reforça quatro princípios importantes: centralidade da autoria humana; transparência sobre o uso de recursos algorítmicos; limitação funcional da IA no processo de escrita; e proteção dos dados do participante por meio da combinação entre Apps Script, autenticação customizada e Firestore (BRASIL, [2026]; LABORATÓRIO CORDEL 2.0, 2026).
+Esse desenho reforça quatro princípios importantes: centralidade da autoria humana; transparência sobre o uso de recursos algorítmicos; limitação funcional da IA no processo de escrita; e proteção dos dados do participante por meio de Supabase, RLS e separação de chaves sensíveis fora do navegador (BRASIL, [2026]; LABORATÓRIO CORDEL 2.0, 2026).
 
 ## Tecnologias e uso de IA
 
-A estrutura do projeto combina frontend estático, backend em Google Apps Script, autenticação e persistência opcional em Firebase/Firestore e uma chamada restrita à API Gemini 2.5 Flash para feedback curto de progresso. No frontend, os fluxos de quadra, dashboard e editor ficam visíveis em `index.html` e são orquestrados por `app.js`, enquanto a integração com Firebase é configurada em `firebase-config.js` e operacionalizada em `firebase-sextilhas.js`.
+A estrutura do projeto combina frontend estatico com build Vite, Supabase para dados, GitHub para versionamento/CI e Vercel para production. No frontend, os fluxos de quadra, dashboard e editor ficam visíveis em `index.html` e são orquestrados por `app.js`, enquanto a integração com Supabase é operacionalizada em `supabase-client.js`.
 
-O arquivo de configuração do Firebase já define o modo `firestore`, além de `collectionRoot = "participants"`, `textCollectionName = "texts"` e `versionCollectionName = "versions"`, o que confirma que o caderno de sextilhas foi pensado para armazenamento estruturado por participante. Já a ponte `firebase-sextilhas.js` cria autenticação com custom token, normaliza status editoriais, monta payloads de dashboard e restringe o acesso ao documento do próprio participante, reforçando a separação entre identidade e conteúdo autoral do caderno.
+As migrations Supabase criam tabelas separadas para participantes, quadras, reações, folhetos, textos e versões. A ponte `supabase-client.js` normaliza status editoriais, monta payloads de dashboard e usa headers de participante nas chamadas de caderno para acionar as políticas RLS.
 
-Na camada de IA, o fluxo principal continua não generativo. O motor `prediction_engine_v2.js` trabalha com normalização lexical, banco de rimas, expectativas sintáticas, compatibilidade de rima e sugestão da palavra seguinte; seu papel é didático e explicável. O uso de IA generativa propriamente dita aparece apenas no endpoint `save_text_version`, onde uma devolutiva curta pode ser gerada via Gemini 2.5 Flash, desde que as propriedades `INANNA_AI_FEEDBACK_ENABLED`, `INANNA_GEMINI_API_KEY` e `INANNA_GEMINI_MODEL=gemini-2.5-flash` estejam configuradas.
+Na camada de IA, o fluxo principal continua não generativo. O motor `prediction_engine_v2.js` trabalha com normalização lexical, banco de rimas, expectativas sintáticas, compatibilidade de rima e sugestão da palavra seguinte; seu papel é didático e explicável. A IA generativa para devolutiva de sextilhas fica planejada para uma etapa posterior, com segredo da Maritaca guardado no ambiente do agente/worker, nunca no frontend.
 
 Em termos pedagógicos e éticos, isso significa que a escrita continua sendo do participante. A IA não faz o texto; ela oferece apenas um retorno leve sobre progresso, maturação e consistência, o que torna o desenho do projeto mais compatível com as recomendações de uso responsável de IA na educação (BRASIL, [2026]).
 

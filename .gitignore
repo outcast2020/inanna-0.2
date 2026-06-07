@@ -1,6 +1,16 @@
 # Environment files
 .env
+.env.local
+.env.production
 .env.*
+!.env.example
+not-commit-supabaseInanna.txt
+not-commit-supabasepassword*
+
+# Vercel / build output
+node_modules/
+.vercel/
+dist/
 
 # Credential JSONs
 inanna-ia-*.json

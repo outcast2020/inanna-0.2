@@ -221,8 +221,8 @@ const state = {
   versionCompareSelection: [],
   draftVersionSource: null,
   sextilhaStoreStatus: "idle",
-  firebaseSessionReady: false,
-  firebaseSessionPromise: null,
+  supabaseSessionReady: false,
+  supabaseSessionPromise: null,
   lastAiFeedback: null,
   aiFeedbackRequestKey: "",
   aiFeedbackLoading: false,
@@ -232,9 +232,8 @@ const state = {
   dashboardLoadRequestId: 0,
 };
 
-// COLOQUE AQUI A URL GERADA NO DEPLOY DO SEU GOOGLE APPS SCRIPT
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytj_rKL1Yd8K7ybqoEtHftl6Urdh2EgBoid2hNaIW9LyMX0LEinYJRUsMz0uJ_Osgi/exec";
 const APP_VARIANT = "inanna-main";
+const SUPABASE_SEXTILHA_MODE = "supabase";
 const PLACAR_VISIBLE_LIMIT = 20;
 const PLACAR_PREVIEW_LIMIT = 3;
 const PLACAR_REACTION_LIMIT = 3;
@@ -246,15 +245,15 @@ const PLACAR_REACTIONS = [
 ];
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
-const FIREBASE_SEXTILHA_MODE = "firestore";
+const INANNA_AI_ENABLED = !!window.INANNA_APP_CONFIG?.aiEnabled;
+const INANNA_SOCIAL_EMAIL_ENABLED = !!window.INANNA_APP_CONFIG?.socialEmailEnabled;
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
 const SYNTHETIC_LEGACY_FOLHETO_ID = "__legacy_folheto__";
 const DASHBOARD_CACHE_KEY_PREFIX = "inanna_dashboard_cache_v1";
 const DASHBOARD_SLOW_NOTICE_DELAY_MS = 3500;
-const DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS = 65000;
-const DASHBOARD_FIREBASE_SESSION_TIMEOUT_MS = 30000;
+const DASHBOARD_SUPABASE_SESSION_TIMEOUT_MS = 30000;
 const DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS = 65000;
 const INANNA_AVATAR_STATES = {
   observing: {
@@ -284,16 +283,14 @@ const SEXTILHA_STATUS_LABELS = {
 let toastSequence = 0;
 
 function getConfiguredSextilhaDataSource() {
-  const configuredMode = String(window.INANNA_FIREBASE_OPTIONS?.mode || "").trim().toLowerCase();
-  if (configuredMode === FIREBASE_SEXTILHA_MODE && window.InannaFirebaseBridge?.isConfigured?.()) {
-    return FIREBASE_SEXTILHA_MODE;
+  if (window.InannaSupabaseBridge?.isConfigured?.()) {
+    return SUPABASE_SEXTILHA_MODE;
   }
-  return "apps-script";
+  return "unconfigured";
 }
 
 // ── Banco de Curadoria Local (Fallback/Library Pré-Programado) ────────
-// Caso a planilha não esteja conectada, o administrador pode adicionar 
-// ganhadores diretamente neste Array abaixo, colar Posicao, Nome, Pontos e Verso.
+// Fallback local para desenvolvimento antes de conectar o placar Supabase.
 const PLACAR_LIBRARY = [
   { posicao: "1º", autor: "Celinho da Paraíba", pontos: 12, timestamp: "2026-03-12T20:15:00.000Z", verso: "No sertão eu vi a poeira\nPlantar um sonho acordado\nSeco e quente meu roçado\nCantar a minha canseira" },
   { posicao: "2º", autor: "Maria Bonita", pontos: 9, timestamp: "2026-03-12T19:40:00.000Z", verso: "A fogueira incendeia o salão\nPara pular minha festança\nColorido passo de dança\nNo compasso do baião" }
@@ -1026,30 +1023,6 @@ function reconcileAuthoritativeIdentity(source = {}) {
   }
 }
 
-async function requestAppAction(action, payload = {}, fallbackMessage = "Erro ao consultar o backend.") {
-  const response = await fetch(WEB_APP_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      action,
-      t: String(Date.now()),
-      ...payload,
-    }),
-  });
-  const result = await response.json();
-  if (result?.status === "error" || result?.error) {
-    throw new Error(result?.message || result?.error || fallbackMessage);
-  }
-  return result;
-}
-
-async function fetchAppGet(action, params = {}) {
-  return requestAppAction(action, params, "Erro ao consultar o backend.");
-}
-
-async function postAppAction(action, payload = {}) {
-  return requestAppAction(action, payload, "Erro ao salvar no backend.");
-}
-
 function buildLoadingSkeletonCard() {
   return `
     <div class="skeleton-card" aria-hidden="true">
@@ -1149,9 +1122,7 @@ function renderEditorAiFeedback(feedback, options = {}) {
       : "";
   const label = feedback.tone === "loading"
     ? "Inanna está lendo"
-    : feedback.source === "gemini"
-      ? "Inanna + Gemini"
-      : "Inanna acompanha";
+    : "Inanna acompanha";
   ui.editorAiFeedback.className = `ai-feedback-card ${toneClass}`.trim();
   ui.editorAiFeedback.innerHTML = `
     <strong>${escapeHtml(label)}</strong>
@@ -1413,81 +1384,38 @@ async function buildDashboardIdentityVariants(identity = buildIdentityPayload())
   return variants;
 }
 
-async function loadAppsScriptDashboardPayload(identity = buildIdentityPayload()) {
-  return fetchAppGet("get_user_dashboard", identity);
+function assertSupabaseBackendConfigured() {
+  if (window.InannaSupabaseBridge?.isConfigured?.()) return;
+  throw new Error("Supabase ainda não foi configurado para a Inanna.");
 }
 
-async function loadAppsScriptDashboardPayloads(identity = buildIdentityPayload(), options = {}) {
-  const settings = {
-    includeAliases: false,
-    timeoutMs: DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS,
-    ...options,
-  };
-  const variants = settings.includeAliases
-    ? await buildDashboardIdentityVariants(identity)
-    : [{ ...identity, email: String(identity?.email || "").trim() }];
-  const results = await Promise.allSettled(
-    variants.map((variant) => withTimeout(
-      loadAppsScriptDashboardPayload(variant),
-      settings.timeoutMs,
-      "Uma das consultas do caderno demorou mais do que o esperado."
-    ))
-  );
-
-  let mergedPayload = null;
-  results.forEach((result) => {
-    if (result.status !== "fulfilled") return;
-    mergedPayload = mergedPayload ? mergeDashboardPayloads(mergedPayload, result.value) : result.value;
-  });
-
-  if (mergedPayload) {
-    return mergedPayload;
-  }
-
-  throw results.find((result) => result.status === "rejected")?.reason || new Error("Não foi possível carregar o caderno no Apps Script.");
-}
-
-async function loadFirestoreDashboardPayload(identity = buildIdentityPayload()) {
+async function loadSupabaseDashboardPayload(identity = buildIdentityPayload()) {
+  assertSupabaseBackendConfigured();
   await withTimeout(
-    ensureFirebaseSextilhaSession(),
-    DASHBOARD_FIREBASE_SESSION_TIMEOUT_MS,
-    "A sessao do Firebase demorou mais do que o esperado."
+    ensureSupabaseSextilhaSession(),
+    DASHBOARD_SUPABASE_SESSION_TIMEOUT_MS,
+    "A sessao do Supabase demorou mais do que o esperado."
   );
   return withTimeout(
-    window.InannaFirebaseBridge.getUserDashboard(buildIdentityPayload()),
+    window.InannaSupabaseBridge.getUserDashboard(identity),
     DASHBOARD_BACKGROUND_REQUEST_TIMEOUT_MS,
-    "A leitura do Firebase demorou mais do que o esperado."
+    "A leitura do Supabase demorou mais do que o esperado."
   );
 }
 
-async function refreshDashboardInBackground(requestId, identity, basePayload = null, options = {}) {
-  const settings = {
-    preferFirestoreOnly: false,
-    ...options,
-  };
-  const tasks = [];
+async function refreshDashboardInBackground(requestId, identity, basePayload = null) {
+  if (getConfiguredSextilhaDataSource() !== SUPABASE_SEXTILHA_MODE) return;
 
-  if (!settings.preferFirestoreOnly) {
-    tasks.push(loadAppsScriptDashboardPayloads(identity, { includeAliases: true }));
+  try {
+    const payload = await loadSupabaseDashboardPayload(identity);
+    if (!payload || requestId !== state.dashboardLoadRequestId) return;
+    if (!["sextilhaDashboard", "folhetoWorkspace"].includes(state.view)) return;
+
+    const mergedPayload = basePayload ? mergeDashboardPayloads(basePayload, payload) : payload;
+    applyDashboardPayload(mergedPayload);
+  } catch (error) {
+    console.warn("[dashboard] nao foi possivel atualizar o caderno em segundo plano", error);
   }
-
-  if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
-    tasks.push(loadFirestoreDashboardPayload(identity));
-  }
-
-  if (!tasks.length) return;
-
-  const results = await Promise.allSettled(tasks);
-  let mergedPayload = basePayload || null;
-  results.forEach((result) => {
-    if (result.status !== "fulfilled") return;
-    mergedPayload = mergedPayload ? mergeDashboardPayloads(mergedPayload, result.value) : result.value;
-  });
-
-  if (!mergedPayload || requestId !== state.dashboardLoadRequestId) return;
-  if (!["sextilhaDashboard", "folhetoWorkspace"].includes(state.view)) return;
-
-  applyDashboardPayload(mergedPayload);
 }
 
 function buildDashboardPayloadFromState() {
@@ -1537,7 +1465,9 @@ function beginTextPersistProgressiveFeedback(saveMode = "draft") {
 
   if (ui.btnFinalizeText) {
     ui.btnFinalizeText.disabled = true;
-    ui.btnFinalizeText.textContent = saveMode === "finalize" ? "Finalizando e preparando e-mail..." : "Finalizar e receber por e-mail";
+    ui.btnFinalizeText.textContent = saveMode === "finalize"
+      ? (INANNA_SOCIAL_EMAIL_ENABLED ? "Finalizando e preparando e-mail..." : "Finalizando...")
+      : (INANNA_SOCIAL_EMAIL_ENABLED ? "Finalizar e receber por e-mail" : "Finalizar sextilha");
   }
 
   return () => {
@@ -1547,7 +1477,7 @@ function beginTextPersistProgressiveFeedback(saveMode = "draft") {
     }
     if (ui.btnFinalizeText) {
       ui.btnFinalizeText.disabled = isEditorLocked();
-      ui.btnFinalizeText.textContent = "Finalizar e receber por e-mail";
+      ui.btnFinalizeText.textContent = INANNA_SOCIAL_EMAIL_ENABLED ? "Finalizar e receber por e-mail" : "Finalizar sextilha";
     }
   };
 }
@@ -1562,6 +1492,17 @@ function shouldApplyAiFeedbackResponse(requestKey, textId, versionId) {
 
 async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
   if (!textId || !versionId) {
+    return;
+  }
+
+  if (!INANNA_AI_ENABLED) {
+    state.lastAiFeedback = null;
+    state.aiFeedbackLoading = false;
+    renderEditorAiFeedback({
+      source: "inanna",
+      tone: "muted",
+      message: "A Inanna segue observando. A devolutiva automática de IA fica para uma próxima fase.",
+    });
     return;
   }
 
@@ -1598,129 +1539,48 @@ async function requestAiFeedbackForVersion(textId, versionId, payload = null) {
   }
 }
 
-async function ensureFirebaseSextilhaSession() {
-  if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
-    return { provider: "apps-script" };
-  }
+async function ensureSupabaseSextilhaSession() {
   assertSextilhaWorkspaceAccess();
+  assertSupabaseBackendConfigured();
 
-  let identity = buildIdentityPayload();
-  if (window.InannaFirebaseBridge?.hasActiveSession?.(identity.participantId)) {
-    state.firebaseSessionReady = true;
-    state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-    return { provider: FIREBASE_SEXTILHA_MODE };
+  if (!state.participantId || !state.checkinUserId) {
+    throw new Error("Verifique o e-mail de check-in antes de abrir o caderno.");
   }
 
-  if (state.firebaseSessionPromise) {
-    return state.firebaseSessionPromise;
-  }
-
-  const sessionPromise = (async () => {
-    const tokenPayload = await fetchAppGet("get_firebase_custom_token", identity);
-    reconcileAuthoritativeIdentity(tokenPayload);
-    identity = buildIdentityPayload();
-    recordIdentityDebugSnapshot("firebase_token_received", {
-      participantId: tokenPayload?.participantId,
-      rebuiltParticipantId: tokenPayload?.rebuiltParticipantId,
-      checkinUserId: tokenPayload?.checkinUserId,
-      checkinUserIdSource: tokenPayload?.checkinUserIdSource,
-      participantIdSource: tokenPayload?.participantIdSource,
-    });
-    await window.InannaFirebaseBridge.initializeSession({
-      customToken: tokenPayload?.customToken,
-      identity,
-    });
-
-    state.firebaseSessionReady = true;
-    state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-
-    return tokenPayload;
-  })();
-
-  state.firebaseSessionPromise = sessionPromise;
-
-  try {
-    return await sessionPromise;
-  } finally {
-    if (state.firebaseSessionPromise === sessionPromise) {
-      state.firebaseSessionPromise = null;
-    }
-  }
+  state.supabaseSessionReady = true;
+  state.sextilhaStoreStatus = SUPABASE_SEXTILHA_MODE;
+  return { provider: SUPABASE_SEXTILHA_MODE };
 }
 
-function prewarmFirebaseSextilhaSession() {
-  if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) return;
+function prewarmSupabaseSextilhaSession() {
+  if (getConfiguredSextilhaDataSource() !== SUPABASE_SEXTILHA_MODE) return;
   if (!state.participantId || !state.checkinUserId) return;
   if (!canAccessSextilhaWorkspace()) return;
 
-  ensureFirebaseSextilhaSession().catch((error) => {
-    console.warn("[firebase] nao foi possivel aquecer a sessao antecipadamente", error);
+  ensureSupabaseSextilhaSession().catch((error) => {
+    console.warn("[supabase] nao foi possivel aquecer a sessao antecipadamente", error);
   });
 }
 
-async function runSextilhaStoreOperation(operationName, appsScriptFn, firebaseFn) {
+async function runSextilhaStoreOperation(operationName, supabaseFn) {
   assertSextilhaWorkspaceAccess();
-
-  if (getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
-    state.sextilhaStoreStatus = "apps-script";
-    return appsScriptFn();
-  }
+  await ensureSupabaseSextilhaSession();
 
   try {
-    await ensureFirebaseSextilhaSession();
-    return await firebaseFn(window.InannaFirebaseBridge);
+    return await supabaseFn(window.InannaSupabaseBridge);
   } catch (error) {
-    console.warn(`[sextilha-store] fallback para Apps Script em ${operationName}`, error);
-    state.sextilhaStoreStatus = "apps-script";
-    state.firebaseSessionReady = false;
-    return appsScriptFn();
+    console.warn(`[sextilha-store] falha no Supabase em ${operationName}`, error);
+    state.sextilhaStoreStatus = "error";
+    state.supabaseSessionReady = false;
+    throw error;
   }
 }
 
 async function loadUserDashboardData() {
   const identity = buildIdentityPayload();
-  if (getConfiguredSextilhaDataSource() === FIREBASE_SEXTILHA_MODE) {
-    try {
-      const firebasePayload = await loadFirestoreDashboardPayload(identity);
-      if (!payloadHasDashboardContent(firebasePayload)) {
-        console.warn("[dashboard] Firestore retornou vazio; consultando aliases no Apps Script antes de aceitar o vazio", {
-          participantId: identity.participantId,
-          checkinUserId: identity.checkinUserId,
-        });
-        const appsScriptAliasPayload = await loadAppsScriptDashboardPayloads(buildIdentityPayload(), {
-          includeAliases: true,
-          timeoutMs: DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
-        }).catch((error) => {
-          console.warn("[dashboard] nao foi possivel recuperar acervo por alias no Apps Script", error);
-          return null;
-        });
-        if (appsScriptAliasPayload && payloadHasDashboardContent(appsScriptAliasPayload)) {
-          const mergedPayload = mergeDashboardPayloads(firebasePayload, appsScriptAliasPayload);
-          state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-          state.firebaseSessionReady = true;
-          recordIdentityDebugSnapshot("dashboard_alias_recovery", {
-            participantId: state.participantId,
-            checkinUserId: state.checkinUserId,
-          });
-          return mergedPayload;
-        }
-      }
-      state.sextilhaStoreStatus = FIREBASE_SEXTILHA_MODE;
-      state.firebaseSessionReady = true;
-      return firebasePayload;
-    } catch (error) {
-      console.warn("[dashboard] leitura do Firestore falhou; mantendo modo de sincronizacao sem fallback silencioso", error);
-      state.firebaseSessionReady = false;
-      throw error;
-    }
-  }
-
-  const payload = await loadAppsScriptDashboardPayloads(identity, {
-    includeAliases: true,
-    timeoutMs: DASHBOARD_FAST_APPS_SCRIPT_TIMEOUT_MS,
-  });
-  state.sextilhaStoreStatus = "apps-script";
-  state.firebaseSessionReady = false;
+  const payload = await loadSupabaseDashboardPayload(identity);
+  state.sextilhaStoreStatus = SUPABASE_SEXTILHA_MODE;
+  state.supabaseSessionReady = true;
   return payload;
 }
 
@@ -1728,7 +1588,6 @@ async function createSextilhaTextRecord(payload) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "create_text",
-    () => postAppAction("create_text", { ...identity, ...payload }),
     (bridge) => bridge.createText(identity, payload)
   );
 }
@@ -1737,7 +1596,6 @@ async function createFolhetoRecord(payload) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "create_folheto",
-    () => postAppAction("create_folheto", { ...identity, ...payload }),
     (bridge) => bridge.createFolheto(identity, payload)
   );
 }
@@ -1746,7 +1604,6 @@ async function loadSextilhaTextRecord(textId) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "get_text",
-    () => fetchAppGet("get_text", { ...identity, textId }),
     (bridge) => bridge.getText(identity, textId)
   );
 }
@@ -1755,25 +1612,21 @@ async function saveSextilhaTextVersionRecord(payload) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "save_text_version",
-    () => postAppAction("save_text_version", { ...identity, ...payload }),
     (bridge) => bridge.saveTextVersion(identity, payload)
   );
 }
 
-async function generateSextilhaTextFeedbackRecord(payload) {
-  const identity = buildIdentityPayload();
-  return postAppAction("generate_text_feedback", {
-    ...identity,
-    sourceStore: getConfiguredSextilhaDataSource(),
-    ...payload,
-  });
+async function generateSextilhaTextFeedbackRecord() {
+  return {
+    status: INANNA_AI_ENABLED ? "pending" : "disabled",
+    aiFeedback: null,
+  };
 }
 
 async function loadSextilhaTextVersionsRecord(textId) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "get_text_versions",
-    () => fetchAppGet("get_text_versions", { ...identity, textId }),
     (bridge) => bridge.getTextVersions(identity, textId)
   );
 }
@@ -1782,7 +1635,6 @@ async function archiveSextilhaTextRecord(textId, payload = {}) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "archive_text",
-    () => postAppAction("archive_text", { ...identity, textId, ...payload }),
     (bridge) => bridge.archiveText(identity, { textId, ...payload })
   );
 }
@@ -1791,7 +1643,6 @@ async function updateSextilhaTextStatusRecord(textId, payload = {}) {
   const identity = buildIdentityPayload();
   return runSextilhaStoreOperation(
     "update_text_status",
-    () => postAppAction("update_text_status", { ...identity, textId, ...payload }),
     (bridge) => bridge.updateTextStatus(identity, { textId, ...payload })
   );
 }
@@ -1825,8 +1676,8 @@ function clearResolvedCheckinIdentity(nextEmail = "") {
   state.teacherGroup = "";
   state.checkinLookupStatus = "idle";
   state.checkinLookupMessage = "";
-  state.firebaseSessionReady = false;
-  state.firebaseSessionPromise = null;
+  state.supabaseSessionReady = false;
+  state.supabaseSessionPromise = null;
   state.lastAiFeedback = null;
   state.aiFeedbackRequestKey = "";
 }
@@ -1934,47 +1785,21 @@ function updateWelcomeIdentityUI() {
   }
 }
 
-function requestCheckinIdentityViaJsonp(email) {
-  return new Promise((resolve) => {
-    const callbackName =
-      "__inannaCheckinCb_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
-    const params = new URLSearchParams({
-      action: "checkin_lookup",
-      callback: callbackName,
-      email: String(email || "").trim()
-    });
-    const script = document.createElement("script");
-    const mountNode = document.body || document.head || document.documentElement;
-    let timer = null;
+async function requestCheckinIdentityViaSupabase(email) {
+  if (!window.InannaSupabaseBridge?.isConfigured?.()) {
+    return { ok: false, status: "error", error: "supabase_not_configured" };
+  }
 
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
-      if (script.parentNode) script.parentNode.removeChild(script);
-      try {
-        delete window[callbackName];
-      } catch (_) {
-        window[callbackName] = undefined;
-      }
-    };
-
-    window[callbackName] = (data) => {
-      cleanup();
-      resolve(data || { ok: false, status: "error", error: "empty_response" });
-    };
-
-    script.onerror = () => {
-      cleanup();
-      resolve({ ok: false, status: "error", error: "network" });
-    };
-
-    timer = window.setTimeout(() => {
-      cleanup();
-      resolve({ ok: false, status: "error", error: "timeout" });
-    }, 15000);
-
-    script.src = `${WEB_APP_URL}?${params.toString()}`;
-    mountNode.appendChild(script);
-  });
+  try {
+    return await withTimeout(
+      window.InannaSupabaseBridge.lookupParticipantByEmail(email),
+      15000,
+      "A consulta ao check-in demorou demais."
+    );
+  } catch (error) {
+    console.error(error);
+    return { ok: false, status: "error", error: error?.message || "supabase_lookup_error" };
+  }
 }
 
 async function verifyCheckinEmail() {
@@ -1993,7 +1818,7 @@ async function verifyCheckinEmail() {
   setStartHint("");
   updateWelcomeIdentityUI();
 
-  const response = await requestCheckinIdentityViaJsonp(typedEmail);
+  const response = await requestCheckinIdentityViaSupabase(typedEmail);
 
   if (response?.ok && response?.status === "matched") {
     applyResolvedCheckinIdentity(response);
@@ -2014,6 +1839,7 @@ async function verifyCheckinEmail() {
     invalid_email: "Digite um e-mail válido para consultar o check-in.",
     ambiguous_email: "Encontrei mais de um cadastro com esse e-mail no check-in.",
     email_not_found: "Este e-mail não está registrado no check-in oficial.",
+    supabase_not_configured: "Supabase ainda não foi configurado para consultar o check-in.",
     timeout: "A consulta demorou demais. Tente novamente.",
     network: "Não consegui acessar o check-in agora. Tente novamente em instantes."
   };
@@ -2083,7 +1909,7 @@ function showTrackChooser() {
   setView("chooser", ui.trackChooserSection);
   syncSextilhaTrackAccess();
   window.scrollTo({ top: 0, behavior: "smooth" });
-  prewarmFirebaseSextilhaSession();
+  prewarmSupabaseSextilhaSession();
 }
 
 function startGameTrack() {
@@ -2299,21 +2125,12 @@ async function sendSocialPostcardEmail(postcardData) {
     throw new Error("Seu e-mail de check-in não foi encontrado para receber o cartão-postal.");
   }
 
-  const capture = await captureSocialPostcardImage(postcardData);
-  const fileStem = sanitizeSocialFileName(postcardData.title || postcardData.folhetoTitle || "sextilha-inanna");
-  return postAppAction("send_social_email", {
-    ...buildIdentityPayload(),
-    textId: postcardData.textId,
-    versionId: postcardData.versionId,
-    folhetoId: postcardData.folhetoId,
-    folhetoTitle: postcardData.folhetoTitle,
-    title: postcardData.title,
-    theme: postcardData.theme,
-    verses: postcardData.verses,
-    imageBase64: capture.base64,
-    imageMimeType: capture.mimeType,
-    fileName: `${fileStem}.jpg`,
-  });
+  if (!INANNA_SOCIAL_EMAIL_ENABLED) {
+    return { status: "disabled" };
+  }
+
+  await captureSocialPostcardImage(postcardData);
+  throw new Error("O envio de cartão por e-mail precisa de uma função serverless fora do frontend.");
 }
 
 function getFriendlySocialDeliveryErrorMessage(error) {
@@ -2322,12 +2139,12 @@ function getFriendlySocialDeliveryErrorMessage(error) {
     return "A sextilha foi finalizada, mas o cartão-postal não conseguiu seguir por e-mail.";
   }
 
-  if (/MailApp\.sendEmail|script\.send_mail|nao tem permissao para chamar MailApp/i.test(rawMessage)) {
-    return "A sextilha foi finalizada, mas o Web App do Apps Script ainda precisa ser reautorizado para enviar e-mails.";
+  if (/funcao serverless|serverless fora do frontend/i.test(rawMessage)) {
+    return "A sextilha foi finalizada, mas o envio por e-mail ainda precisa de uma função serverless.";
   }
 
   if (/imagem do cartao postal nao chegou/i.test(rawMessage)) {
-    return "O cartão-postal foi preparado, mas a imagem não chegou corretamente ao Apps Script.";
+    return "O cartão-postal foi preparado, mas a imagem não chegou corretamente ao serviço de e-mail.";
   }
 
   if (/captura do cartao postal/i.test(rawMessage)) {
@@ -3489,9 +3306,7 @@ async function openSextilhaDashboard(options = {}) {
     }
   }
 
-  refreshDashboardInBackground(requestId, identity, fastPayload || visibleBasePayload, {
-    preferFirestoreOnly: state.sextilhaStoreStatus === FIREBASE_SEXTILHA_MODE && payloadHasDashboardContent(fastPayload),
-  }).catch((error) => {
+  refreshDashboardInBackground(requestId, identity, fastPayload || visibleBasePayload).catch((error) => {
     console.warn("[dashboard] nao foi possivel concluir a sincronizacao em segundo plano", error);
   });
 }
@@ -3833,7 +3648,12 @@ async function saveCurrentTextVersion(saveMode = "draft") {
     }
     state.activeTextVersions = [savedVersion, ...state.activeTextVersions.filter((version) => version?.versionId !== savedVersion?.versionId)].filter(Boolean);
     if (saveMode === "finalize") {
-      setEditorFeedback("Sextilha finalizada. Preparando o cartão-postal para o seu e-mail...", "muted");
+      setEditorFeedback(
+        INANNA_SOCIAL_EMAIL_ENABLED
+          ? "Sextilha finalizada. Preparando o cartão-postal para o seu e-mail..."
+          : "Sextilha finalizada e salva no caderno.",
+        INANNA_SOCIAL_EMAIL_ENABLED ? "muted" : "success"
+      );
     } else {
       setEditorFeedback(`${buildSextilhaVersionLabel(savedVersion)} salva com sucesso.`, "success");
     }
@@ -3843,18 +3663,22 @@ async function saveCurrentTextVersion(saveMode = "draft") {
       buildAiFeedbackRequestPayload(state.activeText, savedVersion)
     );
     if (saveMode === "finalize") {
-      await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, savedVersion));
-      setEditorFeedback("Sextilha finalizada e cartão enviado para o seu e-mail.", "success");
+      if (INANNA_SOCIAL_EMAIL_ENABLED) {
+        await sendSocialPostcardEmail(buildSocialPostcardData(state.activeText, savedVersion));
+        setEditorFeedback("Sextilha finalizada e cartão enviado para o seu e-mail.", "success");
+      } else {
+        setEditorFeedback("Sextilha finalizada. O envio por e-mail fica suspenso nesta fase.", "success");
+      }
     }
   } catch (error) {
     const fallbackMessage = saveMode === "finalize" && saveSucceeded
       ? getFriendlySocialDeliveryErrorMessage(error)
         : "Não foi possível salvar a versão.";
     setEditorFeedback(saveMode === "finalize" && saveSucceeded ? fallbackMessage : (error?.message || fallbackMessage), "error");
-    if (!saveSucceeded && getConfiguredSextilhaDataSource() !== FIREBASE_SEXTILHA_MODE) {
+    if (!saveSucceeded && INANNA_AI_ENABLED) {
       renderEditorAiFeedback({
         tone: "error",
-      message: "O texto não recebeu devolutiva agora. Verifique a configuração da IA no Apps Script.",
+        message: "O texto não recebeu devolutiva agora. Verifique a configuração da camada de IA.",
       });
     }
   } finally {
@@ -3864,6 +3688,10 @@ async function saveCurrentTextVersion(saveMode = "draft") {
 
 async function resendSocialPostcardEmail() {
   if (!state.activeText || !isEditorLocked(state.activeText)) return;
+  if (!INANNA_SOCIAL_EMAIL_ENABLED) {
+    setEditorFeedback("O envio por e-mail está suspenso nesta fase.", "muted");
+    return;
+  }
 
   if (ui.btnResendSocialEmail) {
     ui.btnResendSocialEmail.disabled = true;
@@ -4596,38 +4424,26 @@ function renderPlacarItems(data) {
   if (ui.fullPlacarList) populateList(topVisible, ui.fullPlacarList);
 }
 
-function loadPlacar() {
-  if (WEB_APP_URL.includes("URL_DO_SEU_APPS_SCRIPT_AQUI")) {
-    // Modo local / Fallback para usar o Library pré-programado em arquivo
+async function loadPlacar() {
+  if (!window.InannaSupabaseBridge?.isConfigured?.()) {
     renderPlacarItems(PLACAR_LIBRARY);
     const aviso = document.createElement("p");
     aviso.style.cssText = "text-align:center;color:var(--muted);font-size:12px;margin-top:10px;";
-    aviso.textContent = "Modo estático. Atualize a WEB_APP_URL para ler do Sheets.";
+    aviso.textContent = "Modo local. Configure o Supabase para ler o placar de producao.";
     ui.placarList.appendChild(aviso);
     return;
   }
 
   ui.placarList.innerHTML = "<p style='text-align: center; color: var(--muted); margin-top:20px;'>Carregando placar...</p>";
 
-  fetchAppGet("getPlacar", {
-    viewerKey: getPlacarReactionViewerKey(),
-  })
-    .then(data => {
-      if (data && typeof data === "object" && !Array.isArray(data)) {
-        if (data.status === "error") {
-          throw new Error(data.message || "Erro no backend do placar.");
-        }
-        if (data.error) {
-          throw new Error(data.error);
-        }
-      }
-      renderPlacarItems(data);
-    })
-    .catch(err => {
-      console.error(err);
-      const message = err && err.message ? err.message : "Erro ao conectar com a planilha.";
-      ui.placarList.innerHTML = `<p style='text-align: center; color: var(--danger); margin-top:20px;'>${escapeHtml(message)}</p>`;
-    });
+  try {
+    const data = await window.InannaSupabaseBridge.loadPlacar(getPlacarReactionViewerKey());
+    renderPlacarItems(data);
+  } catch (err) {
+    console.error(err);
+    const message = err && err.message ? err.message : "Erro ao conectar com o Supabase.";
+    ui.placarList.innerHTML = `<p style='text-align: center; color: var(--danger); margin-top:20px;'>${escapeHtml(message)}</p>`;
+  }
 }
 ui.btnRefreshPlacar.addEventListener("click", loadPlacar);
 
@@ -4642,7 +4458,8 @@ async function handlePlacarReactionClick(button) {
   if (controls) controls.classList.add("is-loading");
 
   try {
-    const result = await postAppAction("react_placar", {
+    assertSupabaseBackendConfigured();
+    const result = await window.InannaSupabaseBridge.reactPlacar({
       entryKey,
       reaction,
       viewerKey: getPlacarReactionViewerKey(),
@@ -4675,7 +4492,7 @@ async function handlePlacarReactionClick(button) {
   });
 });
 
-ui.btnSubmitPoem.addEventListener("click", () => {
+ui.btnSubmitPoem.addEventListener("click", async () => {
   if (!state.playerData) return;
   const textoQuada = ui.quadra.textContent.trim();
   if (!textoQuada) return;
@@ -4685,15 +4502,6 @@ ui.btnSubmitPoem.addEventListener("click", () => {
   ui.submitResponse.style.display = "block";
   ui.submitResponse.style.color = "var(--text)";
   ui.submitResponse.textContent = "Processando...";
-
-  if (WEB_APP_URL.includes("URL_DO_SEU_APPS_SCRIPT_AQUI")) {
-    setTimeout(() => {
-      ui.submitResponse.style.color = "var(--primary)";
-      ui.submitResponse.textContent = "Simulado: quadra enviada com sucesso! (Configure Apps Script para registrar).";
-      ui.btnSubmitPoem.textContent = "🚀 Enviar Quadra";
-    }, 1000);
-    return;
-  }
 
   const tempoEscritaMs = getWritingElapsedMs();
   const payload = {
@@ -4722,28 +4530,20 @@ ui.btnSubmitPoem.addEventListener("click", () => {
     tempoEscritaFormatado: formatElapsedClock(tempoEscritaMs)
   };
 
-  fetch(WEB_APP_URL, {
-    method: "POST",
-    // Para GitHub Pages e Google Apps Script:
-    // Omitimos explicitamente headers (Content-Type) e o modo no-cors para que a requisição
-    // seja tratada como 'simple request' com text/plain. Isso evita o preflight OPTIONS (CORS error) e 
-    // ainda permite ler a resposta JSON devidamente redicionada pelo Google Web App!
-    body: JSON.stringify(payload)
-  })
-    .then(r => r.json())
-    .then((res) => {
-      if (res && res.status === "error") throw new Error(res.message);
-      ui.submitResponse.style.color = "var(--accent)";
-      ui.submitResponse.textContent = "✅ Quadra enviada para a planilha!";
-      ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
-      loadPlacar();
-    }).catch((err) => {
-      console.error(err);
-      ui.submitResponse.style.color = "var(--danger)";
-      ui.submitResponse.textContent = "❌ Falha ao enviar, verifique o console.";
-      ui.btnSubmitPoem.disabled = false;
-      ui.btnSubmitPoem.textContent = "🚀 Tentar Novamente";
-    });
+  try {
+    assertSupabaseBackendConfigured();
+    await window.InannaSupabaseBridge.submitQuadra(payload);
+    ui.submitResponse.style.color = "var(--accent)";
+    ui.submitResponse.textContent = "✅ Quadra enviada para o Supabase!";
+    ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
+    await loadPlacar();
+  } catch (err) {
+    console.error(err);
+    ui.submitResponse.style.color = "var(--danger)";
+    ui.submitResponse.textContent = "❌ Falha ao enviar, verifique o console.";
+    ui.btnSubmitPoem.disabled = false;
+    ui.btnSubmitPoem.textContent = "🚀 Tentar Novamente";
+  }
 });
 
 // ── Copiar quadra ─────────────────────────────────────────────────────
