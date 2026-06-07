@@ -353,9 +353,10 @@
       origem_importacao: "supabase",
     };
 
+    if (!participantId) throw new Error("Participante nao identificado para enviar a quadra.");
     if (!row.verso) throw new Error("Quadra vazia.");
 
-    const { error } = await getBaseClient().from("quadras").insert(row);
+    const { error } = await scopedClient({ participantId }).from("quadras").insert(row);
     if (error) throw error;
     return { status: "success" };
   }
