@@ -30,6 +30,7 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - `supabase/migrations/003_participant_profile_legacy_import.sql` adiciona perfil estatistico de primeiro acesso, fingerprint legado e RPC de perfil.
 - `supabase/migrations/004_profile_race_age.sql` acrescenta identificacao racial e faixa etaria ao perfil estatistico.
 - `supabase/migrations/005_tighten_quadra_insert_policy.sql` restringe inserts de quadras ao participante identificado e adiciona indices de apoio.
+- `supabase/migrations/006_player_progress.sql` prepara a futura persistencia Supabase da Trilha de Maestria da Quadra com RLS fechado por padrao.
 - `scripts/import-legacy-quadras.mjs` importa check-in e quadras historicas do Google Sheets de forma idempotente.
 - `scripts/google-apps-script/inanna-first-access.gs` e o codigo para colar no Apps Script da planilha principal do laboratorio; ele sincroniza a aba `USERS` para `public.participantes` no primeiro acesso sem expor a planilha por link publico.
 - `supabase/functions/inanna-public-config` fornece configuracao publica em runtime para o navegador quando a build da Vercel nao substitui `VITE_*`.
@@ -169,6 +170,15 @@ Palavras finais repetidas nao pontuam como rima criativa: par com palavra final 
 No Nivel 1 e no preview do Nivel 2, coesao narrativa e verossimilhanca regional nao entram na pontuacao mecanica. Esses criterios ficam reservados para o futuro Nivel 3.
 
 No frontend, a quadra e pontuada apos o quarto verso.
+
+## Trilha de Maestria da Quadra
+
+O progresso local do jogador usa `localStorage` em `inanna_player_progress_v1`. Apenas quadras no Modo Desafio contam. O Nível 2 e liberado quando uma das rotas acontece:
+
+- 5 quadras perfeitas unicas, com score maximo de 14 pontos no esquema sorteado.
+- Todas as 8 marcas de maestria conquistadas: forma, rima final, esquema forte, criatividade autoral, independencia da Inanna, sem repeticao final, sem falha de rima e dois esquemas usados corretamente.
+
+Em production com `VITE_INANNA_LEVEL=1`, o Nível 2 aparece como bloqueado/desbloqueavel. Em preview com `VITE_INANNA_LEVEL=2`, ele so abre quando o progresso local ja tiver `levelUnlocked >= 2`.
 
 O envio ao Supabase grava os pontos calculados pelo frontend e os campos de rima ja existentes no schema atual.
 

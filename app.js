@@ -52,6 +52,12 @@ const ui = {
   chooseGameTrackBtn: $("chooseGameTrackBtn"),
   chooseSextilhaTrackBtn: $("chooseSextilhaTrackBtn"),
   sextilhaAccessNotice: $("sextilhaAccessNotice"),
+  chooseLevel2TrackBtn: $("chooseLevel2TrackBtn"),
+  level2AccessNotice: $("level2AccessNotice"),
+  level2ProgressSummary: $("level2ProgressSummary"),
+  level2PreviewSection: $("level2PreviewSection"),
+  level2PreviewStatus: $("level2PreviewStatus"),
+  level2PreviewBackBtn: $("level2PreviewBackBtn"),
   trackChooserBackBtn: $("trackChooserBackBtn"),
   userDashboardSection: $("userDashboardSection"),
   dashboardGreeting: $("dashboardGreeting"),
@@ -232,6 +238,7 @@ const state = {
   modeChallenge: false,
   rhyme: null,
   scoreBreakdown: null,
+  playerProgress: null,
   writingStartedAt: 0,
   writingElapsedMs: 0,
   writingTimerId: null,
@@ -265,6 +272,7 @@ const PLACAR_VISIBLE_LIMIT = 20;
 const PLACAR_PREVIEW_LIMIT = 3;
 const PLACAR_REACTION_LIMIT = 3;
 const PLACAR_REACTION_VIEWER_STORAGE_KEY = "inanna_placar_reaction_viewer_v1";
+const PLAYER_PROGRESS_STORAGE_KEY = "inanna_player_progress_v1";
 const MUNICIPIOS_BR_API_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios";
 const MUNICIPIOS_BR_CACHE_KEY = "inanna_municipios_br_v1";
 const PLACAR_REACTIONS = [
@@ -274,6 +282,18 @@ const PLACAR_REACTIONS = [
 ];
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
+const LEVEL2_LOCKED_NOTICE = "Domine a rima humana no Nível 1 para liberar o Nível 2.";
+const CHALLENGE_MAX_SCORE = 14;
+const MASTERY_CRITERIA = [
+  { key: "formaMax", label: "Forma da quadra" },
+  { key: "rimaFinalMax", label: "Rima final forte" },
+  { key: "esquemaForteMax", label: "Esquema forte" },
+  { key: "criatividadeAutoralMax", label: "Criatividade autoral" },
+  { key: "independenciaMax", label: "Independência da Inanna" },
+  { key: "semRepeticaoFinal", label: "Sem repetição final" },
+  { key: "semFalhaDeRima", label: "Sem falha de rima" },
+  { key: "doisEsquemasUsados", label: "Dois esquemas usados" },
+];
 function readBooleanConfigFlag(value) {
   if (value === true) return true;
   if (value === false || value === null || typeof value === "undefined") return false;
@@ -792,6 +812,341 @@ function getPlacarReactionViewerKey() {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function emptyMasteryState() {
+  return MASTERY_CRITERIA.reduce((acc, item) => {
+    acc[item.key] = false;
+    return acc;
+  }, {});
+}
+
+function emptySchemesUsed() {
+  return { AABB: 0, ABAB: 0, ABBA: 0 };
+}
+
+function getProgressPlayerId() {
+  return String(
+    state.participantId
+    || state.checkinUserId
+    || normalizeEmail(state.email)
+    || "visitante"
+  ).trim();
+}
+
+function createDefaultPlayerProgress() {
+  return {
+    playerId: getProgressPlayerId(),
+    nickname: state.name || state.playerData?.nome || state.playerData?.name || "Participante",
+    levelUnlocked: 1,
+    perfectQuadrasCount: 0,
+    uniquePerfectQuadraHashes: [],
+    mastery: emptyMasteryState(),
+    schemesUsed: emptySchemesUsed(),
+    totalChallengeQuadras: 0,
+    bestScore: 0,
+    lastUpdatedAt: new Date().toISOString()
+  };
+}
+
+function hydratePlayerProgress(rawProgress = {}) {
+  const fallback = createDefaultPlayerProgress();
+  const progress = {
+    ...fallback,
+    ...rawProgress,
+    playerId: getProgressPlayerId(),
+    nickname: state.name || rawProgress.nickname || fallback.nickname,
+    levelUnlocked: Math.max(1, Math.min(3, Number(rawProgress.levelUnlocked || fallback.levelUnlocked) || 1)),
+    perfectQuadrasCount: Math.max(0, Number(rawProgress.perfectQuadrasCount || 0) || 0),
+    uniquePerfectQuadraHashes: Array.isArray(rawProgress.uniquePerfectQuadraHashes)
+      ? rawProgress.uniquePerfectQuadraHashes.filter(Boolean)
+      : [],
+    mastery: {
+      ...emptyMasteryState(),
+      ...(rawProgress.mastery || {})
+    },
+    schemesUsed: {
+      ...emptySchemesUsed(),
+      ...(rawProgress.schemesUsed || {})
+    },
+    totalChallengeQuadras: Math.max(0, Number(rawProgress.totalChallengeQuadras || 0) || 0),
+    bestScore: Math.max(0, Number(rawProgress.bestScore || 0) || 0),
+    lastUpdatedAt: rawProgress.lastUpdatedAt || fallback.lastUpdatedAt
+  };
+  progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length || progress.perfectQuadrasCount;
+  return progress;
+}
+
+function readStoredPlayerProgress() {
+  try {
+    const raw = window.localStorage?.getItem(PLAYER_PROGRESS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const playerId = getProgressPlayerId();
+    if (parsed?.playerId === playerId) return parsed;
+    if (parsed?.players?.[playerId]) return parsed.players[playerId];
+  } catch (error) {
+    console.debug("Nao foi possivel ler progresso local.", error);
+  }
+  return null;
+}
+
+function savePlayerProgress(progress) {
+  const next = hydratePlayerProgress(progress);
+  next.lastUpdatedAt = new Date().toISOString();
+  state.playerProgress = next;
+  try {
+    window.localStorage?.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify(next));
+  } catch (error) {
+    console.debug("Nao foi possivel salvar progresso local.", error);
+  }
+  syncLevel2TrackAccess();
+  return next;
+}
+
+function loadPlayerProgress() {
+  state.playerProgress = hydratePlayerProgress(readStoredPlayerProgress() || {});
+  return state.playerProgress;
+}
+
+function ensurePlayerProgress() {
+  if (!state.playerProgress || state.playerProgress.playerId !== getProgressPlayerId()) {
+    return loadPlayerProgress();
+  }
+  return state.playerProgress;
+}
+
+function countMasteryCriteria(progress = ensurePlayerProgress()) {
+  return MASTERY_CRITERIA.filter((item) => !!progress.mastery?.[item.key]).length;
+}
+
+function getProgressPercent(value, total) {
+  return Math.max(0, Math.min(100, Math.round((Number(value || 0) / Math.max(1, total)) * 100)));
+}
+
+function normalizeQuadraForProgress(lines) {
+  return (lines || [])
+    .map((line) => normalizeVerseAnalysisText(line?.verse || line || ""))
+    .join("\n")
+    .trim();
+}
+
+function hashProgressText(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function getMasteryFlagsFromScore(scoreBreakdown) {
+  const rhyme = scoreBreakdown?.rhyme || {};
+  const pairScores = Array.isArray(rhyme.pairScores) ? rhyme.pairScores : [];
+  return {
+    formaMax: Number(scoreBreakdown?.structure?.points || 0) >= 1,
+    rimaFinalMax: Number(rhyme.pairScoreTotal || 0) >= 6,
+    esquemaForteMax: Number(rhyme.schemeBonus || 0) >= 3,
+    criatividadeAutoralMax: Number(scoreBreakdown?.creativity?.bonus || 0) >= 4,
+    independenciaMax: Number(scoreBreakdown?.independence?.bonus || 0) >= 2,
+    semRepeticaoFinal: Number(rhyme.repeatedEndingPenalty || 0) === 0,
+    semFalhaDeRima: pairScores.length === 2 && pairScores.every((score) => Number(score || 0) > 0),
+    doisEsquemasUsados: false
+  };
+}
+
+function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
+  if (!state.modeChallenge || !scoreBreakdown) return null;
+  const before = hydratePlayerProgress(ensurePlayerProgress());
+  const progress = hydratePlayerProgress(before);
+  const rhyme = scoreBreakdown.rhyme || {};
+  const scheme = ["AABB", "ABAB", "ABBA"].includes(rhyme.expectedScheme)
+    ? rhyme.expectedScheme
+    : ["AABB", "ABAB", "ABBA"].includes(rhyme.scheme)
+      ? rhyme.scheme
+      : "";
+  const flags = getMasteryFlagsFromScore(scoreBreakdown);
+  const normalizedQuadra = normalizeQuadraForProgress(state.lines);
+  const quadraHash = normalizedQuadra ? hashProgressText(normalizedQuadra) : "";
+  const isPerfect = Number(scoreBreakdown.total || 0) >= CHALLENGE_MAX_SCORE
+    && flags.formaMax
+    && flags.rimaFinalMax
+    && flags.esquemaForteMax
+    && flags.criatividadeAutoralMax
+    && flags.independenciaMax
+    && flags.semRepeticaoFinal
+    && flags.semFalhaDeRima
+    && !!scheme;
+  const duplicatePerfect = isPerfect && quadraHash && progress.uniquePerfectQuadraHashes.includes(quadraHash);
+
+  progress.totalChallengeQuadras += 1;
+  progress.bestScore = Math.max(progress.bestScore, Number(scoreBreakdown.total || 0));
+  if (scheme && flags.esquemaForteMax && flags.semFalhaDeRima) {
+    progress.schemesUsed[scheme] = Number(progress.schemesUsed[scheme] || 0) + 1;
+  }
+
+  Object.entries(flags).forEach(([key, value]) => {
+    if (key !== "doisEsquemasUsados" && value) progress.mastery[key] = true;
+  });
+  progress.mastery.doisEsquemasUsados = Object.values(progress.schemesUsed).filter((count) => Number(count || 0) > 0).length >= 2;
+
+  if (isPerfect && quadraHash && !duplicatePerfect) {
+    progress.uniquePerfectQuadraHashes.push(quadraHash);
+  }
+  progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length;
+
+  const unlockByPerfectQuadras = progress.perfectQuadrasCount >= 5;
+  const unlockByMastery = Object.values(progress.mastery).every(Boolean);
+  if (unlockByPerfectQuadras || unlockByMastery) {
+    progress.levelUnlocked = Math.max(progress.levelUnlocked, 2);
+  }
+
+  const saved = savePlayerProgress(progress);
+  return {
+    progress: saved,
+    before,
+    flags,
+    isPerfect,
+    duplicatePerfect,
+    justUnlocked: before.levelUnlocked < 2 && saved.levelUnlocked >= 2,
+    unlockByPerfectQuadras,
+    unlockByMastery
+  };
+}
+
+function getPerfectQuadrasMessage(progress) {
+  const count = Number(progress?.perfectQuadrasCount || 0);
+  if (count >= 5) return "Nível 2 desbloqueado pela excelência.";
+  if (count >= 3) return "Você já domina boa parte da rima.";
+  if (count >= 1) return "Primeira quadra perfeita registrada.";
+  return "Comece sua jornada de maestria.";
+}
+
+function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
+  if (progress.levelUnlocked >= 2 && INANNA_LEVEL >= 2) {
+    return "Nível 2 liberado em preview.";
+  }
+  if (progress.levelUnlocked >= 2) {
+    return "Nível 2 conquistado; preview será ativado quando a produção mudar para o nível 2.";
+  }
+  const missing = MASTERY_CRITERIA.length - countMasteryCriteria(progress);
+  return `Bloqueado: faltam ${Math.max(0, 5 - progress.perfectQuadrasCount)} quadras perfeitas ou ${missing} marcas de maestria.`;
+}
+
+function canAccessLevel2Preview(progress = ensurePlayerProgress()) {
+  return INANNA_LEVEL >= 2 && Number(progress.levelUnlocked || 1) >= 2;
+}
+
+function syncLevel2TrackAccess(options = {}) {
+  const progress = ensurePlayerProgress();
+  const hasAccess = canAccessLevel2Preview(progress);
+  const message = getLevel2StatusMessage(progress);
+
+  if (ui.chooseLevel2TrackBtn) {
+    ui.chooseLevel2TrackBtn.disabled = !hasAccess;
+    ui.chooseLevel2TrackBtn.title = hasAccess ? "" : LEVEL2_LOCKED_NOTICE;
+  }
+  if (ui.level2AccessNotice) {
+    ui.level2AccessNotice.textContent = message;
+    ui.level2AccessNotice.hidden = false;
+  }
+  if (ui.level2ProgressSummary) {
+    ui.level2ProgressSummary.innerHTML = renderLevel2MiniProgress(progress);
+  }
+  if (!hasAccess && options.toast) {
+    showToast(message || LEVEL2_LOCKED_NOTICE, "muted", { duration: 4600 });
+  }
+  return hasAccess;
+}
+
+function renderLevel2MiniProgress(progress = ensurePlayerProgress()) {
+  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
+  const masteryCount = countMasteryCriteria(progress);
+  return `
+    <div class="level2-mini-progress">
+      <span>Quadras perfeitas: <strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong></span>
+      <span>Critérios dominados: <strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></span>
+      <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${perfectPercent}%"></i></span>
+    </div>
+  `;
+}
+
+function renderMasteryProgressHTML(update) {
+  const progress = update?.progress || ensurePlayerProgress();
+  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
+  const masteryCount = countMasteryCriteria(progress);
+  const masteryPercent = getProgressPercent(masteryCount, MASTERY_CRITERIA.length);
+  const pending = MASTERY_CRITERIA.filter((item) => !progress.mastery?.[item.key]);
+  const unlocked = Number(progress.levelUnlocked || 1) >= 2;
+  const status = update?.justUnlocked
+    ? "Nível 2 desbloqueado! Você provou que a rima humana pode enfrentar a sedução da máquina."
+    : unlocked
+      ? "Nível 2 desbloqueado pela sua trilha de maestria."
+      : `Faltam ${pending.length} marcas de maestria para liberar o Nível 2.`;
+  const secondary = update?.justUnlocked
+    ? "Agora a Inanna ficará mais persuasiva. Mas a vitória continua dependendo da sua autoria."
+    : getPerfectQuadrasMessage(progress);
+  const duplicateNote = update?.duplicatePerfect
+    ? `<p class="mastery-panel__note">Esta quadra perfeita já tinha sido registrada; ela não aumenta o contador de quadras únicas.</p>`
+    : "";
+  const perfectNote = update?.isPerfect && !update?.duplicatePerfect
+    ? `<p class="mastery-panel__note">Quadra perfeita única registrada nesta rodada.</p>`
+    : "";
+  const checklist = MASTERY_CRITERIA.map((item) => {
+    const done = !!progress.mastery?.[item.key];
+    return `<li class="${done ? "done" : "pending"}"><span>${done ? "✓" : "□"}</span>${escapeHtml(item.label)}</li>`;
+  }).join("");
+
+  return `
+    <section class="mastery-panel ${unlocked ? "mastery-panel--unlocked" : ""}" aria-label="Trilha de Maestria da Quadra">
+      <div class="mastery-panel__head">
+        <div>
+          <p class="mastery-panel__eyebrow">Trilha de Maestria da Quadra</p>
+          <h3>Domine a rima humana antes de enfrentar a sedução do Nível 2.</h3>
+        </div>
+        <span class="mastery-panel__badge">${unlocked ? "Nível 2 desbloqueado" : "Nível 2 bloqueado"}</span>
+      </div>
+      <p class="mastery-panel__intro">Complete 5 quadras perfeitas ou domine todos os critérios para liberar o Nível 2.</p>
+      <div class="mastery-grid">
+        <div class="mastery-track">
+          <div class="mastery-track__label"><span>Quadras perfeitas</span><strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong></div>
+          <div class="mastery-track__bar"><i style="width:${perfectPercent}%"></i></div>
+          <p>${escapeHtml(getPerfectQuadrasMessage(progress))}</p>
+        </div>
+        <div class="mastery-track">
+          <div class="mastery-track__label"><span>Critérios dominados</span><strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></div>
+          <div class="mastery-track__bar mastery-track__bar--criteria"><i style="width:${masteryPercent}%"></i></div>
+          <p>${escapeHtml(status)}</p>
+        </div>
+      </div>
+      <ul class="mastery-checklist">${checklist}</ul>
+      ${perfectNote}
+      ${duplicateNote}
+      <p class="mastery-panel__closing">${escapeHtml(secondary)}</p>
+    </section>
+  `;
+}
+
+function renderLevel2PreviewPanel() {
+  const progress = ensurePlayerProgress();
+  if (!ui.level2PreviewStatus) return;
+  ui.level2PreviewStatus.innerHTML = `
+    <div class="level2-preview-status">
+      <strong>${escapeHtml(getLevel2StatusMessage(progress))}</strong>
+      <p>Esta prévia fica reservada para experimentar a próxima camada da Inanna com o progresso do Nível 1 preservado.</p>
+      ${renderLevel2MiniProgress(progress)}
+    </div>
+  `;
+}
+
+function openLevel2Preview() {
+  if (!syncLevel2TrackAccess({ toast: true })) return;
+  state.selectedTrack = "level2";
+  hideGameExperience();
+  setView("level2Preview", ui.level2PreviewSection);
+  renderLevel2PreviewPanel();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function canAccessSextilhaWorkspace(email = state.email) {
@@ -2036,6 +2391,8 @@ function applyResolvedCheckinIdentity(identity) {
   state.teacherGroup = String(identity?.teacherGroup || "").trim();
   state.checkinLookupStatus = "matched";
   state.checkinLookupMessage = "";
+  loadPlayerProgress();
+  syncLevel2TrackAccess();
   recordIdentityDebugSnapshot("checkin_lookup_matched", {
     participantId: identity?.participantId,
     rebuiltParticipantId: identity?.rebuiltParticipantId,
@@ -2401,7 +2758,9 @@ function showTrackChooser() {
   resetSextilhaState();
   hideGameExperience();
   setView("chooser", ui.trackChooserSection);
+  loadPlayerProgress();
   syncSextilhaTrackAccess();
+  syncLevel2TrackAccess();
   window.scrollTo({ top: 0, behavior: "smooth" });
   prewarmSupabaseSextilhaSession();
 }
@@ -3708,9 +4067,11 @@ function finishPoem() {
   }
 
   // Aplica a nova pontuação estrutural no modo desafio
+  var progressUpdate = null;
   if (state.modeChallenge) {
     state.points = scoreBreakdown.total;
     ui.points.textContent = String(state.points);
+    progressUpdate = updatePlayerProgressAfterChallengeQuadra(scoreBreakdown);
   } else {
     state.points = 0;
     ui.points.textContent = "0";
@@ -3723,7 +4084,8 @@ function finishPoem() {
     feedbackEl.id = "rhymeFeedback";
     ui.poemSection.appendChild(feedbackEl);
   }
-  feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge);
+  feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge)
+    + (state.modeChallenge ? renderMasteryProgressHTML(progressUpdate) : "");
 
   ui.poemSection.classList.add("visible");
   updateRoundStatus();
@@ -4680,6 +5042,14 @@ if (ui.chooseSextilhaTrackBtn) {
       ui.chooseSextilhaTrackBtn.textContent = originalLabel;
     }
   });
+}
+
+if (ui.chooseLevel2TrackBtn) {
+  ui.chooseLevel2TrackBtn.addEventListener("click", openLevel2Preview);
+}
+
+if (ui.level2PreviewBackBtn) {
+  ui.level2PreviewBackBtn.addEventListener("click", showTrackChooser);
 }
 
 if (ui.trackChooserBackBtn) {
