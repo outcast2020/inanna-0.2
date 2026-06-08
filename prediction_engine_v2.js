@@ -387,10 +387,10 @@ function buildPredictionsV2(verse, theme, lines, scheme) {
   ]);
 
   const weights = [
-    { key: "themeAffinity", label: "Tema da trilha", weight: 0.2 },
-    { key: "rhymeAffinity", label: "Rima esperada", weight: 0.34 },
-    { key: "syntaxCue", label: "Pista sintatica", weight: 0.18 },
-    { key: "historyCoherence", label: "Coerencia da quadra", weight: 0.14 },
+    { key: "themeAffinity", label: "Tema da trilha", weight: 0.16 },
+    { key: "rhymeAffinity", label: "Rima esperada", weight: 0.46 },
+    { key: "syntaxCue", label: "Pista sintatica", weight: 0.16 },
+    { key: "historyCoherence", label: "Coerencia da quadra", weight: 0.08 },
     { key: "corpusFrequency", label: "Frequencia no mini-corpus", weight: 0.14 },
   ];
 

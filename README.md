@@ -9,7 +9,7 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - Branch principal da migracao: `feat/supabase-game`.
 - Backend ativo: Supabase.
 - Hosting ativo: Vercel.
-- GitHub Pages, Firebase, Firestore e Google Apps Script foram removidos do fluxo de producao.
+- GitHub Pages, Firebase e Firestore foram removidos do fluxo de producao. Google Apps Script fica restrito ao sincronizador administrativo de primeiro acesso da aba privada `USERS`.
 - IA generativa das sextilhas e envio social por e-mail estao suspensos por env (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
 
 ## Arquitetura
@@ -18,6 +18,7 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - Motor de previsao: `prediction_engine_v2.js`.
 - Banco lexical de rimas: `cordel_rhyme_bank.js`.
 - Backend, check-in, placar e caderno de sextilhas: Supabase.
+- Primeiro acesso: fallback opcional via Google Apps Script para ler a planilha privada `USERS`, upsertar o participante em Supabase e devolver a identidade ao app.
 - Build/deploy: Vite em `dist`, pronto para importacao do repositorio GitHub na Vercel.
 - Midias e embeds: imagens, video e snippet de footer na propria pasta.
 
@@ -29,7 +30,9 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - `supabase/migrations/003_participant_profile_legacy_import.sql` adiciona perfil estatistico de primeiro acesso, fingerprint legado e RPC de perfil.
 - `supabase/migrations/004_profile_race_age.sql` acrescenta identificacao racial e faixa etaria ao perfil estatistico.
 - `supabase/migrations/005_tighten_quadra_insert_policy.sql` restringe inserts de quadras ao participante identificado e adiciona indices de apoio.
+- `supabase/migrations/006_player_progress.sql` prepara a futura persistencia Supabase da Trilha de Maestria da Quadra com RLS fechado por padrao.
 - `scripts/import-legacy-quadras.mjs` importa check-in e quadras historicas do Google Sheets de forma idempotente.
+- `scripts/google-apps-script/inanna-first-access.gs` e o codigo para colar no Apps Script da planilha principal do laboratorio; ele sincroniza a aba `USERS` para `public.participantes` no primeiro acesso sem expor a planilha por link publico.
 - `supabase/functions/inanna-public-config` fornece configuracao publica em runtime para o navegador quando a build da Vercel nao substitui `VITE_*`.
 - `.env.example` lista apenas variaveis publicas `VITE_*` para frontend.
 - IA das sextilhas e envio por e-mail ficam desligados nesta fase (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
@@ -59,13 +62,13 @@ O usuario pode:
 ## Fluxo da experiencia
 
 1. A pessoa informa e-mail e precisa validar identidade pelo lookup de check-in.
-2. No primeiro acesso, completa perfil rapido: oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF ou fora do Brasil.
+2. No primeiro acesso, completa perfil rapido: estou nas oficinas Cordel 2.0 (sim/nao), ja usou algum chatbot de IA (sim/nao), genero (masculino, feminino, outro, prefiro nao dizer), identificacao racial (branco, indigena, pardo, preto, outro), faixa etaria e municipio/UF ou fora do Brasil.
 3. Nos acessos seguintes, o perfil ja salvo no Supabase libera a escolha de trilha.
 4. Escolhe a trilha de quadras e um tema.
-5. Escreve um verso sem a ultima palavra.
-6. O app reconstrui o verso com `___`.
-7. O motor sugere candidatos com probabilidade.
-8. A pessoa escolhe uma sugestao ou digita uma palavra propria.
+5. Escreve um verso completo.
+6. O app separa a ultima palavra e usa o restante do verso como contexto.
+7. O motor sugere candidatos com probabilidade, priorizando a rima esperada pelo esquema sorteado.
+8. A pessoa aceita uma sugestao ou mantem a propria palavra final.
 9. Depois de 4 versos, a quadra e fechada.
 10. No modo desafio, a quadra recebe pontuacao e pode entrar no placar.
 11. A quadra pode ser copiada, continuada ou enviada para o Supabase.
@@ -87,7 +90,7 @@ O estado principal guarda:
 - tema escolhido;
 - versos acumulados;
 - predicao atual;
-- esquema de rima;
+- esquema de rima sorteado (`AABB`, `ABAB` ou `ABBA`);
 - pontuacao;
 - modo desafio ligado/desligado.
 
@@ -155,21 +158,35 @@ O arquivo implementa, entre outras coisas:
 
 O modo desafio trabalha com:
 
-- forma da quadra;
-- qualidade das rimas;
-- bonus de esquema;
-- criatividade autoral.
+- rima final como eixo principal;
+- esquema sorteado da quadra (`AABB`, `ABAB` ou `ABBA`);
+- independencia autoral quando a pessoa rejeita sugestoes e ainda sustenta a rima;
+- originalidade lexical quando a palavra final e uma rima surpresa fora do banco local;
+- forma da quadra apenas como apoio leve;
 - penalidade para palavra final repetida como atalho de rima.
 
 Palavras finais repetidas nao pontuam como rima criativa: par com palavra final identica recebe penalidade, e repeticoes extras de palavra final reduzem a nota de rima da quadra.
 
+No Nivel 1 e no preview do Nivel 2, coesao narrativa e verossimilhanca regional nao entram na pontuacao mecanica. Esses criterios ficam reservados para o futuro Nivel 3.
+
 No frontend, a quadra e pontuada apos o quarto verso.
 
-No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar dependencia do calculo do cliente.
+## Trilha de Maestria da Quadra
+
+O progresso local do jogador usa `localStorage` em `inanna_player_progress_v1`. Apenas quadras no Modo Desafio contam. O Nível 2 e liberado quando uma das rotas acontece:
+
+- 5 quadras perfeitas unicas, com score maximo de 14 pontos no esquema sorteado.
+- Todas as 8 marcas de maestria conquistadas: forma, rima final, esquema forte, criatividade autoral, independencia da Inanna, sem repeticao final, sem falha de rima e dois esquemas usados corretamente.
+
+Em production com `VITE_INANNA_LEVEL=1`, o Nível 2 aparece como bloqueado/desbloqueavel. Em preview com `VITE_INANNA_LEVEL=2`, ele so abre quando o progresso local ja tiver `levelUnlocked >= 2`.
+
+O envio ao Supabase grava os pontos calculados pelo frontend e os campos de rima ja existentes no schema atual.
 
 ## Backend Supabase
 
-O check-in consulta `lookup_participante_por_email`, uma RPC que retorna apenas os dados necessarios para liberar a jornada. Quando o perfil rapido ainda esta pendente, o frontend chama `registrar_perfil_participante` para salvar oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF. A submissao de quadras insere em `quadras`, o placar le a view `placar_publico`, e as reacoes usam a RPC `registrar_reacao_placar` para manter o limite de 3 reacoes por visitante em cada quadra.
+O check-in consulta `lookup_participante_por_email`, uma RPC que retorna apenas os dados necessarios para liberar a jornada. Se o Supabase responder `email_not_found` e `VITE_INANNA_FIRST_ACCESS_LOOKUP_URL` estiver configurada, o frontend chama o Web App do Apps Script da planilha principal do laboratorio. Esse Web App roda como servidor, le a aba privada `USERS`, faz upsert em `public.participantes` com service role guardada em propriedades do script e devolve a identidade ja criada no Supabase. Nas entradas seguintes, o participante e resolvido diretamente por Supabase.
+
+Quando o perfil rapido ainda esta pendente, o frontend chama `registrar_perfil_participante` para salvar oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF. A submissao de quadras insere em `quadras`, o placar le a view `placar_publico`, e as reacoes usam a RPC `registrar_reacao_placar` para manter o limite de 3 reacoes por visitante em cada quadra.
 
 `placar_publico` nao expoe e-mail nem campos estatisticos. A view publica somente autor, verso, pontos, breakdown, timestamp, origem legada e contagem de reacoes.
 
@@ -218,13 +235,27 @@ pnpm import:legacy-quadras
 
 O script exige `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em ambiente local ou arquivo ignorado pelo Git. Mais detalhes em `supabase/importacao-placar-legado.md`.
 
+## Primeiro acesso pela planilha USERS
+
+Use `scripts/google-apps-script/inanna-first-access.gs` no Apps Script vinculado a planilha principal do laboratorio. Configure as propriedades do script:
+
+```text
+INANNA_SUPABASE_URL=https://ifhagjcarefdkcmjvknf.supabase.co
+INANNA_SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+INANNA_USERS_SPREADSHEET_ID=130CvfT6mwv0gzYQgmrylg4Q0T5xRI918dms8A4yzqO8
+INANNA_USERS_SHEET_NAME=USERS
+INANNA_FIRST_ACCESS_LOOKUP_TOKEN=<opcional>
+```
+
+Depois execute `configurarInannaPrimeiroAcesso`, teste `testarPrimeiroAcessoCeleste`, implante como Web App executando como o proprietario e com acesso "Qualquer pessoa", e cadastre a URL `/exec` na Vercel como `VITE_INANNA_FIRST_ACCESS_LOOKUP_URL`. Se o token opcional foi definido no Apps Script, cadastre o mesmo valor em `VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN`.
+
 ## Deploy Vercel
 
 1. Crie/aplique o schema Supabase usando `supabase/migrations`.
 2. Importe participantes/check-in e quadras historicas com `pnpm import:legacy-quadras`.
 3. Importe o repositorio GitHub na Vercel ou mantenha a integracao existente.
 4. Configure o preset como Vite, build `pnpm build` e output `dist`.
-5. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
+5. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_LEVEL=1`, `VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false` e, quando o Web App estiver implantado, `VITE_INANNA_FIRST_ACCESS_LOOKUP_URL`.
 6. Mantenha a Edge Function `inanna-public-config` implantada no Supabase como fallback publico de runtime config.
 7. Valide o preview antes de promover para production.
 
@@ -233,7 +264,7 @@ O projeto de producao deve ser criado/importado a partir do repositorio GitHub n
 ## Checklist de manutencao
 
 - Rodar `pnpm build` antes de publicar mudancas.
-- Conferir se as quatro envs `VITE_*` existem em Production na Vercel.
+- Conferir se as cinco envs `VITE_*` existem em Production na Vercel.
 - Conferir se `https://ifhagjcarefdkcmjvknf.supabase.co/functions/v1/inanna-public-config` responde JavaScript valido.
 - Verificar `placar_publico` apos importacoes ou alteracoes de scoring.
 - Rodar o importador em `IMPORT_DRY_RUN=true` antes de qualquer nova carga historica.

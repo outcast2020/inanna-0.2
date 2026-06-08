@@ -2,9 +2,9 @@
 // Inanna — Proto-IA Educativa (Cordel 2.0)
 // Novo fluxo de jogo:
 //  ETAPA 1: Usuário escolhe um contexto (tema)
-//  ETAPA 2: Usuário escreve um verso incompleto usando ___ como lacuna
-//  ETAPA 3: Sistema prevê candidatos com probabilidades; usuário escolhe
-//            um dos candidatos OU digita a própria palavra
+//  ETAPA 2: Usuário escreve um verso completo
+//  ETAPA 3: Sistema sugere alternativas para a última palavra; usuário escolhe
+//            um dos candidatos OU mantém/digita a própria palavra
 //  O ciclo se repete até completar 4 versos (quadra).
 // =====================================================================
 
@@ -52,6 +52,12 @@ const ui = {
   chooseGameTrackBtn: $("chooseGameTrackBtn"),
   chooseSextilhaTrackBtn: $("chooseSextilhaTrackBtn"),
   sextilhaAccessNotice: $("sextilhaAccessNotice"),
+  chooseLevel2TrackBtn: $("chooseLevel2TrackBtn"),
+  level2AccessNotice: $("level2AccessNotice"),
+  level2ProgressSummary: $("level2ProgressSummary"),
+  level2PreviewSection: $("level2PreviewSection"),
+  level2PreviewStatus: $("level2PreviewStatus"),
+  level2PreviewBackBtn: $("level2PreviewBackBtn"),
   trackChooserBackBtn: $("trackChooserBackBtn"),
   userDashboardSection: $("userDashboardSection"),
   dashboardGreeting: $("dashboardGreeting"),
@@ -223,6 +229,8 @@ const state = {
   lines: [],          // versos completos
   current: {
     rawVerse: "",     // verso com ___
+    originalVerse: "",
+    originalToken: "",
     pred: null,       // resultado de buildPredictions
   },
   points: 0,
@@ -230,6 +238,7 @@ const state = {
   modeChallenge: false,
   rhyme: null,
   scoreBreakdown: null,
+  playerProgress: null,
   writingStartedAt: 0,
   writingElapsedMs: 0,
   writingTimerId: null,
@@ -263,6 +272,7 @@ const PLACAR_VISIBLE_LIMIT = 20;
 const PLACAR_PREVIEW_LIMIT = 3;
 const PLACAR_REACTION_LIMIT = 3;
 const PLACAR_REACTION_VIEWER_STORAGE_KEY = "inanna_placar_reaction_viewer_v1";
+const PLAYER_PROGRESS_STORAGE_KEY = "inanna_player_progress_v1";
 const MUNICIPIOS_BR_API_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios";
 const MUNICIPIOS_BR_CACHE_KEY = "inanna_municipios_br_v1";
 const PLACAR_REACTIONS = [
@@ -272,8 +282,40 @@ const PLACAR_REACTIONS = [
 ];
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
-const INANNA_AI_ENABLED = !!window.INANNA_APP_CONFIG?.aiEnabled;
-const INANNA_SOCIAL_EMAIL_ENABLED = !!window.INANNA_APP_CONFIG?.socialEmailEnabled;
+const LEVEL2_LOCKED_NOTICE = "Domine a rima humana no Nível 1 para liberar o Nível 2.";
+const CHALLENGE_MAX_SCORE = 14;
+const MASTERY_CRITERIA = [
+  { key: "formaMax", label: "Forma da quadra" },
+  { key: "rimaFinalMax", label: "Rima final forte" },
+  { key: "esquemaForteMax", label: "Esquema forte" },
+  { key: "criatividadeAutoralMax", label: "Criatividade autoral" },
+  { key: "independenciaMax", label: "Independência da Inanna" },
+  { key: "semRepeticaoFinal", label: "Sem repetição final" },
+  { key: "semFalhaDeRima", label: "Sem falha de rima" },
+  { key: "doisEsquemasUsados", label: "Dois esquemas usados" },
+];
+function readBooleanConfigFlag(value) {
+  if (value === true) return true;
+  if (value === false || value === null || typeof value === "undefined") return false;
+  return ["1", "true", "yes", "sim", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function readNumericConfigFlag(value, fallback) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readStringConfigValue(value) {
+  const text = String(value || "").trim();
+  if (!text || /^%VITE_[A-Z0-9_]+%$/.test(text)) return "";
+  return text;
+}
+
+const INANNA_LEVEL = readNumericConfigFlag(window.INANNA_APP_CONFIG?.level, 1);
+const INANNA_AI_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.aiEnabled);
+const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
+const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
+const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
@@ -770,6 +812,341 @@ function getPlacarReactionViewerKey() {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function emptyMasteryState() {
+  return MASTERY_CRITERIA.reduce((acc, item) => {
+    acc[item.key] = false;
+    return acc;
+  }, {});
+}
+
+function emptySchemesUsed() {
+  return { AABB: 0, ABAB: 0, ABBA: 0 };
+}
+
+function getProgressPlayerId() {
+  return String(
+    state.participantId
+    || state.checkinUserId
+    || normalizeEmail(state.email)
+    || "visitante"
+  ).trim();
+}
+
+function createDefaultPlayerProgress() {
+  return {
+    playerId: getProgressPlayerId(),
+    nickname: state.name || state.playerData?.nome || state.playerData?.name || "Participante",
+    levelUnlocked: 1,
+    perfectQuadrasCount: 0,
+    uniquePerfectQuadraHashes: [],
+    mastery: emptyMasteryState(),
+    schemesUsed: emptySchemesUsed(),
+    totalChallengeQuadras: 0,
+    bestScore: 0,
+    lastUpdatedAt: new Date().toISOString()
+  };
+}
+
+function hydratePlayerProgress(rawProgress = {}) {
+  const fallback = createDefaultPlayerProgress();
+  const progress = {
+    ...fallback,
+    ...rawProgress,
+    playerId: getProgressPlayerId(),
+    nickname: state.name || rawProgress.nickname || fallback.nickname,
+    levelUnlocked: Math.max(1, Math.min(3, Number(rawProgress.levelUnlocked || fallback.levelUnlocked) || 1)),
+    perfectQuadrasCount: Math.max(0, Number(rawProgress.perfectQuadrasCount || 0) || 0),
+    uniquePerfectQuadraHashes: Array.isArray(rawProgress.uniquePerfectQuadraHashes)
+      ? rawProgress.uniquePerfectQuadraHashes.filter(Boolean)
+      : [],
+    mastery: {
+      ...emptyMasteryState(),
+      ...(rawProgress.mastery || {})
+    },
+    schemesUsed: {
+      ...emptySchemesUsed(),
+      ...(rawProgress.schemesUsed || {})
+    },
+    totalChallengeQuadras: Math.max(0, Number(rawProgress.totalChallengeQuadras || 0) || 0),
+    bestScore: Math.max(0, Number(rawProgress.bestScore || 0) || 0),
+    lastUpdatedAt: rawProgress.lastUpdatedAt || fallback.lastUpdatedAt
+  };
+  progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length || progress.perfectQuadrasCount;
+  return progress;
+}
+
+function readStoredPlayerProgress() {
+  try {
+    const raw = window.localStorage?.getItem(PLAYER_PROGRESS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const playerId = getProgressPlayerId();
+    if (parsed?.playerId === playerId) return parsed;
+    if (parsed?.players?.[playerId]) return parsed.players[playerId];
+  } catch (error) {
+    console.debug("Nao foi possivel ler progresso local.", error);
+  }
+  return null;
+}
+
+function savePlayerProgress(progress) {
+  const next = hydratePlayerProgress(progress);
+  next.lastUpdatedAt = new Date().toISOString();
+  state.playerProgress = next;
+  try {
+    window.localStorage?.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify(next));
+  } catch (error) {
+    console.debug("Nao foi possivel salvar progresso local.", error);
+  }
+  syncLevel2TrackAccess();
+  return next;
+}
+
+function loadPlayerProgress() {
+  state.playerProgress = hydratePlayerProgress(readStoredPlayerProgress() || {});
+  return state.playerProgress;
+}
+
+function ensurePlayerProgress() {
+  if (!state.playerProgress || state.playerProgress.playerId !== getProgressPlayerId()) {
+    return loadPlayerProgress();
+  }
+  return state.playerProgress;
+}
+
+function countMasteryCriteria(progress = ensurePlayerProgress()) {
+  return MASTERY_CRITERIA.filter((item) => !!progress.mastery?.[item.key]).length;
+}
+
+function getProgressPercent(value, total) {
+  return Math.max(0, Math.min(100, Math.round((Number(value || 0) / Math.max(1, total)) * 100)));
+}
+
+function normalizeQuadraForProgress(lines) {
+  return (lines || [])
+    .map((line) => normalizeVerseAnalysisText(line?.verse || line || ""))
+    .join("\n")
+    .trim();
+}
+
+function hashProgressText(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function getMasteryFlagsFromScore(scoreBreakdown) {
+  const rhyme = scoreBreakdown?.rhyme || {};
+  const pairScores = Array.isArray(rhyme.pairScores) ? rhyme.pairScores : [];
+  return {
+    formaMax: Number(scoreBreakdown?.structure?.points || 0) >= 1,
+    rimaFinalMax: Number(rhyme.pairScoreTotal || 0) >= 6,
+    esquemaForteMax: Number(rhyme.schemeBonus || 0) >= 3,
+    criatividadeAutoralMax: Number(scoreBreakdown?.creativity?.bonus || 0) >= 4,
+    independenciaMax: Number(scoreBreakdown?.independence?.bonus || 0) >= 2,
+    semRepeticaoFinal: Number(rhyme.repeatedEndingPenalty || 0) === 0,
+    semFalhaDeRima: pairScores.length === 2 && pairScores.every((score) => Number(score || 0) > 0),
+    doisEsquemasUsados: false
+  };
+}
+
+function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
+  if (!state.modeChallenge || !scoreBreakdown) return null;
+  const before = hydratePlayerProgress(ensurePlayerProgress());
+  const progress = hydratePlayerProgress(before);
+  const rhyme = scoreBreakdown.rhyme || {};
+  const scheme = ["AABB", "ABAB", "ABBA"].includes(rhyme.expectedScheme)
+    ? rhyme.expectedScheme
+    : ["AABB", "ABAB", "ABBA"].includes(rhyme.scheme)
+      ? rhyme.scheme
+      : "";
+  const flags = getMasteryFlagsFromScore(scoreBreakdown);
+  const normalizedQuadra = normalizeQuadraForProgress(state.lines);
+  const quadraHash = normalizedQuadra ? hashProgressText(normalizedQuadra) : "";
+  const isPerfect = Number(scoreBreakdown.total || 0) >= CHALLENGE_MAX_SCORE
+    && flags.formaMax
+    && flags.rimaFinalMax
+    && flags.esquemaForteMax
+    && flags.criatividadeAutoralMax
+    && flags.independenciaMax
+    && flags.semRepeticaoFinal
+    && flags.semFalhaDeRima
+    && !!scheme;
+  const duplicatePerfect = isPerfect && quadraHash && progress.uniquePerfectQuadraHashes.includes(quadraHash);
+
+  progress.totalChallengeQuadras += 1;
+  progress.bestScore = Math.max(progress.bestScore, Number(scoreBreakdown.total || 0));
+  if (scheme && flags.esquemaForteMax && flags.semFalhaDeRima) {
+    progress.schemesUsed[scheme] = Number(progress.schemesUsed[scheme] || 0) + 1;
+  }
+
+  Object.entries(flags).forEach(([key, value]) => {
+    if (key !== "doisEsquemasUsados" && value) progress.mastery[key] = true;
+  });
+  progress.mastery.doisEsquemasUsados = Object.values(progress.schemesUsed).filter((count) => Number(count || 0) > 0).length >= 2;
+
+  if (isPerfect && quadraHash && !duplicatePerfect) {
+    progress.uniquePerfectQuadraHashes.push(quadraHash);
+  }
+  progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length;
+
+  const unlockByPerfectQuadras = progress.perfectQuadrasCount >= 5;
+  const unlockByMastery = Object.values(progress.mastery).every(Boolean);
+  if (unlockByPerfectQuadras || unlockByMastery) {
+    progress.levelUnlocked = Math.max(progress.levelUnlocked, 2);
+  }
+
+  const saved = savePlayerProgress(progress);
+  return {
+    progress: saved,
+    before,
+    flags,
+    isPerfect,
+    duplicatePerfect,
+    justUnlocked: before.levelUnlocked < 2 && saved.levelUnlocked >= 2,
+    unlockByPerfectQuadras,
+    unlockByMastery
+  };
+}
+
+function getPerfectQuadrasMessage(progress) {
+  const count = Number(progress?.perfectQuadrasCount || 0);
+  if (count >= 5) return "Nível 2 desbloqueado pela excelência.";
+  if (count >= 3) return "Você já domina boa parte da rima.";
+  if (count >= 1) return "Primeira quadra perfeita registrada.";
+  return "Comece sua jornada de maestria.";
+}
+
+function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
+  if (progress.levelUnlocked >= 2 && INANNA_LEVEL >= 2) {
+    return "Nível 2 liberado em preview.";
+  }
+  if (progress.levelUnlocked >= 2) {
+    return "Nível 2 conquistado; preview será ativado quando a produção mudar para o nível 2.";
+  }
+  const missing = MASTERY_CRITERIA.length - countMasteryCriteria(progress);
+  return `Bloqueado: faltam ${Math.max(0, 5 - progress.perfectQuadrasCount)} quadras perfeitas ou ${missing} marcas de maestria.`;
+}
+
+function canAccessLevel2Preview(progress = ensurePlayerProgress()) {
+  return INANNA_LEVEL >= 2 && Number(progress.levelUnlocked || 1) >= 2;
+}
+
+function syncLevel2TrackAccess(options = {}) {
+  const progress = ensurePlayerProgress();
+  const hasAccess = canAccessLevel2Preview(progress);
+  const message = getLevel2StatusMessage(progress);
+
+  if (ui.chooseLevel2TrackBtn) {
+    ui.chooseLevel2TrackBtn.disabled = !hasAccess;
+    ui.chooseLevel2TrackBtn.title = hasAccess ? "" : LEVEL2_LOCKED_NOTICE;
+  }
+  if (ui.level2AccessNotice) {
+    ui.level2AccessNotice.textContent = message;
+    ui.level2AccessNotice.hidden = false;
+  }
+  if (ui.level2ProgressSummary) {
+    ui.level2ProgressSummary.innerHTML = renderLevel2MiniProgress(progress);
+  }
+  if (!hasAccess && options.toast) {
+    showToast(message || LEVEL2_LOCKED_NOTICE, "muted", { duration: 4600 });
+  }
+  return hasAccess;
+}
+
+function renderLevel2MiniProgress(progress = ensurePlayerProgress()) {
+  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
+  const masteryCount = countMasteryCriteria(progress);
+  return `
+    <div class="level2-mini-progress">
+      <span>Quadras perfeitas: <strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong></span>
+      <span>Critérios dominados: <strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></span>
+      <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${perfectPercent}%"></i></span>
+    </div>
+  `;
+}
+
+function renderMasteryProgressHTML(update) {
+  const progress = update?.progress || ensurePlayerProgress();
+  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
+  const masteryCount = countMasteryCriteria(progress);
+  const masteryPercent = getProgressPercent(masteryCount, MASTERY_CRITERIA.length);
+  const pending = MASTERY_CRITERIA.filter((item) => !progress.mastery?.[item.key]);
+  const unlocked = Number(progress.levelUnlocked || 1) >= 2;
+  const status = update?.justUnlocked
+    ? "Nível 2 desbloqueado! Você provou que a rima humana pode enfrentar a sedução da máquina."
+    : unlocked
+      ? "Nível 2 desbloqueado pela sua trilha de maestria."
+      : `Faltam ${pending.length} marcas de maestria para liberar o Nível 2.`;
+  const secondary = update?.justUnlocked
+    ? "Agora a Inanna ficará mais persuasiva. Mas a vitória continua dependendo da sua autoria."
+    : getPerfectQuadrasMessage(progress);
+  const duplicateNote = update?.duplicatePerfect
+    ? `<p class="mastery-panel__note">Esta quadra perfeita já tinha sido registrada; ela não aumenta o contador de quadras únicas.</p>`
+    : "";
+  const perfectNote = update?.isPerfect && !update?.duplicatePerfect
+    ? `<p class="mastery-panel__note">Quadra perfeita única registrada nesta rodada.</p>`
+    : "";
+  const checklist = MASTERY_CRITERIA.map((item) => {
+    const done = !!progress.mastery?.[item.key];
+    return `<li class="${done ? "done" : "pending"}"><span>${done ? "✓" : "□"}</span>${escapeHtml(item.label)}</li>`;
+  }).join("");
+
+  return `
+    <section class="mastery-panel ${unlocked ? "mastery-panel--unlocked" : ""}" aria-label="Trilha de Maestria da Quadra">
+      <div class="mastery-panel__head">
+        <div>
+          <p class="mastery-panel__eyebrow">Trilha de Maestria da Quadra</p>
+          <h3>Domine a rima humana antes de enfrentar a sedução do Nível 2.</h3>
+        </div>
+        <span class="mastery-panel__badge">${unlocked ? "Nível 2 desbloqueado" : "Nível 2 bloqueado"}</span>
+      </div>
+      <p class="mastery-panel__intro">Complete 5 quadras perfeitas ou domine todos os critérios para liberar o Nível 2.</p>
+      <div class="mastery-grid">
+        <div class="mastery-track">
+          <div class="mastery-track__label"><span>Quadras perfeitas</span><strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong></div>
+          <div class="mastery-track__bar"><i style="width:${perfectPercent}%"></i></div>
+          <p>${escapeHtml(getPerfectQuadrasMessage(progress))}</p>
+        </div>
+        <div class="mastery-track">
+          <div class="mastery-track__label"><span>Critérios dominados</span><strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></div>
+          <div class="mastery-track__bar mastery-track__bar--criteria"><i style="width:${masteryPercent}%"></i></div>
+          <p>${escapeHtml(status)}</p>
+        </div>
+      </div>
+      <ul class="mastery-checklist">${checklist}</ul>
+      ${perfectNote}
+      ${duplicateNote}
+      <p class="mastery-panel__closing">${escapeHtml(secondary)}</p>
+    </section>
+  `;
+}
+
+function renderLevel2PreviewPanel() {
+  const progress = ensurePlayerProgress();
+  if (!ui.level2PreviewStatus) return;
+  ui.level2PreviewStatus.innerHTML = `
+    <div class="level2-preview-status">
+      <strong>${escapeHtml(getLevel2StatusMessage(progress))}</strong>
+      <p>Esta prévia fica reservada para experimentar a próxima camada da Inanna com o progresso do Nível 1 preservado.</p>
+      ${renderLevel2MiniProgress(progress)}
+    </div>
+  `;
+}
+
+function openLevel2Preview() {
+  if (!syncLevel2TrackAccess({ toast: true })) return;
+  state.selectedTrack = "level2";
+  hideGameExperience();
+  setView("level2Preview", ui.level2PreviewSection);
+  renderLevel2PreviewPanel();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function canAccessSextilhaWorkspace(email = state.email) {
@@ -1699,7 +2076,8 @@ function normalizeProfileGender(value) {
 
 function normalizeProfileRace(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return ["negro", "branco", "pardo", "indigena", "outro"].includes(normalized) ? normalized : "";
+  if (["negro", "negra"].includes(normalized)) return "preto";
+  return ["branco", "indigena", "pardo", "preto", "outro"].includes(normalized) ? normalized : "";
 }
 
 function normalizeProfileAgeRange(value) {
@@ -2013,6 +2391,8 @@ function applyResolvedCheckinIdentity(identity) {
   state.teacherGroup = String(identity?.teacherGroup || "").trim();
   state.checkinLookupStatus = "matched";
   state.checkinLookupMessage = "";
+  loadPlayerProgress();
+  syncLevel2TrackAccess();
   recordIdentityDebugSnapshot("checkin_lookup_matched", {
     participantId: identity?.participantId,
     rebuiltParticipantId: identity?.rebuiltParticipantId,
@@ -2130,6 +2510,119 @@ async function requestCheckinIdentityViaSupabase(email) {
   }
 }
 
+function requestJsonp(url, params = {}, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let script = null;
+    let didFinish = false;
+    const callbackName = `__inannaFirstAccess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    function cleanup() {
+      didFinish = true;
+      if (script?.parentNode) script.parentNode.removeChild(script);
+      try {
+        delete window[callbackName];
+      } catch (_) {
+        window[callbackName] = undefined;
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      if (didFinish) return;
+      cleanup();
+      reject(new Error("timeout"));
+    }, timeoutMs);
+
+    window[callbackName] = (payload) => {
+      if (didFinish) return;
+      window.clearTimeout(timer);
+      cleanup();
+      resolve(payload);
+    };
+
+    try {
+      const requestUrl = new URL(url);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && typeof value !== "undefined" && String(value).trim()) {
+          requestUrl.searchParams.set(key, String(value).trim());
+        }
+      });
+      requestUrl.searchParams.set("callback", callbackName);
+
+      script = document.createElement("script");
+      script.async = true;
+      script.src = requestUrl.toString();
+      script.onerror = () => {
+        if (didFinish) return;
+        window.clearTimeout(timer);
+        cleanup();
+        reject(new Error("network"));
+      };
+      document.head.appendChild(script);
+    } catch (error) {
+      window.clearTimeout(timer);
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+function normalizeFirstAccessLookupResponse(payload = {}, fallbackEmail = "") {
+  if (!payload?.ok || payload?.status !== "matched") {
+    return {
+      ok: false,
+      status: payload?.status || "error",
+      error: payload?.error || "first_access_lookup_error",
+    };
+  }
+
+  const source = payload.participant || payload.data || payload;
+  return {
+    ok: true,
+    status: "matched",
+    participantId: source.participantId || source.id || source.participante_id || "",
+    checkinUserId: source.checkinUserId || source.checkin_user_id || source.id || "",
+    participantIdSource: source.participantIdSource || "first_access_google_sheet",
+    checkinUserIdSource: source.checkinUserIdSource || "first_access_google_sheet",
+    matchMethod: source.matchMethod || "first_access_google_sheet",
+    name: source.name || source.nome || "Participante",
+    email: source.email || fallbackEmail,
+    tipoParticipante: source.tipoParticipante || source.tipo_participante || "",
+    municipio: source.municipio || "",
+    estado: source.estado || "",
+    pais: source.pais || "BR",
+    origem: source.origem || "google-sheets-users",
+    teacherGroup: source.teacherGroup || source.teacher_group || "",
+    oficinaCordel20: source.oficinaCordel20 ?? source.oficina_cordel20,
+    usouChatbotIa: source.usouChatbotIa ?? source.usou_chatbot_ia,
+    genero: source.genero || "",
+    identificacaoRacial: source.identificacaoRacial || source.identificacao_racial || "",
+    faixaEtaria: source.faixaEtaria || source.faixa_etaria || "",
+    profileComplete: !!(source.profileComplete ?? source.perfil_completo),
+  };
+}
+
+async function requestFirstAccessIdentityViaGoogleSheet(email) {
+  if (!INANNA_FIRST_ACCESS_LOOKUP_URL) {
+    return { ok: false, status: "error", error: "first_access_lookup_not_configured" };
+  }
+
+  try {
+    const payload = await requestJsonp(
+      INANNA_FIRST_ACCESS_LOOKUP_URL,
+      {
+        action: "first_access_lookup",
+        email,
+        token: INANNA_FIRST_ACCESS_LOOKUP_TOKEN,
+      },
+      18000
+    );
+    return normalizeFirstAccessLookupResponse(payload, email);
+  } catch (error) {
+    console.error(error);
+    return { ok: false, status: "error", error: error?.message || "first_access_lookup_error" };
+  }
+}
+
 async function verifyCheckinEmail() {
   const typedEmail = ui.playerEmail?.value.trim() || "";
 
@@ -2146,7 +2639,14 @@ async function verifyCheckinEmail() {
   setStartHint("");
   updateWelcomeIdentityUI();
 
-  const response = await requestCheckinIdentityViaSupabase(typedEmail);
+  let response = await requestCheckinIdentityViaSupabase(typedEmail);
+
+  if (response?.status === "unmatched" && response?.error === "email_not_found" && INANNA_FIRST_ACCESS_LOOKUP_URL) {
+    state.checkinLookupMessage = "Consultando cadastro principal do laboratorio...";
+    setStartHint("");
+    updateWelcomeIdentityUI();
+    response = await requestFirstAccessIdentityViaGoogleSheet(typedEmail);
+  }
 
   if (response?.ok && response?.status === "matched") {
     applyResolvedCheckinIdentity(response);
@@ -2173,6 +2673,10 @@ async function verifyCheckinEmail() {
     invalid_email: "Digite um e-mail válido para consultar o check-in.",
     ambiguous_email: "Encontrei mais de um cadastro com esse e-mail no check-in.",
     email_not_found: "Este e-mail não está registrado no check-in oficial.",
+    first_access_lookup_not_configured: "A consulta do primeiro acesso ainda não foi configurada.",
+    first_access_lookup_error: "Não consegui consultar o cadastro principal agora. Tente novamente em instantes.",
+    unauthorized: "Consulta do cadastro principal não autorizada.",
+    supabase_sync_error: "Encontrei o e-mail na planilha, mas não consegui registrar no Supabase.",
     supabase_not_configured: "Supabase ainda não foi configurado para consultar o check-in.",
     timeout: "A consulta demorou demais. Tente novamente.",
     network: "Não consegui acessar o check-in agora. Tente novamente em instantes."
@@ -2254,7 +2758,9 @@ function showTrackChooser() {
   resetSextilhaState();
   hideGameExperience();
   setView("chooser", ui.trackChooserSection);
+  loadPlayerProgress();
   syncSextilhaTrackAccess();
+  syncLevel2TrackAccess();
   window.scrollTo({ top: 0, behavior: "smooth" });
   prewarmSupabaseSextilhaSession();
 }
@@ -2277,7 +2783,7 @@ function stopGameSessionAndReturnToMenu() {
   if (ui.selectedThemeName) ui.selectedThemeName.textContent = "—";
   if (ui.verseInput) {
     ui.verseInput.value = "";
-    ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
+    ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   }
   if (ui.modeChallenge) {
     ui.modeChallenge.checked = false;
@@ -2725,27 +3231,35 @@ function stripTrailingVersePunctuation(value) {
   return String(value || "").replace(/[\p{P}\p{S}]+$/gu, "").trim();
 }
 
+function cleanFinalWordToken(value) {
+  return String(value || "")
+    .replace(/^[^A-Za-zÀ-ÿ]+|[^A-Za-zÀ-ÿ-]+$/g, "")
+    .trim();
+}
+
 function parseVerseStem(rawValue) {
   const raw = normalizeSpaces(rawValue);
   if (!raw) {
-    return { ok: false, error: "✋ Escreva o começo do verso antes de continuar." };
+    return { ok: false, error: "✋ Escreva o verso completo antes de continuar." };
   }
 
   const blanks = raw.match(/___/g) || [];
-  if (blanks.length > 1) {
-    return { ok: false, error: "Use apenas uma lacuna, sempre no fim do verso." };
+  if (blanks.length > 0) {
+    return { ok: false, error: "Escreva o verso completo, sem lacuna. A Inanna analisará a última palavra." };
   }
 
-  if (blanks.length === 1 && !/___$/.test(raw)) {
-    return { ok: false, error: "A lacuna precisa ficar na última palavra do verso." };
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) {
+    return { ok: false, error: "Escreva ao menos duas palavras para a Inanna comparar o fim do verso." };
   }
 
-  const cleaned = stripTrailingVersePunctuation(raw.replace(/___$/, ""));
-  if (!cleaned) {
-    return { ok: false, error: "Escreva algum contexto antes da lacuna final." };
+  const finalWord = cleanFinalWordToken(tokens[tokens.length - 1]);
+  const stem = stripTrailingVersePunctuation(tokens.slice(0, -1).join(" "));
+  if (!stem || !normWord(finalWord)) {
+    return { ok: false, error: "A última palavra precisa ser uma palavra legível para entrar na rima." };
   }
 
-  return { ok: true, stem: cleaned };
+  return { ok: true, stem, finalWord, originalVerse: raw };
 }
 
 function buildRawVerse(stem) {
@@ -2758,17 +3272,16 @@ function updateVerseBlankPreview() {
   const parsed = parseVerseStem(ui.verseInput.value || "");
   if (!parsed.ok) {
     ui.verseBlankPreview.innerHTML = `
-      <span class="preview-muted">Seu verso aparecerá assim:</span>
+      <span class="preview-muted">Seu verso será analisado assim:</span>
       <span class="preview-stem">...</span>
-      <span class="blank-placeholder fixed">___</span>
     `;
     return;
   }
 
   ui.verseBlankPreview.innerHTML = `
-    <span class="preview-muted">Seu verso ficará assim:</span>
+    <span class="preview-muted">Última palavra em disputa:</span>
     <span class="preview-stem">${escapeHtml(parsed.stem)}</span>
-    <span class="blank-placeholder fixed">___</span>
+    <span class="blank-placeholder fixed">${escapeHtml(parsed.finalWord)}</span>
   `;
 }
 
@@ -2795,7 +3308,8 @@ function updateRoundStatus() {
 }
 
 function refreshSuggestedScheme() {
-  state.scheme = Math.random() < 0.5 ? "AABB" : "ABAB";
+  const schemes = ["AABB", "ABAB", "ABBA"];
+  state.scheme = schemes[Math.floor(Math.random() * schemes.length)];
   const schemeSpan = document.getElementById("suggestedScheme");
   if (schemeSpan) schemeSpan.textContent = state.scheme;
 }
@@ -2804,7 +3318,7 @@ function resetQuadraState(options) {
   const settings = Object.assign({ resetPoints: true, restartTimer: false }, options);
 
   state.lines = [];
-  state.current = { rawVerse: "", pred: null };
+  state.current = { rawVerse: "", originalVerse: "", originalToken: "", pred: null };
   state.rhyme = null;
   state.scoreBreakdown = null;
 
@@ -3028,18 +3542,13 @@ function selectTheme(theme) {
   refreshSuggestedScheme();
   resetQuadraState({ resetPoints: true, restartTimer: true });
 
-  // Define o placeholder instigante (armadilha) usando o trap example do objeto
-  if (theme.trap) {
-    ui.verseInput.placeholder = theme.trap.replace(/\s*___\s*$/, "");
-  } else {
-    ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
-  }
+  ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   updateVerseBlankPreview();
 
   goToPhase(2);
 }
 
-// ── Etapa 2 — entrada do verso incompleto ────────────────────────────
+// ── Etapa 2 — entrada do verso completo ──────────────────────────────
 function onAnalyze() {
   const parsed = parseVerseStem(ui.verseInput.value || "");
   if (!parsed.ok) {
@@ -3048,13 +3557,15 @@ function onAnalyze() {
     return;
   }
 
-  ui.verseInput.value = parsed.stem;
-  ui.verseHint.textContent = "A lacuna final será prevista pela Inanna a partir desse contexto.";
+  ui.verseInput.value = parsed.originalVerse;
+  ui.verseHint.textContent = `A Inanna vai sugerir alternativas para "${parsed.finalWord}". Manter sua palavra pode render bônus se a rima fechar.`;
   ui.verseHint.style.color = "var(--muted)";
   updateVerseBlankPreview();
 
   const raw = buildRawVerse(parsed.stem);
   state.current.rawVerse = raw;
+  state.current.originalVerse = parsed.originalVerse;
+  state.current.originalToken = parsed.finalWord;
   state.current.pred = (typeof buildPredictionsV2 === "function")
     ? buildPredictionsV2(raw, state.chosenTheme, state.lines, state.scheme)
     : buildPredictions(raw, state.chosenTheme);
@@ -3074,7 +3585,7 @@ function buildPredictions(verse, theme) {
     }
   }
 
-  // Contexto antes da lacuna
+  // Contexto antes da palavra final em disputa.
   const before = norm(verse.split("___")[0]);
 
   // Heurística: fim com artigo
@@ -3122,11 +3633,17 @@ function renderStep3() {
   const { rawVerse, pred } = state.current;
   const theme = state.chosenTheme;
 
-  // Preview do verso com lacuna destacada
+  // Preview do verso com a palavra final em disputa.
   const highlighted = escapeHtml(rawVerse).replace("___", `<span class="blank-placeholder">___</span>`);
   ui.versePreview.innerHTML = highlighted;
   const rhymeHint = pred && pred.targetRhymeWord ? ` · rima esperada com "${pred.targetRhymeWord}"` : "";
   ui.contextDetected.textContent = `${theme.emoji} ${theme.name}${rhymeHint}`;
+  if (ui.customInput) {
+    ui.customInput.value = state.current.originalToken || "";
+    ui.customInput.placeholder = state.current.originalToken
+      ? "Mantenha sua palavra ou digite outra..."
+      : "Digite apenas uma palavra...";
+  }
   updateRoundStatus();
 
   // Lista de candidatos
@@ -3153,7 +3670,7 @@ function renderStep3() {
 
   // Explicação
   setExplain(
-    `As probabilidades aparecem na lista principal. Abra o vetor de qualquer palavra ou a mini-aula para ver como a IA organiza números, pesos e chances.`
+    `As probabilidades aparecem na lista principal. Você pode aceitar uma sugestão ou manter "${state.current.originalToken || "sua palavra"}" como escolha humana.`
   );
   refreshPedagogyModalContent();
 }
@@ -3210,12 +3727,12 @@ function chooseToken(token, index, source) {
 function onCustomChoice() {
   const word = normalizeSpaces(ui.customInput.value || "");
   if (!word) {
-    setExplain("Digite uma palavra para fechar a lacuna final.");
+    setExplain("Digite uma palavra para fechar o verso.");
     ui.customInput.focus();
     return;
   }
   if (/\s/.test(word) || word.includes("___")) {
-    setExplain("Use apenas uma palavra na lacuna final.");
+    setExplain("Use apenas uma palavra como fechamento do verso.");
     ui.customInput.focus();
     return;
   }
@@ -3343,34 +3860,52 @@ function analyzeStructure(lines) {
   return {
     goodLines: goodLines,
     suspiciousLines: suspiciousLines,
-    points: goodLines === 4 ? 2 : goodLines >= 3 ? 1 : 0
+    points: goodLines === 4 ? 1 : 0
   };
 }
 
-// Analisa o melhor esquema de rima da quadra (4 versos)
-function analyzeRhyme(lines) {
-  const words = lines.map(function (l) { return lastWordOf(l.verse); });
-
-  const schemes = [
-    { id: "AABB", pairs: [[0, 1], [2, 3]], label: "AABB", desc: "Rima em parândo — 1º/2º rimam, 3º/4º rimam" },
+function getQuadraRhymeSchemes() {
+  return [
+    { id: "AABB", pairs: [[0, 1], [2, 3]], label: "AABB", desc: "Rima em par — 1º/2º rimam, 3º/4º rimam" },
     { id: "ABAB", pairs: [[0, 2], [1, 3]], label: "ABAB", desc: "Rima alternada — 1º/3º rimam, 2º/4º rimam" },
     { id: "ABBA", pairs: [[0, 3], [1, 2]], label: "ABBA", desc: "Rima abraçada — 1º/4º rimam, 2º/3º rimam" },
   ];
+}
 
-  var best = null, bestScore = -99, bestPairScores = [];
-  schemes.forEach(function (s) {
-    var ps = s.pairs.map(function (pair) { return rhymePairScore(words[pair[0]], words[pair[1]]); });
-    var total = ps.reduce(function (a, b) { return a + b; }, 0);
-    if (total > bestScore) { bestScore = total; best = s; bestPairScores = ps; }
-  });
+function scoreRhymeScheme(scheme, words) {
+  var pairScores = scheme.pairs.map(function (pair) { return rhymePairScore(words[pair[0]], words[pair[1]]); });
+  return {
+    scheme: scheme,
+    pairScores: pairScores,
+    total: pairScores.reduce(function (a, b) { return a + b; }, 0)
+  };
+}
+
+// Analisa o esquema sorteado da quadra; se nao houver sorteio, usa o melhor esquema.
+function analyzeRhyme(lines, expectedScheme) {
+  const words = lines.map(function (l) { return lastWordOf(l.verse); });
+  const schemes = getQuadraRhymeSchemes();
+  const scoredSchemes = schemes.map(function (scheme) { return scoreRhymeScheme(scheme, words); });
+  const bestOverall = scoredSchemes.reduce(function (best, current) {
+    return !best || current.total > best.total ? current : best;
+  }, null);
+  const requested = schemes.find(function (scheme) { return scheme.id === expectedScheme; });
+  const selected = requested
+    ? scoredSchemes.find(function (item) { return item.scheme.id === requested.id; })
+    : bestOverall;
+  const best = selected.scheme;
+  const bestScore = selected.total;
+  const bestPairScores = selected.pairScores;
 
   var repeatedEnding = analyzeRepeatedEndingPenalty(words);
   var allRhyming = bestPairScores.every(function (s) { return s > 0; });
   var strongScheme = bestPairScores.every(function (s) { return s >= 2; }) && repeatedEnding.penalty === 0;
-  var bonus = strongScheme ? 2 : 0;
+  var bonus = strongScheme ? 3 : 0;
 
   return {
     scheme: best.id, label: best.label, desc: best.desc,
+    expectedScheme: requested ? requested.id : "",
+    bestDetectedScheme: bestOverall ? bestOverall.scheme.id : best.id,
     pairs: best.pairs,
     pairScores: bestPairScores,
     words: words,
@@ -3384,38 +3919,57 @@ function analyzeRhyme(lines) {
   };
 }
 
-function analyzeCreativity(lines, rhyme) {
+function analyzeIndependence(lines, rhyme) {
   if (!rhyme || !rhyme.pairs) {
-    return { bonus: 0, creativeIndexes: [] };
+    return { bonus: 0, independentIndexes: [] };
   }
 
-  var creativeIndexes = [];
+  var independentIndexes = [];
   rhyme.pairs.forEach(function (pair, pairIndex) {
     if ((rhyme.pairScores[pairIndex] || 0) < 2) return;
 
     pair.forEach(function (lineIndex) {
       var line = lines[lineIndex];
       if (!line || !line.creative) return;
-      if (!creativeIndexes.includes(lineIndex)) creativeIndexes.push(lineIndex);
+      if (!independentIndexes.includes(lineIndex)) independentIndexes.push(lineIndex);
     });
   });
 
   return {
-    bonus: Math.min(2, creativeIndexes.length),
-    creativeIndexes: creativeIndexes
+    bonus: Math.min(2, independentIndexes.length),
+    independentIndexes: independentIndexes
   };
 }
 
-function calculateChallengeScore(lines) {
-  var rhyme = analyzeRhyme(lines);
+function analyzeLexicalOriginality(lines, rhyme, independence) {
+  var knownWords = buildScoringLexicon();
+  var originalIndexes = (independence.independentIndexes || []).filter(function (lineIndex) {
+    var word = lastWordOf(lines[lineIndex]?.verse || "");
+    return word && !knownWords.has(word);
+  });
+
+  return {
+    bonus: Math.min(2, originalIndexes.length),
+    originalIndexes: originalIndexes
+  };
+}
+
+function calculateChallengeScore(lines, expectedScheme) {
+  var rhyme = analyzeRhyme(lines, expectedScheme);
   var structure = analyzeStructure(lines);
-  var creativity = analyzeCreativity(lines, rhyme);
-  var total = Math.max(0, structure.points + rhyme.pairScoreTotal + rhyme.schemeBonus + creativity.bonus);
+  var independence = analyzeIndependence(lines, rhyme);
+  var originality = analyzeLexicalOriginality(lines, rhyme, independence);
+  var total = Math.max(0, structure.points + rhyme.pairScoreTotal + rhyme.schemeBonus + independence.bonus + originality.bonus);
 
   return {
     rhyme: rhyme,
     structure: structure,
-    creativity: creativity,
+    independence: independence,
+    originality: originality,
+    creativity: {
+      bonus: independence.bonus + originality.bonus,
+      creativeIndexes: [].concat(independence.independentIndexes || [], originality.originalIndexes || [])
+    },
     total: total
   };
 }
@@ -3428,7 +3982,7 @@ function rhymeFeedbackHTML(result, challengeMode) {
   var colors = { AABB: "#f97316", ABAB: "#a855f7", ABBA: "#06b6d4" };
   var color = colors[r.scheme] || "var(--primary)";
   var pairsIdx = { AABB: [[0, 1], [2, 3]], ABAB: [[0, 2], [1, 3]], ABBA: [[0, 3], [1, 2]] }[r.scheme];
-  var totalColor = result.total >= 9 ? "#22c55e" : result.total >= 5 ? "#f97316" : "#ef4444";
+  var totalColor = result.total >= 10 ? "#22c55e" : result.total >= 5 ? "#f97316" : "#ef4444";
 
   var pairLines = pairsIdx.map(function (pair, k) {
     return '<div style="margin:4px 0;font-size:13px;">' +
@@ -3436,13 +3990,19 @@ function rhymeFeedbackHTML(result, challengeMode) {
       '<strong style="margin-left:8px;">' + icon(r.pairScores[k]) + '</strong></div>';
   }).join("");
 
-  var structureLine = '<div style="margin-top:10px;font-size:13px;color:var(--muted);">Forma da quadra: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' versos bem fechados de 4)</div>';
+  var expectedLine = r.expectedScheme
+    ? '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Esquema sorteado no desafio: <strong style="color:' + color + ';">' + r.expectedScheme + '</strong>' + (r.bestDetectedScheme && r.bestDetectedScheme !== r.expectedScheme ? ' · melhor encaixe livre seria ' + r.bestDetectedScheme : '') + '</div>'
+    : '';
+  var structureLine = '<div style="margin-top:10px;font-size:13px;color:var(--muted);">Forma clara: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' versos bem fechados de 4)</div>';
   var schemeLine = r.strongScheme
-    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus de esquema forte: <strong>+2</strong> (os dois pares rimam com pelo menos 2 letras finais)</div>'
+    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus de rima forte: <strong>+3</strong> (os dois pares do esquema sorteado rimam com pelo menos 2 letras finais)</div>'
     : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Bônus de esquema forte: <strong>+0</strong></div>';
-  var creativityLine = result.creativity.bonus > 0
-    ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✨ Criatividade autoral: <strong>+' + result.creativity.bonus + '</strong> (palavra fora das sugestões e ainda sustentando a rima)</div>'
-    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Criatividade autoral: <strong>+0</strong></div>';
+  var independenceLine = result.independence.bonus > 0
+    ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✍️ Independência autoral: <strong>+' + result.independence.bonus + '</strong> (palavra própria fora das sugestões e dentro de par rimado)</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Independência autoral: <strong>+0</strong></div>';
+  var originalityLine = result.originality.bonus > 0
+    ? '<div style="margin-top:8px;font-size:13px;color:#38bdf8;">💎 Originalidade lexical: <strong>+' + result.originality.bonus + '</strong> (rima surpresa fora do banco local)</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Originalidade lexical: <strong>+0</strong></div>';
   var repeatedWords = r.repeatedEndingWords && r.repeatedEndingWords.length
     ? ' (' + r.repeatedEndingWords.join(", ") + ')'
     : '';
@@ -3454,11 +4014,13 @@ function rhymeFeedbackHTML(result, challengeMode) {
   return '<div style="margin-top:18px;padding:14px 18px;background:rgba(255,255,255,0.05);border-radius:12px;border-left:4px solid ' + color + ';">' +
     '<div style="font-weight:800;font-size:15px;margin-bottom:8px;">🎶 Esquema de Rima: <span style="color:' + color + ';">' + r.label + '</span></div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + r.desc + '</div>' +
+    expectedLine +
     pairLines +
     structureLine +
     '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Rima final ajustada: <strong style="color:var(--text);">' + signed(r.pairScoreTotal) + '</strong></div>' +
     schemeLine +
-    creativityLine +
+    independenceLine +
+    originalityLine +
     repetitionLine +
     '<div style="margin-top:12px;font-size:16px;font-weight:900;color:' + totalColor + ';">' + scoreTitle + ': +' + result.total + '</div>' +
     '</div>';
@@ -3493,22 +4055,23 @@ function finishPoem() {
   var quadraText = state.lines.map(function (l) { return l.verse; }).join("\n");
   ui.quadra.textContent = quadraText;
 
-  // Analisa rimas, forma e criatividade
-  var scoreBreakdown = calculateChallengeScore(state.lines);
+  // Analisa rimas, forma e rubricas autorais contra o esquema sorteado.
+  var expectedScheme = ["AABB", "ABAB", "ABBA"].includes(state.scheme) ? state.scheme : "";
+  var scoreBreakdown = calculateChallengeScore(state.lines, expectedScheme);
   var rhyme = scoreBreakdown.rhyme;
   state.rhyme = rhyme;
   state.scoreBreakdown = scoreBreakdown;
   
-  // Detecção de rima (V2)
-  state.scheme = detectRhymeScheme(state.lines);
   if (ui.contextDetected) {
-    ui.contextDetected.textContent = "Esquema detectado: " + state.scheme;
+    ui.contextDetected.textContent = "Esquema avaliado: " + rhyme.label;
   }
 
   // Aplica a nova pontuação estrutural no modo desafio
+  var progressUpdate = null;
   if (state.modeChallenge) {
     state.points = scoreBreakdown.total;
     ui.points.textContent = String(state.points);
+    progressUpdate = updatePlayerProgressAfterChallengeQuadra(scoreBreakdown);
   } else {
     state.points = 0;
     ui.points.textContent = "0";
@@ -3521,7 +4084,8 @@ function finishPoem() {
     feedbackEl.id = "rhymeFeedback";
     ui.poemSection.appendChild(feedbackEl);
   }
-  feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge);
+  feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge)
+    + (state.modeChallenge ? renderMasteryProgressHTML(progressUpdate) : "");
 
   ui.poemSection.classList.add("visible");
   updateRoundStatus();
@@ -4480,6 +5044,14 @@ if (ui.chooseSextilhaTrackBtn) {
   });
 }
 
+if (ui.chooseLevel2TrackBtn) {
+  ui.chooseLevel2TrackBtn.addEventListener("click", openLevel2Preview);
+}
+
+if (ui.level2PreviewBackBtn) {
+  ui.level2PreviewBackBtn.addEventListener("click", showTrackChooser);
+}
+
 if (ui.trackChooserBackBtn) {
   ui.trackChooserBackBtn.addEventListener("click", () => {
     returnToIdentityStep();
@@ -4908,12 +5480,24 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
     origem: state.origem || state.playerData.origem || "",
     verso: textoQuada,
     modo: state.modeChallenge ? "Desafio" : "Didático",
+    tema: state.chosenTheme ? (state.chosenTheme.id || state.chosenTheme.name || "") : "",
     pontos: state.points,
     esquemaRima: state.rhyme ? state.rhyme.label : "—",
     pontosRima: state.scoreBreakdown ? state.scoreBreakdown.rhyme.pairScoreTotal : 0,
     pontosForma: state.scoreBreakdown ? state.scoreBreakdown.structure.points : 0,
     pontosCriatividade: state.scoreBreakdown ? state.scoreBreakdown.creativity.bonus : 0,
     bonusEsquema: state.scoreBreakdown ? state.scoreBreakdown.rhyme.schemeBonus : 0,
+    pontosIndependencia: state.scoreBreakdown ? state.scoreBreakdown.independence.bonus : 0,
+    pontosOriginalidade: state.scoreBreakdown ? state.scoreBreakdown.originality.bonus : 0,
+    rubricaPontuacao: state.scoreBreakdown ? {
+      version: "inanna-prosa-v1",
+      level: INANNA_LEVEL,
+      expectedScheme: state.scoreBreakdown.rhyme.expectedScheme,
+      bestDetectedScheme: state.scoreBreakdown.rhyme.bestDetectedScheme,
+      rhymePairScores: state.scoreBreakdown.rhyme.pairScores,
+      independence: state.scoreBreakdown.independence,
+      originality: state.scoreBreakdown.originality
+    } : null,
     tempoEscritaMs,
     tempoEscritaFormatado: formatElapsedClock(tempoEscritaMs)
   };
@@ -5005,7 +5589,7 @@ function onNewPoem() {
   state.chosenTheme = null;
   state.scheme = "Livre";
   ui.selectedThemeName.textContent = "—";
-  ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
+  ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   resetQuadraState({ resetPoints: true, restartTimer: false });
   buildThemeGrid();
   goToPhase(1);

@@ -32,8 +32,7 @@
       </p>
       <p style="text-align: left; font-weight: bold; font-size: 15px;">🧱 Forma da Quadra:</p>
       <ul style="text-align: left; margin: 6px 25px 16px; font-size: 14px; line-height: 1.7; color: var(--muted);">
-        <li><strong>+2 pts</strong> se os 4 versos estiverem bem fechados e com leitura clara.</li>
-        <li><strong>+1 pt</strong> se ao menos 3 versos estiverem bem fechados.</li>
+        <li><strong>+1 pt</strong> se os 4 versos estiverem bem fechados e com leitura clara.</li>
       </ul>
       <p style="text-align: left; font-weight: bold; font-size: 15px;">🎶 Pontos de Rima Final:</p>
       <ul style="text-align: left; margin: 6px 25px 8px; font-size: 13px; line-height: 1.9; color: var(--muted);">
@@ -43,8 +42,9 @@
         <li><strong style="color:#ef4444;">🔁 −2 pts</strong> por par — palavra final repetida não conta como rima criativa</li>
         <li><strong style="color:#ef4444;">❌ −1 pt</strong> por par — sem rima alguma</li>
         <li><strong style="color:#ef4444;">⚠️ −1 pt</strong> por repetição extra de palavra final na quadra. Máximo <strong>−4</strong>.</li>
-        <li><strong style="color:#22c55e;">✅ Bônus +2</strong> — se os dois pares tiverem pelo menos rima boa e sem palavra final repetida.</li>
-        <li><strong style="color:#06b6d4;">✨ Criatividade +1</strong> por palavra fora das sugestões que ainda sustente a rima. Máximo <strong>+2</strong>.</li>
+        <li><strong style="color:#22c55e;">✅ Bônus +3</strong> — se os dois pares do esquema sorteado tiverem pelo menos rima boa e sem palavra final repetida.</li>
+        <li><strong style="color:#06b6d4;">✍️ Independência +1</strong> por palavra fora das sugestões que ainda sustente a rima. Máximo <strong>+2</strong>.</li>
+        <li><strong style="color:#38bdf8;">💎 Originalidade +1</strong> por rima surpresa fora do banco local. Máximo <strong>+2</strong>.</li>
       </ul>
       <p style="text-align: left; margin: 2px 25px 14px; font-size: 12px; color: var(--muted);">
         Esquemas reconhecidos: <strong style="color:#f97316;">AABB</strong> (parândo)
@@ -53,8 +53,8 @@
       </p>
       <div
         style="background:rgba(249,115,22,0.08);border-radius:10px;padding:10px 14px;margin-bottom:18px;font-size:13px;color:var(--muted);border-left:3px solid var(--primary);">
-        💡 <strong>Pontuação máxima por quadra sem penalidades: <span style="color:var(--primary);">+12 pts</span></strong><br>
-        Forma + rima final + bônus de esquema + criatividade autoral
+        💡 <strong>A rima é o centro do placar: <span style="color:var(--primary);">até +9 pts vêm da rima final e do esquema sorteado.</span></strong><br>
+        Verossimilhança regional e coesão narrativa ficam reservadas para níveis futuros.
       </div>
 
       <div style="text-align: center;">
@@ -167,7 +167,7 @@
                 </div>
               </div>
               <div class="profile-row">
-                <span class="field-label">Já usei algum chatbot de IA</span>
+                <span class="field-label">Já usou algum chatbot de IA</span>
                 <div class="segmented-choice" role="radiogroup" aria-label="Já usou algum chatbot de IA">
                   <label><input type="radio" name="profileAiChatbot" id="profileAiChatbotYes" value="yes">Sim</label>
                   <label><input type="radio" name="profileAiChatbot" id="profileAiChatbotNo" value="no">Não</label>
@@ -176,18 +176,18 @@
               <label class="field-label" for="profileGender">Gênero</label>
               <select id="profileGender" class="input-row">
                 <option value="">Selecione</option>
-                <option value="feminino">Feminino</option>
                 <option value="masculino">Masculino</option>
+                <option value="feminino">Feminino</option>
                 <option value="outro">Outro</option>
                 <option value="prefiro_nao_dizer">Prefiro não dizer</option>
               </select>
               <label class="field-label" for="profileRace">Identificação racial</label>
               <select id="profileRace" class="input-row">
                 <option value="">Selecione</option>
-                <option value="negro">Negro</option>
                 <option value="branco">Branco</option>
-                <option value="pardo">Pardo</option>
                 <option value="indigena">Indígena</option>
+                <option value="pardo">Pardo</option>
+                <option value="preto">Preto</option>
                 <option value="outro">Outro</option>
               </select>
               <label class="field-label" for="profileAgeRange">Faixa etária</label>
@@ -239,10 +239,32 @@
               <button id="chooseSextilhaTrackBtn" class="btn btn-custom" type="button" aria-describedby="sextilhaAccessNotice">Abrir meu caderno</button>
               <p id="sextilhaAccessNotice" class="track-card__notice" hidden>ainda estamos trabalhando e sonhando este espaço</p>
             </article>
+            <article class="track-card track-card--level2">
+              <p class="track-card__eyebrow">Nível 2 Preview</p>
+              <h3>Enfrentar a Inanna persuasiva</h3>
+              <p>Esta trilha abre quando sua maestria no Nível 1 prova domínio da quadra, da rima e da autoria humana.</p>
+              <button id="chooseLevel2TrackBtn" class="btn btn-secondary" type="button" aria-describedby="level2AccessNotice">Abrir Nível 2</button>
+              <div id="level2ProgressSummary" class="track-card__progress"></div>
+              <p id="level2AccessNotice" class="track-card__notice">Domine a rima humana no Nível 1 para liberar o Nível 2.</p>
+            </article>
           </div>
           <div class="workspace-actions">
             <button id="trackChooserBackBtn" class="btn btn-ghost" type="button">Voltar para a validação</button>
           </div>
+        </section>
+
+        <section id="level2PreviewSection" class="workspace-panel" aria-label="Nível 2 preview">
+          <div class="workspace-head">
+            <div>
+              <p class="workspace-kicker">Nível 2 Preview</p>
+              <h2>Inanna persuasiva</h2>
+              <p class="step-desc">A próxima camada aparece como conquista: primeiro vem a rima humana, depois a disputa com a máquina.</p>
+            </div>
+            <div class="workspace-actions">
+              <button id="level2PreviewBackBtn" class="btn btn-ghost" type="button">Voltar às trilhas</button>
+            </div>
+          </div>
+          <div id="level2PreviewStatus" class="level2-preview-panel"></div>
         </section>
 
         <section id="userDashboardSection" class="workspace-panel" aria-label="Caderno de sextilhas">
@@ -500,16 +522,16 @@
           <div id="themeGrid" class="theme-grid"></div>
         </section>
 
-        <!-- ── ETAPA 2: ESCREVER VERSO INCOMPLETO ────────────────────── -->
-        <section id="step2" class="game-step" aria-label="Etapa 2 - Escreva um verso incompleto">
+        <!-- ── ETAPA 2: ESCREVER VERSO COMPLETO ────────────────────── -->
+        <section id="step2" class="game-step" aria-label="Etapa 2 - Escreva um verso completo">
           <div class="step-header">
-            <h2>✍️ Escreva um Verso Incompleto</h2>
+            <h2>✍️ Escreva um Verso Completo</h2>
             <p class="step-desc">
               Tema selecionado: <strong id="selectedThemeName">—</strong>
             </p>
             <p class="step-desc">
-              Escreva o verso <strong>sem a última palavra</strong>. A lacuna <code>___</code> ficará sempre no fim para
-              você testar a rima e a previsão da Inanna.
+              Escreva o verso inteiro. Depois, a Inanna disputa apenas a última palavra para você testar rima,
+              autoria e previsão.
             </p>
           </div>
 
@@ -522,16 +544,16 @@
           </div>
 
           <div class="verse-input-area">
-            <label class="field-label" for="verseInput">Verso sem a última palavra</label>
+            <label class="field-label" for="verseInput">Verso completo</label>
             <div class="input-row">
-              <input id="verseInput" type="text" maxlength="160" placeholder='Ex.: No São João eu vi a'
+              <input id="verseInput" type="text" maxlength="160" placeholder='Ex.: No São João eu vi a fogueira'
                 autocomplete="off" />
               <button id="btnAnalyze" class="btn btn-primary" type="button">
-                🔮 Prever
+                🔮 Analisar
               </button>
             </div>
             <div id="verseBlankPreview" class="verse-build-preview" aria-live="polite"></div>
-            <p id="verseHint" class="verse-hint">A Inanna vai completar apenas a última palavra do verso.</p>
+            <p id="verseHint" class="verse-hint">A Inanna vai sugerir trocas apenas para a última palavra do verso.</p>
           </div>
         </section>
 
@@ -545,7 +567,7 @@
           </div>
           <div id="step3Progress" class="round-status"></div>
 
-          <!-- Verso com lacuna -->
+          <!-- Verso com palavra final em disputa -->
           <div class="verse-preview-box">
             <div class="verse-preview-label">Seu verso:</div>
             <div id="versePreview" class="verse-preview-text"></div>
@@ -554,14 +576,14 @@
 
           <div class="predictions-grid simple">
             <div class="pred-column">
-              <h3 class="col-title">🎯 Sugestões para a lacuna final</h3>
+              <h3 class="col-title">🎯 Sugestões para a palavra final</h3>
               <div id="predList" class="predList"></div>
 
-              <div class="custom-divider"><span>ou escreva a sua última palavra</span></div>
+              <div class="custom-divider"><span>ou mantenha a sua última palavra</span></div>
 
               <div class="custom-input-row">
-                <input id="customInput" type="text" placeholder='Digite apenas uma palavra...' maxlength="40" />
-                <button id="btnCustom" class="btn btn-custom" type="button">✍️ Usar</button>
+                <input id="customInput" type="text" placeholder='Mantenha sua palavra ou digite outra...' maxlength="40" />
+                <button id="btnCustom" class="btn btn-custom" type="button">✍️ Manter/usar</button>
               </div>
 
               <p id="explainBox" class="prediction-note">Clique em <strong>Ver vetor</strong> para abrir a explicação da palavra escolhida.</p>
@@ -750,7 +772,7 @@ Verso 6</pre>
       </div>
       <section class="pedagogy-panel">
         <h4>1. Ideia central</h4>
-        <p><strong>Transformer = pergunta → resposta.</strong> No app, a pergunta é o verso com lacuna; a resposta é a palavra prevista como fechamento mais provável.</p>
+        <p><strong>Transformer = pergunta → resposta.</strong> No app, a pergunta é o verso completo com a última palavra em disputa; a resposta é uma alternativa provável para o fechamento.</p>
       </section>
       <section class="pedagogy-panel">
         <h4>2. Palavra vira vetor</h4>
@@ -853,8 +875,11 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
     window.INANNA_APP_CONFIG = {
       supabaseUrl: "%VITE_SUPABASE_URL%",
       supabaseAnonKey: "%VITE_SUPABASE_ANON_KEY%",
+      level: "%VITE_INANNA_LEVEL%",
       aiEnabled: "%VITE_INANNA_AI_ENABLED%",
-      socialEmailEnabled: "%VITE_INANNA_SOCIAL_EMAIL_ENABLED%"
+      socialEmailEnabled: "%VITE_INANNA_SOCIAL_EMAIL_ENABLED%",
+      firstAccessLookupUrl: "%VITE_INANNA_FIRST_ACCESS_LOOKUP_URL%",
+      firstAccessLookupToken: "%VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN%"
     };
   </script>
   <script src="https://ifhagjcarefdkcmjvknf.supabase.co/functions/v1/inanna-public-config"></script>

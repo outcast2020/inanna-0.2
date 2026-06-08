@@ -26,6 +26,7 @@ Deno.serve((request) => {
   ...(window.INANNA_APP_CONFIG || {}),
   supabaseUrl: ${jsString(supabaseUrl)},
   supabaseAnonKey: ${jsString(supabaseAnonKey)},
+  level: "1",
   aiEnabled: "false",
   socialEmailEnabled: "false"
 };`;
