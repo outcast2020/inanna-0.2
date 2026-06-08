@@ -70,6 +70,11 @@
     return UUID_RE.test(text) ? text : "";
   }
 
+  function serializeProfileRace(value) {
+    const text = String(value || "").trim().toLowerCase();
+    return text === "preto" ? "negro" : text;
+  }
+
   function normalizeStatus(status, sharedWithEducator) {
     const normalized = String(status || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!normalized) return sharedWithEducator ? "compartilhada com educador" : "rascunho";
@@ -281,7 +286,7 @@
         p_oficina_cordel20: !!payload.oficinaCordel20,
         p_usou_chatbot_ia: !!payload.usouChatbotIa,
         p_genero: String(payload.genero || "").trim(),
-        p_identificacao_racial: String(payload.identificacaoRacial || "").trim(),
+        p_identificacao_racial: serializeProfileRace(payload.identificacaoRacial),
         p_faixa_etaria: String(payload.faixaEtaria || "").trim(),
         p_municipio: String(payload.municipio || "").trim(),
         p_estado: String(payload.estado || "").trim(),

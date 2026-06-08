@@ -285,9 +285,17 @@ function readNumericConfigFlag(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function readStringConfigValue(value) {
+  const text = String(value || "").trim();
+  if (!text || /^%VITE_[A-Z0-9_]+%$/.test(text)) return "";
+  return text;
+}
+
 const INANNA_LEVEL = readNumericConfigFlag(window.INANNA_APP_CONFIG?.level, 1);
 const INANNA_AI_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.aiEnabled);
 const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
+const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
+const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
@@ -2145,6 +2153,119 @@ async function requestCheckinIdentityViaSupabase(email) {
   }
 }
 
+function requestJsonp(url, params = {}, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let script = null;
+    let didFinish = false;
+    const callbackName = `__inannaFirstAccess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    function cleanup() {
+      didFinish = true;
+      if (script?.parentNode) script.parentNode.removeChild(script);
+      try {
+        delete window[callbackName];
+      } catch (_) {
+        window[callbackName] = undefined;
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      if (didFinish) return;
+      cleanup();
+      reject(new Error("timeout"));
+    }, timeoutMs);
+
+    window[callbackName] = (payload) => {
+      if (didFinish) return;
+      window.clearTimeout(timer);
+      cleanup();
+      resolve(payload);
+    };
+
+    try {
+      const requestUrl = new URL(url);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && typeof value !== "undefined" && String(value).trim()) {
+          requestUrl.searchParams.set(key, String(value).trim());
+        }
+      });
+      requestUrl.searchParams.set("callback", callbackName);
+
+      script = document.createElement("script");
+      script.async = true;
+      script.src = requestUrl.toString();
+      script.onerror = () => {
+        if (didFinish) return;
+        window.clearTimeout(timer);
+        cleanup();
+        reject(new Error("network"));
+      };
+      document.head.appendChild(script);
+    } catch (error) {
+      window.clearTimeout(timer);
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+function normalizeFirstAccessLookupResponse(payload = {}, fallbackEmail = "") {
+  if (!payload?.ok || payload?.status !== "matched") {
+    return {
+      ok: false,
+      status: payload?.status || "error",
+      error: payload?.error || "first_access_lookup_error",
+    };
+  }
+
+  const source = payload.participant || payload.data || payload;
+  return {
+    ok: true,
+    status: "matched",
+    participantId: source.participantId || source.id || source.participante_id || "",
+    checkinUserId: source.checkinUserId || source.checkin_user_id || source.id || "",
+    participantIdSource: source.participantIdSource || "first_access_google_sheet",
+    checkinUserIdSource: source.checkinUserIdSource || "first_access_google_sheet",
+    matchMethod: source.matchMethod || "first_access_google_sheet",
+    name: source.name || source.nome || "Participante",
+    email: source.email || fallbackEmail,
+    tipoParticipante: source.tipoParticipante || source.tipo_participante || "",
+    municipio: source.municipio || "",
+    estado: source.estado || "",
+    pais: source.pais || "BR",
+    origem: source.origem || "google-sheets-users",
+    teacherGroup: source.teacherGroup || source.teacher_group || "",
+    oficinaCordel20: source.oficinaCordel20 ?? source.oficina_cordel20,
+    usouChatbotIa: source.usouChatbotIa ?? source.usou_chatbot_ia,
+    genero: source.genero || "",
+    identificacaoRacial: source.identificacaoRacial || source.identificacao_racial || "",
+    faixaEtaria: source.faixaEtaria || source.faixa_etaria || "",
+    profileComplete: !!(source.profileComplete ?? source.perfil_completo),
+  };
+}
+
+async function requestFirstAccessIdentityViaGoogleSheet(email) {
+  if (!INANNA_FIRST_ACCESS_LOOKUP_URL) {
+    return { ok: false, status: "error", error: "first_access_lookup_not_configured" };
+  }
+
+  try {
+    const payload = await requestJsonp(
+      INANNA_FIRST_ACCESS_LOOKUP_URL,
+      {
+        action: "first_access_lookup",
+        email,
+        token: INANNA_FIRST_ACCESS_LOOKUP_TOKEN,
+      },
+      18000
+    );
+    return normalizeFirstAccessLookupResponse(payload, email);
+  } catch (error) {
+    console.error(error);
+    return { ok: false, status: "error", error: error?.message || "first_access_lookup_error" };
+  }
+}
+
 async function verifyCheckinEmail() {
   const typedEmail = ui.playerEmail?.value.trim() || "";
 
@@ -2161,7 +2282,14 @@ async function verifyCheckinEmail() {
   setStartHint("");
   updateWelcomeIdentityUI();
 
-  const response = await requestCheckinIdentityViaSupabase(typedEmail);
+  let response = await requestCheckinIdentityViaSupabase(typedEmail);
+
+  if (response?.status === "unmatched" && response?.error === "email_not_found" && INANNA_FIRST_ACCESS_LOOKUP_URL) {
+    state.checkinLookupMessage = "Consultando cadastro principal do laboratorio...";
+    setStartHint("");
+    updateWelcomeIdentityUI();
+    response = await requestFirstAccessIdentityViaGoogleSheet(typedEmail);
+  }
 
   if (response?.ok && response?.status === "matched") {
     applyResolvedCheckinIdentity(response);
@@ -2188,6 +2316,10 @@ async function verifyCheckinEmail() {
     invalid_email: "Digite um e-mail válido para consultar o check-in.",
     ambiguous_email: "Encontrei mais de um cadastro com esse e-mail no check-in.",
     email_not_found: "Este e-mail não está registrado no check-in oficial.",
+    first_access_lookup_not_configured: "A consulta do primeiro acesso ainda não foi configurada.",
+    first_access_lookup_error: "Não consegui consultar o cadastro principal agora. Tente novamente em instantes.",
+    unauthorized: "Consulta do cadastro principal não autorizada.",
+    supabase_sync_error: "Encontrei o e-mail na planilha, mas não consegui registrar no Supabase.",
     supabase_not_configured: "Supabase ainda não foi configurado para consultar o check-in.",
     timeout: "A consulta demorou demais. Tente novamente.",
     network: "Não consegui acessar o check-in agora. Tente novamente em instantes."
