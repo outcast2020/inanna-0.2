@@ -62,10 +62,10 @@ O usuario pode:
 2. No primeiro acesso, completa perfil rapido: oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF ou fora do Brasil.
 3. Nos acessos seguintes, o perfil ja salvo no Supabase libera a escolha de trilha.
 4. Escolhe a trilha de quadras e um tema.
-5. Escreve um verso sem a ultima palavra.
-6. O app reconstrui o verso com `___`.
-7. O motor sugere candidatos com probabilidade.
-8. A pessoa escolhe uma sugestao ou digita uma palavra propria.
+5. Escreve um verso completo.
+6. O app separa a ultima palavra e usa o restante do verso como contexto.
+7. O motor sugere candidatos com probabilidade, priorizando a rima esperada pelo esquema sorteado.
+8. A pessoa aceita uma sugestao ou mantem a propria palavra final.
 9. Depois de 4 versos, a quadra e fechada.
 10. No modo desafio, a quadra recebe pontuacao e pode entrar no placar.
 11. A quadra pode ser copiada, continuada ou enviada para o Supabase.
@@ -87,7 +87,7 @@ O estado principal guarda:
 - tema escolhido;
 - versos acumulados;
 - predicao atual;
-- esquema de rima;
+- esquema de rima sorteado (`AABB`, `ABAB` ou `ABBA`);
 - pontuacao;
 - modo desafio ligado/desligado.
 
@@ -155,17 +155,20 @@ O arquivo implementa, entre outras coisas:
 
 O modo desafio trabalha com:
 
-- forma da quadra;
-- qualidade das rimas;
-- bonus de esquema;
-- criatividade autoral.
+- rima final como eixo principal;
+- esquema sorteado da quadra (`AABB`, `ABAB` ou `ABBA`);
+- independencia autoral quando a pessoa rejeita sugestoes e ainda sustenta a rima;
+- originalidade lexical quando a palavra final e uma rima surpresa fora do banco local;
+- forma da quadra apenas como apoio leve;
 - penalidade para palavra final repetida como atalho de rima.
 
 Palavras finais repetidas nao pontuam como rima criativa: par com palavra final identica recebe penalidade, e repeticoes extras de palavra final reduzem a nota de rima da quadra.
 
+No Nivel 1 e no preview do Nivel 2, coesao narrativa e verossimilhanca regional nao entram na pontuacao mecanica. Esses criterios ficam reservados para o futuro Nivel 3.
+
 No frontend, a quadra e pontuada apos o quarto verso.
 
-No backend, a pontuacao e recalculada no servidor antes de gravar, para evitar dependencia do calculo do cliente.
+O envio ao Supabase grava os pontos calculados pelo frontend e os campos de rima ja existentes no schema atual.
 
 ## Backend Supabase
 
@@ -224,7 +227,7 @@ O script exige `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em ambiente local ou
 2. Importe participantes/check-in e quadras historicas com `pnpm import:legacy-quadras`.
 3. Importe o repositorio GitHub na Vercel ou mantenha a integracao existente.
 4. Configure o preset como Vite, build `pnpm build` e output `dist`.
-5. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
+5. Cadastre `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_INANNA_LEVEL=1`, `VITE_INANNA_AI_ENABLED=false` e `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`.
 6. Mantenha a Edge Function `inanna-public-config` implantada no Supabase como fallback publico de runtime config.
 7. Valide o preview antes de promover para production.
 
@@ -233,7 +236,7 @@ O projeto de producao deve ser criado/importado a partir do repositorio GitHub n
 ## Checklist de manutencao
 
 - Rodar `pnpm build` antes de publicar mudancas.
-- Conferir se as quatro envs `VITE_*` existem em Production na Vercel.
+- Conferir se as cinco envs `VITE_*` existem em Production na Vercel.
 - Conferir se `https://ifhagjcarefdkcmjvknf.supabase.co/functions/v1/inanna-public-config` responde JavaScript valido.
 - Verificar `placar_publico` apos importacoes ou alteracoes de scoring.
 - Rodar o importador em `IMPORT_DRY_RUN=true` antes de qualquer nova carga historica.

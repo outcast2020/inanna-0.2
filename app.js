@@ -2,9 +2,9 @@
 // Inanna — Proto-IA Educativa (Cordel 2.0)
 // Novo fluxo de jogo:
 //  ETAPA 1: Usuário escolhe um contexto (tema)
-//  ETAPA 2: Usuário escreve um verso incompleto usando ___ como lacuna
-//  ETAPA 3: Sistema prevê candidatos com probabilidades; usuário escolhe
-//            um dos candidatos OU digita a própria palavra
+//  ETAPA 2: Usuário escreve um verso completo
+//  ETAPA 3: Sistema sugere alternativas para a última palavra; usuário escolhe
+//            um dos candidatos OU mantém/digita a própria palavra
 //  O ciclo se repete até completar 4 versos (quadra).
 // =====================================================================
 
@@ -223,6 +223,8 @@ const state = {
   lines: [],          // versos completos
   current: {
     rawVerse: "",     // verso com ___
+    originalVerse: "",
+    originalToken: "",
     pred: null,       // resultado de buildPredictions
   },
   points: 0,
@@ -272,8 +274,20 @@ const PLACAR_REACTIONS = [
 ];
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
-const INANNA_AI_ENABLED = !!window.INANNA_APP_CONFIG?.aiEnabled;
-const INANNA_SOCIAL_EMAIL_ENABLED = !!window.INANNA_APP_CONFIG?.socialEmailEnabled;
+function readBooleanConfigFlag(value) {
+  if (value === true) return true;
+  if (value === false || value === null || typeof value === "undefined") return false;
+  return ["1", "true", "yes", "sim", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function readNumericConfigFlag(value, fallback) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const INANNA_LEVEL = readNumericConfigFlag(window.INANNA_APP_CONFIG?.level, 1);
+const INANNA_AI_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.aiEnabled);
+const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
@@ -2277,7 +2291,7 @@ function stopGameSessionAndReturnToMenu() {
   if (ui.selectedThemeName) ui.selectedThemeName.textContent = "—";
   if (ui.verseInput) {
     ui.verseInput.value = "";
-    ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
+    ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   }
   if (ui.modeChallenge) {
     ui.modeChallenge.checked = false;
@@ -2725,27 +2739,35 @@ function stripTrailingVersePunctuation(value) {
   return String(value || "").replace(/[\p{P}\p{S}]+$/gu, "").trim();
 }
 
+function cleanFinalWordToken(value) {
+  return String(value || "")
+    .replace(/^[^A-Za-zÀ-ÿ]+|[^A-Za-zÀ-ÿ-]+$/g, "")
+    .trim();
+}
+
 function parseVerseStem(rawValue) {
   const raw = normalizeSpaces(rawValue);
   if (!raw) {
-    return { ok: false, error: "✋ Escreva o começo do verso antes de continuar." };
+    return { ok: false, error: "✋ Escreva o verso completo antes de continuar." };
   }
 
   const blanks = raw.match(/___/g) || [];
-  if (blanks.length > 1) {
-    return { ok: false, error: "Use apenas uma lacuna, sempre no fim do verso." };
+  if (blanks.length > 0) {
+    return { ok: false, error: "Escreva o verso completo, sem lacuna. A Inanna analisará a última palavra." };
   }
 
-  if (blanks.length === 1 && !/___$/.test(raw)) {
-    return { ok: false, error: "A lacuna precisa ficar na última palavra do verso." };
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) {
+    return { ok: false, error: "Escreva ao menos duas palavras para a Inanna comparar o fim do verso." };
   }
 
-  const cleaned = stripTrailingVersePunctuation(raw.replace(/___$/, ""));
-  if (!cleaned) {
-    return { ok: false, error: "Escreva algum contexto antes da lacuna final." };
+  const finalWord = cleanFinalWordToken(tokens[tokens.length - 1]);
+  const stem = stripTrailingVersePunctuation(tokens.slice(0, -1).join(" "));
+  if (!stem || !normWord(finalWord)) {
+    return { ok: false, error: "A última palavra precisa ser uma palavra legível para entrar na rima." };
   }
 
-  return { ok: true, stem: cleaned };
+  return { ok: true, stem, finalWord, originalVerse: raw };
 }
 
 function buildRawVerse(stem) {
@@ -2758,17 +2780,16 @@ function updateVerseBlankPreview() {
   const parsed = parseVerseStem(ui.verseInput.value || "");
   if (!parsed.ok) {
     ui.verseBlankPreview.innerHTML = `
-      <span class="preview-muted">Seu verso aparecerá assim:</span>
+      <span class="preview-muted">Seu verso será analisado assim:</span>
       <span class="preview-stem">...</span>
-      <span class="blank-placeholder fixed">___</span>
     `;
     return;
   }
 
   ui.verseBlankPreview.innerHTML = `
-    <span class="preview-muted">Seu verso ficará assim:</span>
+    <span class="preview-muted">Última palavra em disputa:</span>
     <span class="preview-stem">${escapeHtml(parsed.stem)}</span>
-    <span class="blank-placeholder fixed">___</span>
+    <span class="blank-placeholder fixed">${escapeHtml(parsed.finalWord)}</span>
   `;
 }
 
@@ -2795,7 +2816,8 @@ function updateRoundStatus() {
 }
 
 function refreshSuggestedScheme() {
-  state.scheme = Math.random() < 0.5 ? "AABB" : "ABAB";
+  const schemes = ["AABB", "ABAB", "ABBA"];
+  state.scheme = schemes[Math.floor(Math.random() * schemes.length)];
   const schemeSpan = document.getElementById("suggestedScheme");
   if (schemeSpan) schemeSpan.textContent = state.scheme;
 }
@@ -2804,7 +2826,7 @@ function resetQuadraState(options) {
   const settings = Object.assign({ resetPoints: true, restartTimer: false }, options);
 
   state.lines = [];
-  state.current = { rawVerse: "", pred: null };
+  state.current = { rawVerse: "", originalVerse: "", originalToken: "", pred: null };
   state.rhyme = null;
   state.scoreBreakdown = null;
 
@@ -3028,18 +3050,13 @@ function selectTheme(theme) {
   refreshSuggestedScheme();
   resetQuadraState({ resetPoints: true, restartTimer: true });
 
-  // Define o placeholder instigante (armadilha) usando o trap example do objeto
-  if (theme.trap) {
-    ui.verseInput.placeholder = theme.trap.replace(/\s*___\s*$/, "");
-  } else {
-    ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
-  }
+  ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   updateVerseBlankPreview();
 
   goToPhase(2);
 }
 
-// ── Etapa 2 — entrada do verso incompleto ────────────────────────────
+// ── Etapa 2 — entrada do verso completo ──────────────────────────────
 function onAnalyze() {
   const parsed = parseVerseStem(ui.verseInput.value || "");
   if (!parsed.ok) {
@@ -3048,13 +3065,15 @@ function onAnalyze() {
     return;
   }
 
-  ui.verseInput.value = parsed.stem;
-  ui.verseHint.textContent = "A lacuna final será prevista pela Inanna a partir desse contexto.";
+  ui.verseInput.value = parsed.originalVerse;
+  ui.verseHint.textContent = `A Inanna vai sugerir alternativas para "${parsed.finalWord}". Manter sua palavra pode render bônus se a rima fechar.`;
   ui.verseHint.style.color = "var(--muted)";
   updateVerseBlankPreview();
 
   const raw = buildRawVerse(parsed.stem);
   state.current.rawVerse = raw;
+  state.current.originalVerse = parsed.originalVerse;
+  state.current.originalToken = parsed.finalWord;
   state.current.pred = (typeof buildPredictionsV2 === "function")
     ? buildPredictionsV2(raw, state.chosenTheme, state.lines, state.scheme)
     : buildPredictions(raw, state.chosenTheme);
@@ -3074,7 +3093,7 @@ function buildPredictions(verse, theme) {
     }
   }
 
-  // Contexto antes da lacuna
+  // Contexto antes da palavra final em disputa.
   const before = norm(verse.split("___")[0]);
 
   // Heurística: fim com artigo
@@ -3122,11 +3141,17 @@ function renderStep3() {
   const { rawVerse, pred } = state.current;
   const theme = state.chosenTheme;
 
-  // Preview do verso com lacuna destacada
+  // Preview do verso com a palavra final em disputa.
   const highlighted = escapeHtml(rawVerse).replace("___", `<span class="blank-placeholder">___</span>`);
   ui.versePreview.innerHTML = highlighted;
   const rhymeHint = pred && pred.targetRhymeWord ? ` · rima esperada com "${pred.targetRhymeWord}"` : "";
   ui.contextDetected.textContent = `${theme.emoji} ${theme.name}${rhymeHint}`;
+  if (ui.customInput) {
+    ui.customInput.value = state.current.originalToken || "";
+    ui.customInput.placeholder = state.current.originalToken
+      ? "Mantenha sua palavra ou digite outra..."
+      : "Digite apenas uma palavra...";
+  }
   updateRoundStatus();
 
   // Lista de candidatos
@@ -3153,7 +3178,7 @@ function renderStep3() {
 
   // Explicação
   setExplain(
-    `As probabilidades aparecem na lista principal. Abra o vetor de qualquer palavra ou a mini-aula para ver como a IA organiza números, pesos e chances.`
+    `As probabilidades aparecem na lista principal. Você pode aceitar uma sugestão ou manter "${state.current.originalToken || "sua palavra"}" como escolha humana.`
   );
   refreshPedagogyModalContent();
 }
@@ -3210,12 +3235,12 @@ function chooseToken(token, index, source) {
 function onCustomChoice() {
   const word = normalizeSpaces(ui.customInput.value || "");
   if (!word) {
-    setExplain("Digite uma palavra para fechar a lacuna final.");
+    setExplain("Digite uma palavra para fechar o verso.");
     ui.customInput.focus();
     return;
   }
   if (/\s/.test(word) || word.includes("___")) {
-    setExplain("Use apenas uma palavra na lacuna final.");
+    setExplain("Use apenas uma palavra como fechamento do verso.");
     ui.customInput.focus();
     return;
   }
@@ -3343,34 +3368,52 @@ function analyzeStructure(lines) {
   return {
     goodLines: goodLines,
     suspiciousLines: suspiciousLines,
-    points: goodLines === 4 ? 2 : goodLines >= 3 ? 1 : 0
+    points: goodLines === 4 ? 1 : 0
   };
 }
 
-// Analisa o melhor esquema de rima da quadra (4 versos)
-function analyzeRhyme(lines) {
-  const words = lines.map(function (l) { return lastWordOf(l.verse); });
-
-  const schemes = [
-    { id: "AABB", pairs: [[0, 1], [2, 3]], label: "AABB", desc: "Rima em parândo — 1º/2º rimam, 3º/4º rimam" },
+function getQuadraRhymeSchemes() {
+  return [
+    { id: "AABB", pairs: [[0, 1], [2, 3]], label: "AABB", desc: "Rima em par — 1º/2º rimam, 3º/4º rimam" },
     { id: "ABAB", pairs: [[0, 2], [1, 3]], label: "ABAB", desc: "Rima alternada — 1º/3º rimam, 2º/4º rimam" },
     { id: "ABBA", pairs: [[0, 3], [1, 2]], label: "ABBA", desc: "Rima abraçada — 1º/4º rimam, 2º/3º rimam" },
   ];
+}
 
-  var best = null, bestScore = -99, bestPairScores = [];
-  schemes.forEach(function (s) {
-    var ps = s.pairs.map(function (pair) { return rhymePairScore(words[pair[0]], words[pair[1]]); });
-    var total = ps.reduce(function (a, b) { return a + b; }, 0);
-    if (total > bestScore) { bestScore = total; best = s; bestPairScores = ps; }
-  });
+function scoreRhymeScheme(scheme, words) {
+  var pairScores = scheme.pairs.map(function (pair) { return rhymePairScore(words[pair[0]], words[pair[1]]); });
+  return {
+    scheme: scheme,
+    pairScores: pairScores,
+    total: pairScores.reduce(function (a, b) { return a + b; }, 0)
+  };
+}
+
+// Analisa o esquema sorteado da quadra; se nao houver sorteio, usa o melhor esquema.
+function analyzeRhyme(lines, expectedScheme) {
+  const words = lines.map(function (l) { return lastWordOf(l.verse); });
+  const schemes = getQuadraRhymeSchemes();
+  const scoredSchemes = schemes.map(function (scheme) { return scoreRhymeScheme(scheme, words); });
+  const bestOverall = scoredSchemes.reduce(function (best, current) {
+    return !best || current.total > best.total ? current : best;
+  }, null);
+  const requested = schemes.find(function (scheme) { return scheme.id === expectedScheme; });
+  const selected = requested
+    ? scoredSchemes.find(function (item) { return item.scheme.id === requested.id; })
+    : bestOverall;
+  const best = selected.scheme;
+  const bestScore = selected.total;
+  const bestPairScores = selected.pairScores;
 
   var repeatedEnding = analyzeRepeatedEndingPenalty(words);
   var allRhyming = bestPairScores.every(function (s) { return s > 0; });
   var strongScheme = bestPairScores.every(function (s) { return s >= 2; }) && repeatedEnding.penalty === 0;
-  var bonus = strongScheme ? 2 : 0;
+  var bonus = strongScheme ? 3 : 0;
 
   return {
     scheme: best.id, label: best.label, desc: best.desc,
+    expectedScheme: requested ? requested.id : "",
+    bestDetectedScheme: bestOverall ? bestOverall.scheme.id : best.id,
     pairs: best.pairs,
     pairScores: bestPairScores,
     words: words,
@@ -3384,38 +3427,57 @@ function analyzeRhyme(lines) {
   };
 }
 
-function analyzeCreativity(lines, rhyme) {
+function analyzeIndependence(lines, rhyme) {
   if (!rhyme || !rhyme.pairs) {
-    return { bonus: 0, creativeIndexes: [] };
+    return { bonus: 0, independentIndexes: [] };
   }
 
-  var creativeIndexes = [];
+  var independentIndexes = [];
   rhyme.pairs.forEach(function (pair, pairIndex) {
     if ((rhyme.pairScores[pairIndex] || 0) < 2) return;
 
     pair.forEach(function (lineIndex) {
       var line = lines[lineIndex];
       if (!line || !line.creative) return;
-      if (!creativeIndexes.includes(lineIndex)) creativeIndexes.push(lineIndex);
+      if (!independentIndexes.includes(lineIndex)) independentIndexes.push(lineIndex);
     });
   });
 
   return {
-    bonus: Math.min(2, creativeIndexes.length),
-    creativeIndexes: creativeIndexes
+    bonus: Math.min(2, independentIndexes.length),
+    independentIndexes: independentIndexes
   };
 }
 
-function calculateChallengeScore(lines) {
-  var rhyme = analyzeRhyme(lines);
+function analyzeLexicalOriginality(lines, rhyme, independence) {
+  var knownWords = buildScoringLexicon();
+  var originalIndexes = (independence.independentIndexes || []).filter(function (lineIndex) {
+    var word = lastWordOf(lines[lineIndex]?.verse || "");
+    return word && !knownWords.has(word);
+  });
+
+  return {
+    bonus: Math.min(2, originalIndexes.length),
+    originalIndexes: originalIndexes
+  };
+}
+
+function calculateChallengeScore(lines, expectedScheme) {
+  var rhyme = analyzeRhyme(lines, expectedScheme);
   var structure = analyzeStructure(lines);
-  var creativity = analyzeCreativity(lines, rhyme);
-  var total = Math.max(0, structure.points + rhyme.pairScoreTotal + rhyme.schemeBonus + creativity.bonus);
+  var independence = analyzeIndependence(lines, rhyme);
+  var originality = analyzeLexicalOriginality(lines, rhyme, independence);
+  var total = Math.max(0, structure.points + rhyme.pairScoreTotal + rhyme.schemeBonus + independence.bonus + originality.bonus);
 
   return {
     rhyme: rhyme,
     structure: structure,
-    creativity: creativity,
+    independence: independence,
+    originality: originality,
+    creativity: {
+      bonus: independence.bonus + originality.bonus,
+      creativeIndexes: [].concat(independence.independentIndexes || [], originality.originalIndexes || [])
+    },
     total: total
   };
 }
@@ -3428,7 +3490,7 @@ function rhymeFeedbackHTML(result, challengeMode) {
   var colors = { AABB: "#f97316", ABAB: "#a855f7", ABBA: "#06b6d4" };
   var color = colors[r.scheme] || "var(--primary)";
   var pairsIdx = { AABB: [[0, 1], [2, 3]], ABAB: [[0, 2], [1, 3]], ABBA: [[0, 3], [1, 2]] }[r.scheme];
-  var totalColor = result.total >= 9 ? "#22c55e" : result.total >= 5 ? "#f97316" : "#ef4444";
+  var totalColor = result.total >= 10 ? "#22c55e" : result.total >= 5 ? "#f97316" : "#ef4444";
 
   var pairLines = pairsIdx.map(function (pair, k) {
     return '<div style="margin:4px 0;font-size:13px;">' +
@@ -3436,13 +3498,19 @@ function rhymeFeedbackHTML(result, challengeMode) {
       '<strong style="margin-left:8px;">' + icon(r.pairScores[k]) + '</strong></div>';
   }).join("");
 
-  var structureLine = '<div style="margin-top:10px;font-size:13px;color:var(--muted);">Forma da quadra: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' versos bem fechados de 4)</div>';
+  var expectedLine = r.expectedScheme
+    ? '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Esquema sorteado no desafio: <strong style="color:' + color + ';">' + r.expectedScheme + '</strong>' + (r.bestDetectedScheme && r.bestDetectedScheme !== r.expectedScheme ? ' · melhor encaixe livre seria ' + r.bestDetectedScheme : '') + '</div>'
+    : '';
+  var structureLine = '<div style="margin-top:10px;font-size:13px;color:var(--muted);">Forma clara: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' versos bem fechados de 4)</div>';
   var schemeLine = r.strongScheme
-    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus de esquema forte: <strong>+2</strong> (os dois pares rimam com pelo menos 2 letras finais)</div>'
+    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus de rima forte: <strong>+3</strong> (os dois pares do esquema sorteado rimam com pelo menos 2 letras finais)</div>'
     : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Bônus de esquema forte: <strong>+0</strong></div>';
-  var creativityLine = result.creativity.bonus > 0
-    ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✨ Criatividade autoral: <strong>+' + result.creativity.bonus + '</strong> (palavra fora das sugestões e ainda sustentando a rima)</div>'
-    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Criatividade autoral: <strong>+0</strong></div>';
+  var independenceLine = result.independence.bonus > 0
+    ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✍️ Independência autoral: <strong>+' + result.independence.bonus + '</strong> (palavra própria fora das sugestões e dentro de par rimado)</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Independência autoral: <strong>+0</strong></div>';
+  var originalityLine = result.originality.bonus > 0
+    ? '<div style="margin-top:8px;font-size:13px;color:#38bdf8;">💎 Originalidade lexical: <strong>+' + result.originality.bonus + '</strong> (rima surpresa fora do banco local)</div>'
+    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Originalidade lexical: <strong>+0</strong></div>';
   var repeatedWords = r.repeatedEndingWords && r.repeatedEndingWords.length
     ? ' (' + r.repeatedEndingWords.join(", ") + ')'
     : '';
@@ -3454,11 +3522,13 @@ function rhymeFeedbackHTML(result, challengeMode) {
   return '<div style="margin-top:18px;padding:14px 18px;background:rgba(255,255,255,0.05);border-radius:12px;border-left:4px solid ' + color + ';">' +
     '<div style="font-weight:800;font-size:15px;margin-bottom:8px;">🎶 Esquema de Rima: <span style="color:' + color + ';">' + r.label + '</span></div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + r.desc + '</div>' +
+    expectedLine +
     pairLines +
     structureLine +
     '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Rima final ajustada: <strong style="color:var(--text);">' + signed(r.pairScoreTotal) + '</strong></div>' +
     schemeLine +
-    creativityLine +
+    independenceLine +
+    originalityLine +
     repetitionLine +
     '<div style="margin-top:12px;font-size:16px;font-weight:900;color:' + totalColor + ';">' + scoreTitle + ': +' + result.total + '</div>' +
     '</div>';
@@ -3493,16 +3563,15 @@ function finishPoem() {
   var quadraText = state.lines.map(function (l) { return l.verse; }).join("\n");
   ui.quadra.textContent = quadraText;
 
-  // Analisa rimas, forma e criatividade
-  var scoreBreakdown = calculateChallengeScore(state.lines);
+  // Analisa rimas, forma e rubricas autorais contra o esquema sorteado.
+  var expectedScheme = ["AABB", "ABAB", "ABBA"].includes(state.scheme) ? state.scheme : "";
+  var scoreBreakdown = calculateChallengeScore(state.lines, expectedScheme);
   var rhyme = scoreBreakdown.rhyme;
   state.rhyme = rhyme;
   state.scoreBreakdown = scoreBreakdown;
   
-  // Detecção de rima (V2)
-  state.scheme = detectRhymeScheme(state.lines);
   if (ui.contextDetected) {
-    ui.contextDetected.textContent = "Esquema detectado: " + state.scheme;
+    ui.contextDetected.textContent = "Esquema avaliado: " + rhyme.label;
   }
 
   // Aplica a nova pontuação estrutural no modo desafio
@@ -4908,12 +4977,24 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
     origem: state.origem || state.playerData.origem || "",
     verso: textoQuada,
     modo: state.modeChallenge ? "Desafio" : "Didático",
+    tema: state.chosenTheme ? (state.chosenTheme.id || state.chosenTheme.name || "") : "",
     pontos: state.points,
     esquemaRima: state.rhyme ? state.rhyme.label : "—",
     pontosRima: state.scoreBreakdown ? state.scoreBreakdown.rhyme.pairScoreTotal : 0,
     pontosForma: state.scoreBreakdown ? state.scoreBreakdown.structure.points : 0,
     pontosCriatividade: state.scoreBreakdown ? state.scoreBreakdown.creativity.bonus : 0,
     bonusEsquema: state.scoreBreakdown ? state.scoreBreakdown.rhyme.schemeBonus : 0,
+    pontosIndependencia: state.scoreBreakdown ? state.scoreBreakdown.independence.bonus : 0,
+    pontosOriginalidade: state.scoreBreakdown ? state.scoreBreakdown.originality.bonus : 0,
+    rubricaPontuacao: state.scoreBreakdown ? {
+      version: "inanna-prosa-v1",
+      level: INANNA_LEVEL,
+      expectedScheme: state.scoreBreakdown.rhyme.expectedScheme,
+      bestDetectedScheme: state.scoreBreakdown.rhyme.bestDetectedScheme,
+      rhymePairScores: state.scoreBreakdown.rhyme.pairScores,
+      independence: state.scoreBreakdown.independence,
+      originality: state.scoreBreakdown.originality
+    } : null,
     tempoEscritaMs,
     tempoEscritaFormatado: formatElapsedClock(tempoEscritaMs)
   };
@@ -5005,7 +5086,7 @@ function onNewPoem() {
   state.chosenTheme = null;
   state.scheme = "Livre";
   ui.selectedThemeName.textContent = "—";
-  ui.verseInput.placeholder = "Ex.: Escreva o verso sem a última palavra aqui";
+  ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   resetQuadraState({ resetPoints: true, restartTimer: false });
   buildThemeGrid();
   goToPhase(1);
