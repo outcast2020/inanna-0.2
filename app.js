@@ -1713,7 +1713,8 @@ function normalizeProfileGender(value) {
 
 function normalizeProfileRace(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return ["negro", "branco", "pardo", "indigena", "outro"].includes(normalized) ? normalized : "";
+  if (["negro", "negra"].includes(normalized)) return "preto";
+  return ["branco", "indigena", "pardo", "preto", "outro"].includes(normalized) ? normalized : "";
 }
 
 function normalizeProfileAgeRange(value) {

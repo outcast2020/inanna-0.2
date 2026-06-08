@@ -59,7 +59,7 @@ O usuario pode:
 ## Fluxo da experiencia
 
 1. A pessoa informa e-mail e precisa validar identidade pelo lookup de check-in.
-2. No primeiro acesso, completa perfil rapido: oficina Cordel 2.0, uso previo de chatbot de IA, genero, identificacao racial, faixa etaria e municipio/UF ou fora do Brasil.
+2. No primeiro acesso, completa perfil rapido: estou nas oficinas Cordel 2.0 (sim/nao), ja usou algum chatbot de IA (sim/nao), genero (masculino, feminino, outro, prefiro nao dizer), identificacao racial (branco, indigena, pardo, preto, outro), faixa etaria e municipio/UF ou fora do Brasil.
 3. Nos acessos seguintes, o perfil ja salvo no Supabase libera a escolha de trilha.
 4. Escolhe a trilha de quadras e um tema.
 5. Escreve um verso completo.
