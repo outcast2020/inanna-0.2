@@ -896,6 +896,14 @@ select:focus-visible,
   color: var(--text);
 }
 
+.landing-lab-return {
+  justify-content: center;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+}
+
 /* ── Etapa 3: Previsões ──────────────────────────────────────────── */
 .verse-preview-box {
   background: rgba(139, 92, 246, 0.08);
