@@ -326,6 +326,10 @@ const PLACAR_REACTIONS = [
   { key: "wow", emoji: "😮", label: "Boca de surpresa" },
 ];
 const SEXTILHA_ALLOWED_EMAILS = new Set(["cjaviervidalg@gmail.com"]);
+const DEFAULT_ADMIN_EMAILS = [
+  "cjaviervidalg@gmail.com",
+  "celestefarias@ymail.com"
+];
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
 const LEVEL2_LOCKED_NOTICE = "Domine a rima humana no Nível 1 para liberar o Nível 2.";
 const CHALLENGE_MAX_SCORE = 14;
@@ -356,6 +360,13 @@ function readStringConfigValue(value) {
   return text;
 }
 
+function readListConfigValue(value) {
+  return readStringConfigValue(value)
+    .split(/[,\n;]+/)
+    .map(normalizeEmail)
+    .filter(Boolean);
+}
+
 const INANNA_LEVEL = readNumericConfigFlag(window.INANNA_APP_CONFIG?.level, 1);
 const INANNA_AI_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.aiEnabled);
 const INANNA_LEVEL2_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2Enabled);
@@ -368,6 +379,10 @@ const INANNA_TURNSTILE_SITE_KEY = readStringConfigValue(window.INANNA_APP_CONFIG
 const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
 const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
 const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
+const INANNA_ADMIN_EMAILS = new Set([
+  ...DEFAULT_ADMIN_EMAILS,
+  ...readListConfigValue(window.INANNA_APP_CONFIG?.adminEmails)
+]);
 const LEVEL2_NICKNAME_STORAGE_KEY = "inanna_level2_nickname_v1";
 const LEVEL2_LOCAL_CHALLENGES = [
   { theme: "uma promessa feita na feira", rhymeScheme: "AABB" },
@@ -872,6 +887,10 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isAdminEmail(email = state.email) {
+  return INANNA_ADMIN_EMAILS.has(normalizeEmail(email));
+}
+
 function emptyMasteryState() {
   return MASTERY_CRITERIA.reduce((acc, item) => {
     acc[item.key] = false;
@@ -931,6 +950,9 @@ function hydratePlayerProgress(rawProgress = {}) {
     bestScore: Math.max(0, Number(rawProgress.bestScore || 0) || 0),
     lastUpdatedAt: rawProgress.lastUpdatedAt || fallback.lastUpdatedAt
   };
+  if (isAdminEmail()) {
+    progress.levelUnlocked = 3;
+  }
   progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length || progress.perfectQuadrasCount;
   return progress;
 }
@@ -1082,6 +1104,9 @@ function getPerfectQuadrasMessage(progress) {
 }
 
 function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
+  if (isAdminEmail()) {
+    return "Credencial de administrador ativa: todos os níveis liberados.";
+  }
   if (INANNA_LEVEL >= 2 && !INANNA_LEVEL2_ENABLED) {
     return "Nível 2 está configurado, mas a feature flag ainda está desligada.";
   }
@@ -1099,6 +1124,7 @@ function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
 }
 
 function canAccessLevel2Preview(progress = ensurePlayerProgress()) {
+  if (isAdminEmail()) return INANNA_LEVEL >= 2 && INANNA_LEVEL2_ENABLED;
   if (INANNA_LEVEL < 2 || !INANNA_LEVEL2_ENABLED) return false;
   if (!INANNA_LEVEL2_REQUIRE_UNLOCK) return true;
   return Number(progress.levelUnlocked || 1) >= 2;
@@ -1752,7 +1778,7 @@ function startLevel2Dictation() {
 }
 
 function canAccessSextilhaWorkspace(email = state.email) {
-  return SEXTILHA_ALLOWED_EMAILS.has(normalizeEmail(email));
+  return isAdminEmail(email) || SEXTILHA_ALLOWED_EMAILS.has(normalizeEmail(email));
 }
 
 function syncSextilhaTrackAccess(options = {}) {
@@ -3023,6 +3049,7 @@ function renderWelcomeIdentityStatus() {
       state.municipio ? `Município: ${escapeHtml(state.municipio)}` : "",
       state.estadoUF ? `Estado: ${escapeHtml(state.estadoUF)}` : "",
       state.teacherGroup ? `Turma/oficina: ${escapeHtml(state.teacherGroup)}` : "",
+      isAdminEmail() ? "Credencial de administrador ativa" : "",
       state.profileComplete ? "Perfil rápido completo" : "Perfil rápido pendente"
     ].filter(Boolean);
 

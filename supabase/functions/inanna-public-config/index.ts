@@ -29,6 +29,7 @@ Deno.serve((request) => {
   const level2DictationEnabled = Deno.env.get("INANNA_LEVEL2_DICTATION_ENABLED") || "false";
   const level2AudioEnabled = Deno.env.get("INANNA_LEVEL2_AUDIO_ENABLED") || "false";
   const level2SocialEnabled = Deno.env.get("INANNA_LEVEL2_SOCIAL_ENABLED") || "false";
+  const adminEmails = Deno.env.get("INANNA_ADMIN_EMAILS") || "";
 
   const body = `{
   const existingConfig = window.INANNA_APP_CONFIG || {};
@@ -49,6 +50,7 @@ Deno.serve((request) => {
     level2DictationEnabled: keep("level2DictationEnabled", ${jsString(level2DictationEnabled)}),
     level2AudioEnabled: keep("level2AudioEnabled", ${jsString(level2AudioEnabled)}),
     level2SocialEnabled: keep("level2SocialEnabled", ${jsString(level2SocialEnabled)}),
+    adminEmails: keep("adminEmails", ${jsString(adminEmails)}),
     socialEmailEnabled: keep("socialEmailEnabled", "false")
   };
 }`;
