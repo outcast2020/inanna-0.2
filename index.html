@@ -256,18 +256,79 @@
           </div>
         </section>
 
-        <section id="level2PreviewSection" class="workspace-panel" aria-label="Nível 2 preview">
+        <section id="level2PreviewSection" class="workspace-panel" aria-label="Nível 2 peleja">
           <div class="workspace-head">
             <div>
-              <p class="workspace-kicker">Nível 2 Preview</p>
-              <h2>Inanna persuasiva</h2>
-              <p class="step-desc">A próxima camada aparece como conquista: primeiro vem a rima humana, depois a disputa com a máquina.</p>
+              <p class="workspace-kicker">Nível 2</p>
+              <h2>Peleja com Inanna</h2>
+              <p class="step-desc">Três rounds de quadra contra a máquina: ela provoca, rouba imagens do seu verso e você responde com autoria humana.</p>
             </div>
             <div class="workspace-actions">
               <button id="level2PreviewBackBtn" class="btn btn-ghost" type="button">Voltar às trilhas</button>
             </div>
           </div>
           <div id="level2PreviewStatus" class="level2-preview-panel"></div>
+          <div id="level2SetupPanel" class="level2-setup-panel">
+            <label class="field-label" for="level2NicknameInput">Como quer aparecer na peleja?</label>
+            <input id="level2NicknameInput" class="input-row" maxlength="40" placeholder="Seu apelido público">
+            <div class="level2-setup-grid">
+              <label>
+                <span class="field-label">Entrada</span>
+                <select id="level2InputMode" class="input-row">
+                  <option value="written">Escrita</option>
+                  <option value="dictation">Ditado com revisão</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Ambiência</span>
+                <select id="level2SoundMode" class="input-row">
+                  <option value="none">Sem som</option>
+                  <option value="white_noise">Som branco</option>
+                  <option value="baiao">Baião leve</option>
+                  <option value="hiphop">Hip-hop leve</option>
+                </select>
+              </label>
+            </div>
+            <div class="workspace-actions">
+              <button id="level2StartBtn" class="btn btn-primary" type="button">Iniciar peleja</button>
+              <button id="level2AudioToggleBtn" class="btn btn-secondary" type="button" disabled>Pausar som</button>
+            </div>
+            <p id="level2SessionStatus" class="verse-hint form-hint" aria-live="polite"></p>
+          </div>
+          <div id="level2Arena" class="level2-arena" hidden>
+            <div class="level2-score-row">
+              <span id="level2RoundBadge" class="level2-badge">Round 1/3</span>
+              <span id="level2Scoreboard" class="level2-scoreboard">Humano 0 x 0 Inanna</span>
+            </div>
+            <div class="level2-challenge">
+              <div>
+                <span class="level2-label">Tema</span>
+                <strong id="level2Theme">-</strong>
+              </div>
+              <div>
+                <span class="level2-label">Rima</span>
+                <strong id="level2RhymeScheme">AABB</strong>
+              </div>
+            </div>
+            <label class="field-label" for="level2OriginalInput">Sua quadra inicial</label>
+            <textarea id="level2OriginalInput" class="level2-textarea" rows="6" maxlength="900"
+              placeholder="Escreva quatro versos para abrir o round"></textarea>
+            <div class="workspace-actions">
+              <button id="level2DictateBtn" class="btn btn-secondary" type="button">Ditar quadra</button>
+              <button id="level2SubmitOriginalBtn" class="btn btn-primary" type="button">Enviar para Inanna</button>
+            </div>
+            <div id="level2InannaResponse" class="level2-response" hidden></div>
+            <label class="field-label" for="level2FinalInput">Sua resposta final</label>
+            <textarea id="level2FinalInput" class="level2-textarea" rows="6" maxlength="900"
+              placeholder="Melhore sua quadra ou responda à provocação de Inanna" disabled></textarea>
+            <div class="workspace-actions">
+              <button id="level2FinalizeRoundBtn" class="btn btn-custom" type="button" disabled>Fechar round</button>
+              <button id="level2NextRoundBtn" class="btn btn-secondary" type="button" hidden>Próximo round</button>
+              <button id="level2ResetBtn" class="btn btn-ghost" type="button">Recomeçar peleja</button>
+            </div>
+            <div id="level2RoundFeedback" class="level2-feedback" aria-live="polite"></div>
+            <div id="level2MatchResult" class="level2-match-result" hidden></div>
+          </div>
         </section>
 
         <section id="userDashboardSection" class="workspace-panel" aria-label="Caderno de sextilhas">
@@ -874,18 +935,34 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
       </section>
     </div>
   </dialog>
-  <script>
-    window.INANNA_APP_CONFIG = {
-      supabaseUrl: "%VITE_SUPABASE_URL%",
-      supabaseAnonKey: "%VITE_SUPABASE_ANON_KEY%",
-      level: "%VITE_INANNA_LEVEL%",
-      aiEnabled: "%VITE_INANNA_AI_ENABLED%",
-      socialEmailEnabled: "%VITE_INANNA_SOCIAL_EMAIL_ENABLED%",
-      firstAccessLookupUrl: "%VITE_INANNA_FIRST_ACCESS_LOOKUP_URL%",
-      firstAccessLookupToken: "%VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN%"
-    };
-  </script>
   <script src="https://ifhagjcarefdkcmjvknf.supabase.co/functions/v1/inanna-public-config"></script>
+  <script>
+    {
+      const existingConfig = window.INANNA_APP_CONFIG || {};
+      const pickConfig = (value, fallback = "") => {
+        const text = String(value || "").trim();
+        const placeholderPrefix = "%" + "VITE_";
+        return !text || (text.startsWith(placeholderPrefix) && text.endsWith("%")) ? fallback : value;
+      };
+      window.INANNA_APP_CONFIG = {
+        ...existingConfig,
+        supabaseUrl: pickConfig("%VITE_SUPABASE_URL%", existingConfig.supabaseUrl),
+        supabaseAnonKey: pickConfig("%VITE_SUPABASE_ANON_KEY%", existingConfig.supabaseAnonKey),
+        level: pickConfig("%VITE_INANNA_LEVEL%", existingConfig.level),
+        aiEnabled: pickConfig("%VITE_INANNA_AI_ENABLED%", existingConfig.aiEnabled),
+        level2Enabled: pickConfig("%VITE_INANNA_LEVEL2_ENABLED%", existingConfig.level2Enabled),
+        level2AgentUrl: pickConfig("%VITE_INANNA_LEVEL2_AGENT_URL%", existingConfig.level2AgentUrl),
+        level2RequireUnlock: pickConfig("%VITE_INANNA_LEVEL2_REQUIRE_UNLOCK%", existingConfig.level2RequireUnlock),
+        level2DictationEnabled: pickConfig("%VITE_INANNA_LEVEL2_DICTATION_ENABLED%", existingConfig.level2DictationEnabled),
+        level2AudioEnabled: pickConfig("%VITE_INANNA_LEVEL2_AUDIO_ENABLED%", existingConfig.level2AudioEnabled),
+        level2SocialEnabled: pickConfig("%VITE_INANNA_LEVEL2_SOCIAL_ENABLED%", existingConfig.level2SocialEnabled),
+        turnstileSiteKey: pickConfig("%VITE_INANNA_TURNSTILE_SITE_KEY%", existingConfig.turnstileSiteKey),
+        socialEmailEnabled: pickConfig("%VITE_INANNA_SOCIAL_EMAIL_ENABLED%", existingConfig.socialEmailEnabled),
+        firstAccessLookupUrl: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_URL%", existingConfig.firstAccessLookupUrl),
+        firstAccessLookupToken: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN%", existingConfig.firstAccessLookupToken)
+      };
+    }
+  </script>
   <script src="cordel_rhyme_bank.js"></script>
   <script src="prediction_engine_v2.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

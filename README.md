@@ -30,7 +30,8 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - `supabase/migrations/003_participant_profile_legacy_import.sql` adiciona perfil estatistico de primeiro acesso, fingerprint legado e RPC de perfil.
 - `supabase/migrations/004_profile_race_age.sql` acrescenta identificacao racial e faixa etaria ao perfil estatistico.
 - `supabase/migrations/005_tighten_quadra_insert_policy.sql` restringe inserts de quadras ao participante identificado e adiciona indices de apoio.
-- `supabase/migrations/006_player_progress.sql` prepara a futura persistencia Supabase da Trilha de Maestria da Quadra com RLS fechado por padrao.
+- `supabase/migrations/006_player_progress.sql` prepara a persistencia Supabase da Trilha de Maestria da Quadra com RLS fechado por padrao.
+- `supabase/migrations/007_inanna_level2_peleja.sql` cria as tabelas do Nivel 2: jogadores, sessoes, rounds, votos e lexico local futuro.
 - `scripts/import-legacy-quadras.mjs` importa check-in e quadras historicas do Google Sheets de forma idempotente.
 - `scripts/google-apps-script/inanna-first-access.gs` e o codigo para colar no Apps Script da planilha principal do laboratorio; ele sincroniza a aba `USERS` para `public.participantes` no primeiro acesso sem expor a planilha por link publico.
 - `supabase/functions/inanna-public-config` fornece configuracao publica em runtime para o navegador quando a build da Vercel nao substitui `VITE_*`.
@@ -178,9 +179,45 @@ O progresso local do jogador usa `localStorage` em `inanna_player_progress_v1`. 
 - 5 quadras perfeitas unicas, com score maximo de 14 pontos no esquema sorteado.
 - Todas as 8 marcas de maestria conquistadas: forma, rima final, esquema forte, criatividade autoral, independencia da Inanna, sem repeticao final, sem falha de rima e dois esquemas usados corretamente.
 
-Em production com `VITE_INANNA_LEVEL=1`, o Nível 2 aparece como bloqueado/desbloqueavel. Em preview com `VITE_INANNA_LEVEL=2`, ele so abre quando o progresso local ja tiver `levelUnlocked >= 2`.
+Em production com `VITE_INANNA_LEVEL=1`, o Nível 2 aparece como bloqueado/desbloqueavel. Com `VITE_INANNA_LEVEL=2` e `VITE_INANNA_LEVEL2_ENABLED=true`, ele abre a peleja em 3 rounds. Se `VITE_INANNA_LEVEL2_REQUIRE_UNLOCK=true`, o acesso continua condicionado ao progresso local `levelUnlocked >= 2`; se estiver `false`, a peleja abre para teste amplo em producao.
 
 O envio ao Supabase grava os pontos calculados pelo frontend e os campos de rima ja existentes no schema atual.
+
+## Nivel 2 - Peleja com Inanna
+
+O Nivel 2 transforma a quadra em peleja humano-maquina. O frontend chama o Worker `inanna-level2-agent`, que guarda prompts e chaves fora do navegador. A geracao da quadra provocadora usa Maritaca `sabia-4` quando `MARITACA_API_KEY` esta configurada; se falhar, o Worker cai para Workers AI. A avaliacao por rubricas usa `@cf/meta/llama-3.1-8b-instruct`, combinada com regras mecanicas de estrutura e rima.
+
+O fluxo de cada round e:
+
+- criar ou recuperar uma sessao de Nivel 2;
+- sortear tema e esquema (`AABB`, `ABAB` ou `ABCB`);
+- receber a quadra inicial do jogador;
+- gerar a resposta provocadora de Inanna em quatro versos;
+- permitir que o jogador melhore a quadra;
+- avaliar rima, forma, criatividade, autonomia, verossimilhanca, coerencia textual e resposta a provocacao;
+- decidir o round e finalizar a melhor de 3.
+
+Variaveis publicas esperadas na Vercel:
+
+```env
+VITE_INANNA_LEVEL=2
+VITE_INANNA_AI_ENABLED=true
+VITE_INANNA_LEVEL2_ENABLED=true
+VITE_INANNA_LEVEL2_AGENT_URL=https://inanna-level2-agent.cjaviervidalg.workers.dev
+VITE_INANNA_LEVEL2_REQUIRE_UNLOCK=false
+VITE_INANNA_LEVEL2_DICTATION_ENABLED=true
+VITE_INANNA_LEVEL2_AUDIO_ENABLED=true
+VITE_INANNA_LEVEL2_SOCIAL_ENABLED=false
+```
+
+Secrets do Worker ficam somente na Cloudflare:
+
+```env
+SUPABASE_SERVICE_ROLE_KEY
+MARITACA_API_KEY
+INANNA_WORKER_ADMIN_TOKEN
+TURNSTILE_SECRET_KEY
+```
 
 ## Backend Supabase
 

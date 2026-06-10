@@ -58,6 +58,28 @@ const ui = {
   level2PreviewSection: $("level2PreviewSection"),
   level2PreviewStatus: $("level2PreviewStatus"),
   level2PreviewBackBtn: $("level2PreviewBackBtn"),
+  level2SetupPanel: $("level2SetupPanel"),
+  level2NicknameInput: $("level2NicknameInput"),
+  level2InputMode: $("level2InputMode"),
+  level2SoundMode: $("level2SoundMode"),
+  level2StartBtn: $("level2StartBtn"),
+  level2AudioToggleBtn: $("level2AudioToggleBtn"),
+  level2SessionStatus: $("level2SessionStatus"),
+  level2Arena: $("level2Arena"),
+  level2RoundBadge: $("level2RoundBadge"),
+  level2Scoreboard: $("level2Scoreboard"),
+  level2Theme: $("level2Theme"),
+  level2RhymeScheme: $("level2RhymeScheme"),
+  level2OriginalInput: $("level2OriginalInput"),
+  level2DictateBtn: $("level2DictateBtn"),
+  level2SubmitOriginalBtn: $("level2SubmitOriginalBtn"),
+  level2InannaResponse: $("level2InannaResponse"),
+  level2FinalInput: $("level2FinalInput"),
+  level2FinalizeRoundBtn: $("level2FinalizeRoundBtn"),
+  level2NextRoundBtn: $("level2NextRoundBtn"),
+  level2ResetBtn: $("level2ResetBtn"),
+  level2RoundFeedback: $("level2RoundFeedback"),
+  level2MatchResult: $("level2MatchResult"),
   trackChooserBackBtn: $("trackChooserBackBtn"),
   userDashboardSection: $("userDashboardSection"),
   dashboardGreeting: $("dashboardGreeting"),
@@ -239,6 +261,29 @@ const state = {
   rhyme: null,
   scoreBreakdown: null,
   playerProgress: null,
+  level2: {
+    sessionId: "",
+    playerId: "",
+    nickname: "",
+    inputMode: "written",
+    soundMode: "none",
+    currentRound: 1,
+    roundCount: 3,
+    playerWins: 0,
+    inannaWins: 0,
+    theme: "",
+    rhymeScheme: "AABB",
+    originalQuadra: "",
+    finalQuadra: "",
+    inannaQuadra: "",
+    stolenWords: [],
+    generationProvider: "",
+    roundClosed: false,
+    matchFinished: false,
+    lastRoundResult: null,
+    audio: null,
+    dictation: null
+  },
   writingStartedAt: 0,
   writingElapsedMs: 0,
   writingTimerId: null,
@@ -313,9 +358,22 @@ function readStringConfigValue(value) {
 
 const INANNA_LEVEL = readNumericConfigFlag(window.INANNA_APP_CONFIG?.level, 1);
 const INANNA_AI_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.aiEnabled);
+const INANNA_LEVEL2_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2Enabled);
+const INANNA_LEVEL2_AGENT_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.level2AgentUrl);
+const INANNA_LEVEL2_REQUIRE_UNLOCK = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2RequireUnlock);
+const INANNA_LEVEL2_DICTATION_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2DictationEnabled);
+const INANNA_LEVEL2_AUDIO_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2AudioEnabled);
+const INANNA_LEVEL2_SOCIAL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2SocialEnabled);
+const INANNA_TURNSTILE_SITE_KEY = readStringConfigValue(window.INANNA_APP_CONFIG?.turnstileSiteKey);
 const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
 const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
 const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
+const LEVEL2_NICKNAME_STORAGE_KEY = "inanna_level2_nickname_v1";
+const LEVEL2_LOCAL_CHALLENGES = [
+  { theme: "uma promessa feita na feira", rhymeScheme: "AABB" },
+  { theme: "o susto de uma noite de chuva", rhymeScheme: "ABAB" },
+  { theme: "a coragem antes da viagem", rhymeScheme: "ABCB" }
+];
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
 const TOAST_AUTO_CLOSE_MS = 3000;
@@ -1024,18 +1082,26 @@ function getPerfectQuadrasMessage(progress) {
 }
 
 function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
-  if (progress.levelUnlocked >= 2 && INANNA_LEVEL >= 2) {
-    return "Nível 2 liberado em preview.";
+  if (INANNA_LEVEL >= 2 && !INANNA_LEVEL2_ENABLED) {
+    return "Nível 2 está configurado, mas a feature flag ainda está desligada.";
+  }
+  if (INANNA_LEVEL >= 2 && !INANNA_LEVEL2_REQUIRE_UNLOCK) {
+    return "Nível 2 liberado em produção experimental.";
+  }
+  if (progress.levelUnlocked >= 2 && INANNA_LEVEL >= 2 && INANNA_LEVEL2_ENABLED) {
+    return "Nível 2 liberado: a peleja com Inanna está pronta.";
   }
   if (progress.levelUnlocked >= 2) {
-    return "Nível 2 conquistado; preview será ativado quando a produção mudar para o nível 2.";
+    return "Nível 2 conquistado; será ativado quando a produção mudar para o nível 2.";
   }
   const missing = MASTERY_CRITERIA.length - countMasteryCriteria(progress);
   return `Bloqueado: faltam ${Math.max(0, 5 - progress.perfectQuadrasCount)} quadras perfeitas ou ${missing} marcas de maestria.`;
 }
 
 function canAccessLevel2Preview(progress = ensurePlayerProgress()) {
-  return INANNA_LEVEL >= 2 && Number(progress.levelUnlocked || 1) >= 2;
+  if (INANNA_LEVEL < 2 || !INANNA_LEVEL2_ENABLED) return false;
+  if (!INANNA_LEVEL2_REQUIRE_UNLOCK) return true;
+  return Number(progress.levelUnlocked || 1) >= 2;
 }
 
 function syncLevel2TrackAccess(options = {}) {
@@ -1128,16 +1194,97 @@ function renderMasteryProgressHTML(update) {
   `;
 }
 
+function getLevel2DefaultNickname() {
+  try {
+    const stored = window.localStorage?.getItem(LEVEL2_NICKNAME_STORAGE_KEY);
+    if (stored) return stored;
+  } catch (_) {
+    // localStorage pode falhar em modo privado.
+  }
+  return String(state.name || state.playerData?.nome || state.playerData?.name || "Jogador").trim();
+}
+
+function saveLevel2Nickname(nickname) {
+  try {
+    window.localStorage?.setItem(LEVEL2_NICKNAME_STORAGE_KEY, nickname);
+  } catch (_) {
+    // Persistencia local e opcional.
+  }
+}
+
+function setLevel2SessionStatus(message, color = "var(--muted)") {
+  if (!ui.level2SessionStatus) return;
+  ui.level2SessionStatus.textContent = message || "";
+  ui.level2SessionStatus.style.color = color;
+}
+
 function renderLevel2PreviewPanel() {
   const progress = ensurePlayerProgress();
   if (!ui.level2PreviewStatus) return;
+  const agentStatus = INANNA_LEVEL2_AGENT_URL
+    ? "Agente conectado ao Worker."
+    : "Agente remoto ainda não configurado; modo local de segurança será usado.";
   ui.level2PreviewStatus.innerHTML = `
     <div class="level2-preview-status">
       <strong>${escapeHtml(getLevel2StatusMessage(progress))}</strong>
-      <p>Esta prévia fica reservada para experimentar a próxima camada da Inanna com o progresso do Nível 1 preservado.</p>
+      <p>A peleja acontece em 3 rounds: você escreve, Inanna responde em quadra e você melhora sua resposta para vencer a máquina.</p>
+      <p>${escapeHtml(agentStatus)}</p>
       ${renderLevel2MiniProgress(progress)}
     </div>
   `;
+  if (ui.level2NicknameInput) ui.level2NicknameInput.value = getLevel2DefaultNickname();
+  if (ui.level2DictateBtn) {
+    ui.level2DictateBtn.disabled = !INANNA_LEVEL2_DICTATION_ENABLED;
+    ui.level2DictateBtn.title = INANNA_LEVEL2_DICTATION_ENABLED ? "" : "Ditado será ativado depois da validação inicial.";
+  }
+  if (ui.level2AudioToggleBtn) {
+    ui.level2AudioToggleBtn.disabled = true;
+    ui.level2AudioToggleBtn.textContent = "Pausar som";
+  }
+}
+
+function resetLevel2RoundInputs() {
+  if (ui.level2OriginalInput) ui.level2OriginalInput.value = "";
+  if (ui.level2FinalInput) {
+    ui.level2FinalInput.value = "";
+    ui.level2FinalInput.disabled = true;
+  }
+  if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.disabled = false;
+  if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.disabled = true;
+  if (ui.level2NextRoundBtn) ui.level2NextRoundBtn.hidden = true;
+  if (ui.level2InannaResponse) {
+    ui.level2InannaResponse.hidden = true;
+    ui.level2InannaResponse.innerHTML = "";
+  }
+  if (ui.level2RoundFeedback) ui.level2RoundFeedback.innerHTML = "";
+}
+
+function resetLevel2State(keepIdentity = true) {
+  const nickname = keepIdentity ? state.level2.nickname : "";
+  const playerId = keepIdentity ? state.level2.playerId : "";
+  state.level2 = {
+    sessionId: "",
+    playerId,
+    nickname,
+    inputMode: "written",
+    soundMode: "none",
+    currentRound: 1,
+    roundCount: 3,
+    playerWins: 0,
+    inannaWins: 0,
+    theme: "",
+    rhymeScheme: "AABB",
+    originalQuadra: "",
+    finalQuadra: "",
+    inannaQuadra: "",
+    stolenWords: [],
+    generationProvider: "",
+    roundClosed: false,
+    matchFinished: false,
+    lastRoundResult: null,
+    audio: state.level2.audio || null,
+    dictation: null
+  };
 }
 
 function openLevel2Preview() {
@@ -1145,8 +1292,463 @@ function openLevel2Preview() {
   state.selectedTrack = "level2";
   hideGameExperience();
   setView("level2Preview", ui.level2PreviewSection);
+  resetLevel2State(false);
+  resetLevel2RoundInputs();
   renderLevel2PreviewPanel();
+  if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = false;
+  if (ui.level2Arena) ui.level2Arena.hidden = true;
+  if (ui.level2MatchResult) ui.level2MatchResult.hidden = true;
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function getLevel2PlayerId() {
+  return getProgressPlayerId();
+}
+
+function getLevel2Headers() {
+  return {
+    "content-type": "application/json",
+    "x-inanna-player-id": state.level2.playerId || getLevel2PlayerId()
+  };
+}
+
+async function callLevel2Agent(path, payload = {}) {
+  if (!INANNA_LEVEL2_AGENT_URL) return runLocalLevel2Agent(path, payload);
+  const url = `${INANNA_LEVEL2_AGENT_URL.replace(/\/$/, "")}${path}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: getLevel2Headers(),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) {
+    throw new Error(data?.message || data?.error || "Falha no agente da Inanna.");
+  }
+  return data;
+}
+
+function runLocalLevel2Agent(path, payload = {}) {
+  if (path === "/v2/session/start") {
+    return Promise.resolve({
+      ok: true,
+      session: {
+        sessionId: `local-${Date.now()}`,
+        playerId: payload.playerId,
+        nickname: payload.nickname,
+        roundCount: 3,
+        currentRound: 1,
+        status: "active",
+        source: "local"
+      }
+    });
+  }
+  if (path === "/v2/round/generate") {
+    const challenge = LEVEL2_LOCAL_CHALLENGES[(state.level2.currentRound - 1) % LEVEL2_LOCAL_CHALLENGES.length];
+    return Promise.resolve({ ok: true, challenge });
+  }
+  if (path === "/v2/round/respond") {
+    const stolenWords = getLocalStolenWords(payload.playerQuadra || payload.playerOriginalQuadra || "");
+    const quadra = buildLocalInannaQuadra(stolenWords, payload.rhymeScheme || "AABB");
+    return Promise.resolve({
+      ok: true,
+      theme: payload.theme,
+      rhymeScheme: payload.rhymeScheme,
+      inanna: {
+        quadra,
+        stolenWords,
+        provocation: "Melhore esse golpe de rima e veja se sua voz sustenta a peleja.",
+        provider: "local-fallback"
+      },
+      inannaScore: { total: 72 },
+      playerPrelim: { score: { total: estimateLocalLevel2Score(payload.playerQuadra || "") } }
+    });
+  }
+  if (path === "/v2/round/finalize") {
+    const playerTotal = estimateLocalLevel2Score(payload.playerFinalQuadra || payload.playerQuadra || "");
+    const inannaTotal = estimateLocalLevel2Score(payload.inannaQuadra || "") + 4;
+    const roundWinner = playerTotal > inannaTotal ? "player" : inannaTotal > playerTotal ? "inanna" : "draw";
+    return Promise.resolve({
+      ok: true,
+      roundWinner,
+      playerScoreTotal: playerTotal,
+      inannaScoreTotal: inannaTotal,
+      playerScore: { total: playerTotal },
+      inannaScore: { total: inannaTotal },
+      feedback: `Modo local: humano ${playerTotal}, Inanna ${inannaTotal}.`,
+      roundId: ""
+    });
+  }
+  return Promise.resolve({ ok: true });
+}
+
+function getLocalStolenWords(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9ç]+/i)
+    .filter((word) => word.length > 4)
+    .slice(0, 4);
+}
+
+function buildLocalInannaQuadra(words, scheme) {
+  const a = words[0] || "feira";
+  const b = words[1] || "coração";
+  if (scheme === "ABAB") {
+    return `Roubei tua palavra ${a}\ne fiz dela provocação\nse teu verso vem da ${a}\nme vence no coração`;
+  }
+  if (scheme === "ABCB") {
+    return `Teu verso chegou ligeiro\neu respondo no sertão\nse tua voz quer peleja\nme vence no coração`;
+  }
+  return `Roubei do teu canto ${a}\ne fiz meu clarão na ${a}\nse tua rima pede ${b}\nme vence cantando ${b}`;
+}
+
+function estimateLocalLevel2Score(text) {
+  const lines = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  return Math.min(110, (lines.length === 4 ? 25 : lines.length * 5) + Math.min(55, words.length * 2) + 20);
+}
+
+function normalizeLevel2QuadraInput(value) {
+  return String(value || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join("\n");
+}
+
+function validateLevel2Quadra(value) {
+  const lines = normalizeLevel2QuadraInput(value).split("\n").filter(Boolean);
+  if (lines.length !== 4) {
+    return { ok: false, message: "A peleja pede exatamente quatro versos." };
+  }
+  if (lines.join(" ").length < 35) {
+    return { ok: false, message: "Escreva um pouco mais para a quadra ganhar corpo." };
+  }
+  return { ok: true, quadra: lines.join("\n") };
+}
+
+function renderLevel2Scoreboard() {
+  if (ui.level2RoundBadge) ui.level2RoundBadge.textContent = `Round ${state.level2.currentRound}/${state.level2.roundCount}`;
+  if (ui.level2Scoreboard) ui.level2Scoreboard.textContent = `Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna`;
+  if (ui.level2Theme) ui.level2Theme.textContent = state.level2.theme || "-";
+  if (ui.level2RhymeScheme) ui.level2RhymeScheme.textContent = state.level2.rhymeScheme || "AABB";
+}
+
+async function startLevel2Match() {
+  const nickname = String(ui.level2NicknameInput?.value || getLevel2DefaultNickname()).trim().slice(0, 40) || "Jogador";
+  const inputMode = String(ui.level2InputMode?.value || "written");
+  const soundMode = String(ui.level2SoundMode?.value || "none");
+  state.level2.playerId = getLevel2PlayerId();
+  state.level2.nickname = nickname;
+  state.level2.inputMode = inputMode;
+  state.level2.soundMode = soundMode;
+  saveLevel2Nickname(nickname);
+  setLevel2SessionStatus("Abrindo a roda da peleja...", "var(--muted)");
+  if (ui.level2StartBtn) ui.level2StartBtn.disabled = true;
+  try {
+    const result = await callLevel2Agent("/v2/session/start", {
+      playerId: state.level2.playerId,
+      nickname,
+      inputMode,
+      soundMode,
+      levelProgress: ensurePlayerProgress()
+    });
+    state.level2.sessionId = result.session?.sessionId || "";
+    state.level2.roundCount = Number(result.session?.roundCount || 3);
+    if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = true;
+    if (ui.level2Arena) ui.level2Arena.hidden = false;
+    await configureLevel2Audio(soundMode);
+    await beginLevel2Round(1);
+    setLevel2SessionStatus("Peleja iniciada.", "var(--accent)");
+  } catch (error) {
+    console.error(error);
+    setLevel2SessionStatus(error?.message || "Não foi possível iniciar a peleja.", "var(--danger)");
+  } finally {
+    if (ui.level2StartBtn) ui.level2StartBtn.disabled = false;
+  }
+}
+
+async function beginLevel2Round(roundNumber) {
+  state.level2.currentRound = roundNumber;
+  state.level2.roundClosed = false;
+  state.level2.originalQuadra = "";
+  state.level2.finalQuadra = "";
+  state.level2.inannaQuadra = "";
+  state.level2.stolenWords = [];
+  state.level2.lastRoundResult = null;
+  resetLevel2RoundInputs();
+  const result = await callLevel2Agent("/v2/round/generate", {
+    sessionId: state.level2.sessionId,
+    roundNumber
+  });
+  const fallback = LEVEL2_LOCAL_CHALLENGES[(roundNumber - 1) % LEVEL2_LOCAL_CHALLENGES.length];
+  state.level2.theme = result.challenge?.theme || fallback.theme;
+  state.level2.rhymeScheme = result.challenge?.rhymeScheme || fallback.rhymeScheme;
+  renderLevel2Scoreboard();
+}
+
+function renderLevel2InannaResponse(result) {
+  const inanna = result.inanna || {};
+  const stolenWords = Array.isArray(inanna.stolenWords) ? inanna.stolenWords : [];
+  if (!ui.level2InannaResponse) return;
+  ui.level2InannaResponse.hidden = false;
+  ui.level2InannaResponse.innerHTML = `
+    <h3>Inanna responde</h3>
+    <p>${escapeHtml(inanna.provocation || "Agora responda e prove sua voz.")}</p>
+    <pre class="level2-quadra">${escapeHtml(inanna.quadra || "")}</pre>
+    <div class="level2-stolen" aria-label="Palavras roubadas por Inanna">
+      ${stolenWords.map((word) => `<span>${escapeHtml(word)}</span>`).join("")}
+    </div>
+    <p class="verse-hint">Geração: ${escapeHtml(result.generationProvider || inanna.provider || "agente")}</p>
+  `;
+}
+
+async function submitLevel2Original() {
+  const validation = validateLevel2Quadra(ui.level2OriginalInput?.value || "");
+  if (!validation.ok) {
+    setLevel2SessionStatus(validation.message, "var(--danger)");
+    return;
+  }
+  state.level2.originalQuadra = validation.quadra;
+  if (ui.level2SubmitOriginalBtn) {
+    ui.level2SubmitOriginalBtn.disabled = true;
+    ui.level2SubmitOriginalBtn.textContent = "Inanna está respondendo...";
+  }
+  setLevel2SessionStatus("Inanna está roubando imagens da sua quadra...", "var(--muted)");
+  try {
+    const result = await callLevel2Agent("/v2/round/respond", {
+      sessionId: state.level2.sessionId,
+      playerId: state.level2.playerId,
+      nickname: state.level2.nickname,
+      roundNumber: state.level2.currentRound,
+      theme: state.level2.theme,
+      rhymeScheme: state.level2.rhymeScheme,
+      playerQuadra: state.level2.originalQuadra,
+      playerOriginalQuadra: state.level2.originalQuadra
+    });
+    state.level2.inannaQuadra = result.inanna?.quadra || "";
+    state.level2.stolenWords = result.inanna?.stolenWords || [];
+    state.level2.generationProvider = result.generationProvider || result.inanna?.provider || "";
+    renderLevel2InannaResponse(result);
+    if (ui.level2FinalInput) {
+      ui.level2FinalInput.disabled = false;
+      ui.level2FinalInput.value = state.level2.originalQuadra;
+      ui.level2FinalInput.focus();
+    }
+    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.disabled = false;
+    setLevel2SessionStatus("Agora melhore sua resposta e tente vencer o round.", "var(--accent)");
+  } catch (error) {
+    console.error(error);
+    setLevel2SessionStatus(error?.message || "Inanna não respondeu agora.", "var(--danger)");
+    if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.disabled = false;
+  } finally {
+    if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.textContent = "Enviar para Inanna";
+  }
+}
+
+function renderLevel2RoundFeedback(result) {
+  if (!ui.level2RoundFeedback) return;
+  const winnerLabel = result.roundWinner === "player"
+    ? "Você venceu o round"
+    : result.roundWinner === "inanna"
+      ? "Inanna venceu o round"
+      : "Empate técnico";
+  ui.level2RoundFeedback.innerHTML = `
+    <h3>${escapeHtml(winnerLabel)}</h3>
+    <p>${escapeHtml(result.feedback || "")}</p>
+    <div class="level2-score-grid">
+      <div class="level2-score-card"><span>Humano</span><strong>${Number(result.playerScoreTotal || result.playerScore?.total || 0)}</strong></div>
+      <div class="level2-score-card"><span>Inanna</span><strong>${Number(result.inannaScoreTotal || result.inannaScore?.total || 0)}</strong></div>
+      <div class="level2-score-card"><span>Rima humana</span><strong>${Number(result.playerScore?.rhyme || 0)}</strong></div>
+      <div class="level2-score-card"><span>Coesão</span><strong>${Number(result.playerScore?.coherence || 0)}</strong></div>
+    </div>
+  `;
+}
+
+async function finalizeLevel2Round() {
+  const validation = validateLevel2Quadra(ui.level2FinalInput?.value || "");
+  if (!validation.ok) {
+    setLevel2SessionStatus(validation.message, "var(--danger)");
+    return;
+  }
+  state.level2.finalQuadra = validation.quadra;
+  if (ui.level2FinalizeRoundBtn) {
+    ui.level2FinalizeRoundBtn.disabled = true;
+    ui.level2FinalizeRoundBtn.textContent = "Avaliando...";
+  }
+  setLevel2SessionStatus("Avaliando rima, autoria e coesão semântica...", "var(--muted)");
+  try {
+    const result = await callLevel2Agent("/v2/round/finalize", {
+      sessionId: state.level2.sessionId,
+      playerId: state.level2.playerId,
+      nickname: state.level2.nickname,
+      roundNumber: state.level2.currentRound,
+      theme: state.level2.theme,
+      rhymeScheme: state.level2.rhymeScheme,
+      playerOriginalQuadra: state.level2.originalQuadra,
+      playerFinalQuadra: state.level2.finalQuadra,
+      inannaQuadra: state.level2.inannaQuadra,
+      stolenWords: state.level2.stolenWords
+    });
+    state.level2.lastRoundResult = result;
+    state.level2.roundClosed = true;
+    if (result.roundWinner === "player") state.level2.playerWins += 1;
+    if (result.roundWinner === "inanna") state.level2.inannaWins += 1;
+    renderLevel2Scoreboard();
+    renderLevel2RoundFeedback(result);
+    const finished = state.level2.currentRound >= state.level2.roundCount || state.level2.playerWins >= 2 || state.level2.inannaWins >= 2;
+    if (finished) {
+      finishLevel2Match();
+    } else if (ui.level2NextRoundBtn) {
+      ui.level2NextRoundBtn.hidden = false;
+    }
+    setLevel2SessionStatus("Round fechado.", "var(--accent)");
+  } catch (error) {
+    console.error(error);
+    setLevel2SessionStatus(error?.message || "Não consegui fechar o round.", "var(--danger)");
+    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.disabled = false;
+  } finally {
+    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.textContent = "Fechar round";
+  }
+}
+
+function finishLevel2Match() {
+  state.level2.matchFinished = true;
+  const playerWon = state.level2.playerWins > state.level2.inannaWins;
+  if (ui.level2MatchResult) {
+    ui.level2MatchResult.hidden = false;
+    ui.level2MatchResult.innerHTML = `
+      <h3>${playerWon ? "Você venceu a peleja" : "Inanna venceu a peleja"}</h3>
+      <p>${playerWon
+        ? "Sua autoria humana sustentou a rima e respondeu à provocação da máquina."
+        : "A máquina levou esta rodada, mas deixou pistas claras para sua próxima resposta."}</p>
+      <p><strong>Placar final:</strong> Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna.</p>
+    `;
+  }
+  if (ui.level2NextRoundBtn) ui.level2NextRoundBtn.hidden = true;
+  setLevel2SessionStatus("Peleja finalizada.", playerWon ? "var(--accent)" : "var(--primary)");
+}
+
+async function goToNextLevel2Round() {
+  if (state.level2.matchFinished) return;
+  await beginLevel2Round(state.level2.currentRound + 1);
+}
+
+async function resetLevel2Match() {
+  stopLevel2Audio();
+  resetLevel2State(true);
+  resetLevel2RoundInputs();
+  if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = false;
+  if (ui.level2Arena) ui.level2Arena.hidden = true;
+  if (ui.level2MatchResult) ui.level2MatchResult.hidden = true;
+  renderLevel2PreviewPanel();
+  setLevel2SessionStatus("");
+}
+
+async function configureLevel2Audio(soundMode) {
+  stopLevel2Audio();
+  if (!INANNA_LEVEL2_AUDIO_ENABLED || soundMode === "none") {
+    if (ui.level2AudioToggleBtn) ui.level2AudioToggleBtn.disabled = true;
+    return;
+  }
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  const context = new AudioContextClass();
+  const gain = context.createGain();
+  gain.gain.value = 0.035;
+  gain.connect(context.destination);
+  const audioState = { context, gain, nodes: [], interval: null, active: true, mode: soundMode };
+  if (soundMode === "white_noise") {
+    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(gain);
+    source.start();
+    audioState.nodes.push(source);
+  } else {
+    const playPulse = () => {
+      const osc = context.createOscillator();
+      const pulseGain = context.createGain();
+      osc.frequency.value = soundMode === "baiao" ? 180 : 110;
+      pulseGain.gain.value = 0.045;
+      osc.connect(pulseGain);
+      pulseGain.connect(gain);
+      osc.start();
+      osc.stop(context.currentTime + 0.08);
+    };
+    audioState.interval = window.setInterval(playPulse, soundMode === "baiao" ? 420 : 520);
+    playPulse();
+  }
+  state.level2.audio = audioState;
+  if (ui.level2AudioToggleBtn) {
+    ui.level2AudioToggleBtn.disabled = false;
+    ui.level2AudioToggleBtn.textContent = "Pausar som";
+  }
+}
+
+function stopLevel2Audio() {
+  const audio = state.level2?.audio;
+  if (!audio) return;
+  try {
+    audio.nodes?.forEach((node) => node.stop?.());
+    if (audio.interval) window.clearInterval(audio.interval);
+    audio.context?.close?.();
+  } catch (_) {
+    // AudioContext pode ja estar fechado.
+  }
+  state.level2.audio = null;
+  if (ui.level2AudioToggleBtn) {
+    ui.level2AudioToggleBtn.disabled = true;
+    ui.level2AudioToggleBtn.textContent = "Pausar som";
+  }
+}
+
+function toggleLevel2Audio() {
+  const audio = state.level2.audio;
+  if (!audio?.context) return;
+  if (audio.context.state === "running") {
+    audio.context.suspend();
+    if (ui.level2AudioToggleBtn) ui.level2AudioToggleBtn.textContent = "Retomar som";
+  } else {
+    audio.context.resume();
+    if (ui.level2AudioToggleBtn) ui.level2AudioToggleBtn.textContent = "Pausar som";
+  }
+}
+
+function startLevel2Dictation() {
+  if (!INANNA_LEVEL2_DICTATION_ENABLED) {
+    setLevel2SessionStatus("Ditado ainda está desligado nesta versão.", "var(--danger)");
+    return;
+  }
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    setLevel2SessionStatus("Este navegador não oferece ditado nativo.", "var(--danger)");
+    return;
+  }
+  const recognition = new SpeechRecognition();
+  recognition.lang = "pt-BR";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onresult = (event) => {
+    const transcript = Array.from(event.results)
+      .map((result) => result[0]?.transcript || "")
+      .join("\n")
+      .trim();
+    if (transcript && ui.level2OriginalInput) {
+      ui.level2OriginalInput.value = transcript;
+      setLevel2SessionStatus("Revise a transcrição antes de enviar.", "var(--accent)");
+    }
+  };
+  recognition.onerror = () => setLevel2SessionStatus("Não consegui captar o ditado agora.", "var(--danger)");
+  recognition.start();
+  state.level2.dictation = recognition;
+  setLevel2SessionStatus("Ouvindo... depois revise a transcrição.", "var(--muted)");
 }
 
 function canAccessSextilhaWorkspace(email = state.email) {
@@ -5049,7 +5651,38 @@ if (ui.chooseLevel2TrackBtn) {
 }
 
 if (ui.level2PreviewBackBtn) {
-  ui.level2PreviewBackBtn.addEventListener("click", showTrackChooser);
+  ui.level2PreviewBackBtn.addEventListener("click", () => {
+    stopLevel2Audio();
+    showTrackChooser();
+  });
+}
+
+if (ui.level2StartBtn) {
+  ui.level2StartBtn.addEventListener("click", startLevel2Match);
+}
+
+if (ui.level2SubmitOriginalBtn) {
+  ui.level2SubmitOriginalBtn.addEventListener("click", submitLevel2Original);
+}
+
+if (ui.level2FinalizeRoundBtn) {
+  ui.level2FinalizeRoundBtn.addEventListener("click", finalizeLevel2Round);
+}
+
+if (ui.level2NextRoundBtn) {
+  ui.level2NextRoundBtn.addEventListener("click", goToNextLevel2Round);
+}
+
+if (ui.level2ResetBtn) {
+  ui.level2ResetBtn.addEventListener("click", resetLevel2Match);
+}
+
+if (ui.level2AudioToggleBtn) {
+  ui.level2AudioToggleBtn.addEventListener("click", toggleLevel2Audio);
+}
+
+if (ui.level2DictateBtn) {
+  ui.level2DictateBtn.addEventListener("click", startLevel2Dictation);
 }
 
 if (ui.trackChooserBackBtn) {

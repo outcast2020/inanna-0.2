@@ -1,0 +1,61 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inanna-level2-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+
+  "observability": {
+    "enabled": true
+  },
+
+  "ai": {
+    "binding": "AI"
+  },
+
+  "vars": {
+    "INANNA_ENV": "production",
+    "ALLOWED_ORIGINS": [
+      "https://inanna.cordel2pontozero.com",
+      "https://inanna-five.vercel.app",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173"
+    ],
+    "SUPABASE_URL": "https://ifhagjcarefdkcmjvknf.supabase.co",
+    "LOCAL_LEXICON_ENABLED": false,
+    "SOCIAL_VOTING_ENABLED": false,
+    "GENERATION_MODEL": "sabia-4",
+    "DEFAULT_GENERATION_MODEL": "sabia-4",
+    "DEFAULT_JUDGE_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "ROUND_COUNT": 3,
+    "MAX_QUADRA_CHARS": 900
+  },
+
+  "ratelimits": [
+    {
+      "name": "AI_RATE_LIMITER",
+      "namespace_id": "2001",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    },
+    {
+      "name": "VOTE_RATE_LIMITER",
+      "namespace_id": "2002",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ]
+
+  // Ative depois que o subdomínio estiver pronto na Cloudflare:
+  // "routes": [
+  //   {
+  //     "pattern": "inanna-agent.cordel2pontozero.com",
+  //     "custom_domain": true
+  //   }
+  // ]
+}

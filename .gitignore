@@ -6,11 +6,14 @@
 !.env.example
 not-commit-supabaseInanna.txt
 not-commit-supabasepassword*
+not-commit-*.txt
+inanna-level2-agent/not-commit-*.txt
 
 # Vercel / build output
 node_modules/
 .vercel/
 dist/
+supabase/.temp/
 
 # Credential JSONs
 inanna-ia-*.json
