@@ -675,6 +675,136 @@ const THEMES = [
       acoes: ["conexão", "download", "clique", "algoritmo"],
       objetosCulturais: ["computador", "celular", "sistema", "internet", "robô"]
     }
+  },
+  {
+    key: "casa", name: "Casa", emoji: "🏠",
+    desc: "Lar, quintal, cuidado e memória afetiva",
+    trap: "Ex: No fim da tarde eu volto para minha ___",
+    tokens: {
+      substantivos: [
+        "casa", "lar", "porta", "janela", "quintal", "cozinha",
+        "mesa", "rede", "família", "memória", "abrigo", "morada",
+        "telhado", "parede", "chão", "cheiro", "cuidado", "aconchego"
+      ],
+      verbos: [
+        "morar", "voltar", "cuidar", "varrer", "cozinhar", "acolher",
+        "lembrar", "descansar", "brincar", "arrumar", "plantar", "sonhar"
+      ],
+      adjetivos: [
+        "simples", "antigo", "quente", "calmo", "cheiroso", "seguro",
+        "pequeno", "grande", "familiar", "querido", "aberto", "iluminado"
+      ],
+      lugares: [
+        "sala", "quarto", "cozinha", "quintal", "varanda", "terreiro",
+        "porta", "janela", "rua", "beco", "vila", "comunidade"
+      ],
+      acoes: [
+        "chegada", "partilha", "descanso", "conversa", "brincadeira",
+        "lembrança", "acolhida", "cuidado", "reunião", "visita"
+      ],
+      objetosCulturais: [
+        "rede", "panela", "fogão", "mesa", "cadeira", "lamparina",
+        "fotografia", "vaso", "rádio", "caderno", "colcha", "chave"
+      ]
+    }
+  },
+  {
+    key: "mitologia-brasileira", name: "Mitologia Brasileira", emoji: "🌀",
+    desc: "Lendas, encantados, floresta e imaginação popular",
+    trap: "Ex: Na mata escura apareceu o velho ___",
+    tokens: {
+      substantivos: [
+        "saci", "iara", "curupira", "boitatá", "caipora", "cuca",
+        "boto", "mapinguari", "encanto", "mistério", "lenda", "floresta",
+        "rio", "mata", "lua", "fogo", "assobio", "travessura"
+      ],
+      verbos: [
+        "assobiar", "encantar", "proteger", "correr", "sumir", "aparecer",
+        "enganar", "guardar", "nadar", "brilhar", "contar", "escutar"
+      ],
+      adjetivos: [
+        "mágico", "antigo", "encantado", "brasileiro", "travesso",
+        "misterioso", "valente", "noturno", "vermelho", "profundo",
+        "selvagem", "luminoso"
+      ],
+      lugares: [
+        "mata", "floresta", "rio", "lagoa", "trilha", "aldeia",
+        "roçado", "sertão", "beira-rio", "cachoeira", "capoeira", "brejo"
+      ],
+      acoes: [
+        "aparição", "travessura", "proteção", "encantamento", "fuga",
+        "canto", "assobio", "mistério", "história", "contação"
+      ],
+      objetosCulturais: [
+        "gorro", "cachimbo", "redemoinho", "fogueira", "canoa",
+        "pente", "concha", "máscara", "tambor", "amuleto", "lenda", "conto"
+      ]
+    }
+  },
+  {
+    key: "tradicoes-afro-brasileiras", name: "Tradições afro-brasileiras", emoji: "🥁",
+    desc: "Ancestralidade, roda, tambor, corpo e memória coletiva",
+    trap: "Ex: No toque do tambor eu senti muito ___",
+    tokens: {
+      substantivos: [
+        "axé", "tambor", "roda", "terreiro", "ancestralidade", "memória",
+        "corpo", "canto", "dança", "respeito", "comunidade", "oralidade",
+        "força", "raiz", "fé", "tradição", "ginga", "energia"
+      ],
+      verbos: [
+        "tocar", "dançar", "cantar", "saudar", "respeitar", "lembrar",
+        "celebrar", "gingar", "escutar", "aprender", "partilhar", "honrar"
+      ],
+      adjetivos: [
+        "ancestral", "sagrado", "coletivo", "forte", "vivo", "ritmado",
+        "profundo", "brasileiro", "afro", "popular", "respeitoso", "luminoso"
+      ],
+      lugares: [
+        "terreiro", "roda", "rua", "praça", "comunidade", "cozinha",
+        "mercado", "ladeira", "pelourinho", "salvador", "bahia", "quintal"
+      ],
+      acoes: [
+        "toque", "ginga", "canto", "dança", "celebração", "saudação",
+        "partilha", "escuta", "memória", "ensinamento", "festa", "roda"
+      ],
+      objetosCulturais: [
+        "atabaque", "agogô", "berimbau", "pandeiro", "tambor", "saia",
+        "conta", "fio", "acarajé", "dendê", "capoeira", "afoxé",
+        "ijexá", "maracatu", "samba", "abará"
+      ]
+    }
+  },
+  {
+    key: "promocao-da-paz", name: "Promoção da paz", emoji: "🕊️",
+    desc: "Diálogo, escuta, respeito e convivência",
+    trap: "Ex: Quando a briga terminou nasceu a ___",
+    tokens: {
+      substantivos: [
+        "paz", "diálogo", "escuta", "respeito", "cuidado", "perdão",
+        "justiça", "esperança", "abraço", "ponte", "acordo", "amizade",
+        "convivência", "solidariedade", "ternura", "calma", "união", "confiança"
+      ],
+      verbos: [
+        "ouvir", "acolher", "dialogar", "cuidar", "perdoar", "mediar",
+        "pacificar", "respeitar", "abraçar", "reparar", "conversar", "unir"
+      ],
+      adjetivos: [
+        "calmo", "justo", "sereno", "solidário", "fraterno", "gentil",
+        "humano", "coletivo", "sincero", "possível", "necessário", "vivo"
+      ],
+      lugares: [
+        "escola", "rua", "casa", "praça", "comunidade", "sala",
+        "bairro", "mundo", "roda", "cidade", "pátio", "família"
+      ],
+      acoes: [
+        "escuta", "mediação", "acordo", "reconciliação", "conversa",
+        "acolhida", "cuidado", "partilha", "abraço", "respeito", "encontro"
+      ],
+      objetosCulturais: [
+        "pomba", "bandeira", "carta", "cartaz", "roda", "microfone",
+        "livro", "ponte", "flor", "mural", "mensagem", "canção"
+      ]
+    }
   }
 ];
 
@@ -1859,6 +1989,7 @@ function setElementDisplay(el, shouldShow, displayValue = "") {
 function getWorkspacePanels() {
   return [
     ui.trackChooserSection,
+    ui.level2PreviewSection,
     ui.userDashboardSection,
     ui.folhetoWorkspaceSection,
     ui.sextilhaEditorSection,
