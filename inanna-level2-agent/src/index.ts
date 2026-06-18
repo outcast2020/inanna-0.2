@@ -89,17 +89,26 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 const THEMES = [
-	"uma promessa feita na feira",
-	"um segredo guardado no terreiro",
-	"o susto de uma noite de chuva",
-	"a coragem antes da viagem",
-	"um conselho dado por uma avó",
-	"a disputa entre orgulho e saudade",
-	"uma lembrança que voltou cantando",
-	"o riso depois de uma queda",
+	"ônibus lotado e sonho no bolso",
+	"caderno aberto e futuro na mão",
+	"primeiro emprego sem perder a voz",
+	"paz na quebrada sem calar ninguém",
+	"bola na rua e praça acesa",
+	"internet, verdade e palavra própria",
+	"saúde da mente sem vergonha",
+	"rio limpo passando pela cidade",
+	"tambor, memória e cultura viva",
+	"cada rosto com seu lugar",
+	"menina na ciência e verso na mão",
+	"grêmio, assembleia e fala sem medo",
+	"comida no prato antes da promessa",
+	"trabalho justo e descanso de gente",
+	"amor, respeito e escolha segura",
 ];
 
-const SCHEMES = ["AABB", "ABAB", "ABCB"];
+const THEME_STYLE_GUIDANCE = "As temáticas devem ser traduzidas para a linguagem do cordel e do cotidiano juvenil. Evite termos técnicos, burocráticos ou academicistas nas provocações da IA. O foco é a vivência poética do direito, não o texto da lei.";
+
+const SCHEMES = ["AABB", "ABAB", "ABCB", "ABBA"];
 const FALLBACK_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 const GENERATION_PROVIDER = "maritaca";
 const MARITACA_CHAT_URL = "https://chat.maritaca.ai/api/chat/completions";
@@ -182,6 +191,7 @@ function expectedPairs(scheme: string): Array<[number, number]> {
 	const normalized = String(scheme || "AABB").toUpperCase();
 	if (normalized === "ABAB") return [[0, 2], [1, 3]];
 	if (normalized === "ABCB") return [[1, 3]];
+	if (normalized === "ABBA") return [[0, 3], [1, 2]];
 	return [[0, 1], [2, 3]];
 }
 
@@ -328,7 +338,7 @@ async function generateWithMaritaca(env: Env, prompt: string): Promise<string> {
 			messages: [
 				{
 					role: "system",
-					content: "Voce e Inanna no Cordel 2.0: uma rival poetica sedutora, provocadora, ludica e respeitosa. Escreva em portugues brasileiro simples, com gosto de oralidade popular, sem humilhar a pessoa jogadora.",
+					content: "Voce e Inanna no Cordel 2.0: uma repentista espirituosa, rapida e acolhedora. Provoque pelo desafio poetico, com rima e oralidade brasileira, sem humilhar a pessoa jogadora e sem soar professoral.",
 				},
 				{ role: "user", content: prompt },
 			],
@@ -362,6 +372,9 @@ Regras:
 - Responda sempre em uma quadra com exatamente 4 versos.
 - A quadra deve dialogar com a quadra do jogador e tentar superá-la.
 - Use pelo menos 2 palavras/imagens roubadas quando existirem.
+- Inanna deve adotar a persona de uma repentista espirituosa, rápida e acolhedora.
+- Suas provocações devem focar no desafio poético (por exemplo, pedir rima mais rica ou brincar com a métrica do jogador), e nunca no nível de conhecimento formal do usuário.
+- ${THEME_STYLE_GUIDANCE}
 - A provocação deve ser poética, sedutora no jogo verbal, nunca sexual, ofensiva, humilhante ou agressiva.
 - Preserve oralidade popular sem caricatura regional.
 - Retorne somente JSON válido neste formato:
@@ -416,28 +429,35 @@ function normalizeStringArray(value: unknown): string[] {
 
 function buildFallbackInannaQuadra(playerQuadra: string, stolen: string[], scheme: string): string[] {
 	const wordA = stolen[0] || getFinalWord(getLines(playerQuadra)[0] || "") || "claridade";
-	const wordB = stolen[1] || getFinalWord(getLines(playerQuadra)[1] || "") || "cancao";
 	if (String(scheme).toUpperCase() === "ABAB") {
 		return [
-			`Roubei teu brilho de ${wordA}`,
-			`e pus meu passo no chao`,
-			`se tua voz pede ${wordA}`,
-			`me vence no coracao`,
+			`Levei teu ${wordA} no clarao`,
+			`e pisei firme no terreiro`,
+			`se tua voz busca o sertao`,
+			`me vence no verso ligeiro`,
 		];
 	}
 	if (String(scheme).toUpperCase() === "ABCB") {
 		return [
 			`Tua palavra me chamou`,
-			`mas eu respondo no chao`,
+			`eu respondo no terreiro`,
 			`se teu verso levantou`,
-			`me enfrenta no coracao`,
+			`me enfrenta no verso ligeiro`,
+		];
+	}
+	if (String(scheme).toUpperCase() === "ABBA") {
+		return [
+			`Levei teu ${wordA} pro clarao`,
+			`e fiz meu passo no terreiro`,
+			`quem afia verso ligeiro`,
+			`me vence agora no sertao`,
 		];
 	}
 	return [
-		`Roubei do teu verso ${wordA}`,
-		`pra ver tua voz em ${wordA}`,
-		`se minha rima vira ${wordB}`,
-		`me vence fazendo ${wordB}`,
+		`Roubei teu ${wordA} no clarao`,
+		`e fiz resposta no sertao`,
+		`se tua rima vem certeira`,
+		`me vence de mao ligeira`,
 	];
 }
 
@@ -460,7 +480,7 @@ ${input.playerQuadra}
 Quadra da Inanna, quando houver:
 ${input.inannaQuadra || "(sem quadra da Inanna)"}
 
-Use rubricas curtas e nao penalize oralidade popular, simplicidade expressiva ou marcas regionais. Penalize falta de sentido interno, copia passiva da Inanna e quebra de quadra.
+Use rubricas curtas e nao penalize oralidade popular, simplicidade expressiva ou marcas regionais. Penalize falta de sentido interno, copia passiva da Inanna e quebra de quadra. A rima deve pesar muito: uma quadra sem rima no esquema esperado dificilmente vence.
 
 Retorne somente JSON valido:
 {
@@ -477,6 +497,7 @@ Retorne somente JSON valido:
     "languageIsUnderstandable": true,
     "keepsHumanVoice": true
   },
+  "short_explanation": "frase curta, formativa e instigante",
   "feedback": "frase curta e formativa"
 }`;
 }
@@ -534,7 +555,7 @@ function normalizeAiRubric(value: JsonRecord): AiRubric {
 			languageIsUnderstandable: flags.languageIsUnderstandable !== false,
 			keepsHumanVoice: flags.keepsHumanVoice !== false,
 		},
-		feedback: cleanText(value.feedback || "Boa peleja: revise rima, imagem e resposta à provocação.", 220),
+		feedback: cleanText(value.short_explanation || value.shortExplanation || value.feedback || "Boa peleja: revise rima, imagem e resposta à provocação.", 220),
 	};
 }
 
@@ -728,7 +749,7 @@ function generateChallenge(): JsonRecord {
 	return {
 		theme: randomFrom(THEMES),
 		rhymeScheme: randomFrom(SCHEMES),
-		seedImage: randomFrom(["fogueira", "estrada", "rio", "chapéu", "tambor", "janela", "feira"]),
+		seedImage: randomFrom(["ônibus", "caderno", "praça", "rio", "tambor", "celular", "bola", "feira"]),
 	};
 }
 
@@ -798,6 +819,7 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 		inannaAiRubric: inannaFinal.ai,
 		playerScoreTotal: playerFinal.score.total,
 		inannaScoreTotal: inannaFinal.score.total,
+		shortExplanation: buildRoundShortExplanation(roundWinner, playerFinal.score, inannaFinal.score, playerFinal.ai.feedback),
 		feedback: buildRoundFeedback(roundWinner, playerFinal.score, inannaFinal.score, playerFinal.ai.feedback),
 	};
 	const savedRound = await saveRound(env, payload, result);
@@ -806,12 +828,16 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 }
 
 function buildRoundFeedback(winner: string, player: MechanicalScore, inanna: MechanicalScore, feedback: string): string {
+	return `${buildRoundShortExplanation(winner, player, inanna, feedback)} Placar: humano ${player.total}, Inanna ${inanna.total}.`;
+}
+
+function buildRoundShortExplanation(winner: string, player: MechanicalScore, inanna: MechanicalScore, feedback: string): string {
 	const base = winner === "player"
 		? "Você venceu o round: sua resposta segurou rima, voz e intenção."
 		: winner === "inanna"
 			? "Inanna levou o round: revise rima, coesão e resposta à provocação."
 			: "Empate técnico: os versos ficaram próximos na peleja.";
-	return `${base} ${feedback} Placar: humano ${player.total}, Inanna ${inanna.total}.`;
+	return `${base} ${feedback}`;
 }
 
 async function voteRound(request: Request, env: Env): Promise<Response> {

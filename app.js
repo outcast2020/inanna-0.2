@@ -257,7 +257,7 @@ const state = {
   },
   points: 0,
   scheme: "Livre",
-  modeChallenge: false,
+  modeChallenge: true,
   rhyme: null,
   scoreBreakdown: null,
   playerProgress: null,
@@ -385,9 +385,10 @@ const INANNA_ADMIN_EMAILS = new Set([
 ]);
 const LEVEL2_NICKNAME_STORAGE_KEY = "inanna_level2_nickname_v1";
 const LEVEL2_LOCAL_CHALLENGES = [
-  { theme: "uma promessa feita na feira", rhymeScheme: "AABB" },
-  { theme: "o susto de uma noite de chuva", rhymeScheme: "ABAB" },
-  { theme: "a coragem antes da viagem", rhymeScheme: "ABCB" }
+  { theme: "ônibus lotado e sonho no bolso", rhymeScheme: "AABB" },
+  { theme: "paz na quebrada sem calar a voz", rhymeScheme: "ABAB" },
+  { theme: "caderno aberto e futuro na mão", rhymeScheme: "ABCB" },
+  { theme: "internet, verdade e palavra própria", rhymeScheme: "ABBA" }
 ];
 const SEXTILHA_RHYME_VERSE_INDEXES = [1, 3, 5];
 const SEXTILHA_GRAMMATICAL_SYLLABLE_WARNING_LIMIT = 8;
@@ -1389,14 +1390,6 @@ function renderLevel2PreviewPanel() {
     </div>
   `;
   if (ui.level2NicknameInput) ui.level2NicknameInput.value = getLevel2DefaultNickname();
-  if (ui.level2DictateBtn) {
-    ui.level2DictateBtn.disabled = !INANNA_LEVEL2_DICTATION_ENABLED;
-    ui.level2DictateBtn.title = INANNA_LEVEL2_DICTATION_ENABLED ? "" : "Ditado será ativado depois da validação inicial.";
-  }
-  if (ui.level2AudioToggleBtn) {
-    ui.level2AudioToggleBtn.disabled = true;
-    ui.level2AudioToggleBtn.textContent = "Pausar som";
-  }
 }
 
 function resetLevel2RoundInputs() {
@@ -1520,16 +1513,19 @@ function runLocalLevel2Agent(path, payload = {}) {
     });
   }
   if (path === "/v2/round/finalize") {
-    const playerTotal = estimateLocalLevel2Score(payload.playerFinalQuadra || payload.playerQuadra || "");
-    const inannaTotal = estimateLocalLevel2Score(payload.inannaQuadra || "") + 4;
+    const playerScore = buildLocalLevel2Score(payload.playerFinalQuadra || payload.playerQuadra || "", payload.inannaQuadra || "");
+    const inannaScore = buildLocalLevel2Score(payload.inannaQuadra || "", "");
+    inannaScore.total = Math.min(110, inannaScore.total + 4);
+    const playerTotal = playerScore.total;
+    const inannaTotal = inannaScore.total;
     const roundWinner = playerTotal > inannaTotal ? "player" : inannaTotal > playerTotal ? "inanna" : "draw";
     return Promise.resolve({
       ok: true,
       roundWinner,
       playerScoreTotal: playerTotal,
       inannaScoreTotal: inannaTotal,
-      playerScore: { total: playerTotal },
-      inannaScore: { total: inannaTotal },
+      playerScore,
+      inannaScore,
       feedback: `Modo local: humano ${playerTotal}, Inanna ${inannaTotal}.`,
       roundId: ""
     });
@@ -1549,20 +1545,42 @@ function getLocalStolenWords(text) {
 
 function buildLocalInannaQuadra(words, scheme) {
   const a = words[0] || "feira";
-  const b = words[1] || "coração";
   if (scheme === "ABAB") {
-    return `Roubei tua palavra ${a}\ne fiz dela provocação\nse teu verso vem da ${a}\nme vence no coração`;
+    return `Levei teu ${a} no clarão\ne pisei firme no terreiro\nse tua voz busca o sertão\nme vence no verso ligeiro`;
   }
   if (scheme === "ABCB") {
-    return `Teu verso chegou ligeiro\neu respondo no sertão\nse tua voz quer peleja\nme vence no coração`;
+    return `Teu verso chegou ligeiro\neu respondo no terreiro\nse tua voz quer peleja\nme vence no verso ligeiro`;
   }
-  return `Roubei do teu canto ${a}\ne fiz meu clarão na ${a}\nse tua rima pede ${b}\nme vence cantando ${b}`;
+  if (scheme === "ABBA") {
+    return `Levei teu ${a} pro clarão\ne fiz meu passo no terreiro\nquem afia verso ligeiro\nme vence agora no sertão`;
+  }
+  return `Roubei teu ${a} no clarão\ne fiz resposta no sertão\nse tua rima vem certeira\nme vence de mão ligeira`;
 }
 
 function estimateLocalLevel2Score(text) {
+  return buildLocalLevel2Score(text).total;
+}
+
+function buildLocalLevel2Score(text, inannaText = "") {
   const lines = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const words = String(text || "").split(/\s+/).filter(Boolean);
-  return Math.min(110, (lines.length === 4 ? 25 : lines.length * 5) + Math.min(55, words.length * 2) + 20);
+  const structure = lines.length === 4 ? 10 : Math.min(8, lines.length * 2);
+  const rhyme = Math.min(20, Math.max(4, lines.length * 4));
+  const creativity = Math.min(20, words.length);
+  const autonomy = inannaText ? 14 : 15;
+  const verisimilitude = Math.min(15, words.length > 18 ? 13 : 8);
+  const coherence = Math.min(15, lines.length === 4 ? 12 : 6);
+  const response = inannaText ? 12 : 0;
+  return {
+    structure,
+    rhyme,
+    creativity,
+    autonomy,
+    verisimilitude,
+    coherence,
+    response,
+    total: Math.min(110, structure + rhyme + creativity + autonomy + verisimilitude + coherence + response)
+  };
 }
 
 function normalizeLevel2QuadraInput(value) {
@@ -1595,8 +1613,8 @@ function renderLevel2Scoreboard() {
 
 async function startLevel2Match() {
   const nickname = String(ui.level2NicknameInput?.value || getLevel2DefaultNickname()).trim().slice(0, 40) || "Jogador";
-  const inputMode = String(ui.level2InputMode?.value || "written");
-  const soundMode = String(ui.level2SoundMode?.value || "none");
+  const inputMode = "written";
+  const soundMode = "none";
   state.level2.playerId = getLevel2PlayerId();
   state.level2.nickname = nickname;
   state.level2.inputMode = inputMode;
@@ -1616,7 +1634,6 @@ async function startLevel2Match() {
     state.level2.roundCount = Number(result.session?.roundCount || 3);
     if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = true;
     if (ui.level2Arena) ui.level2Arena.hidden = false;
-    await configureLevel2Audio(soundMode);
     await beginLevel2Round(1);
     setLevel2SessionStatus("Peleja iniciada.", "var(--accent)");
   } catch (error) {
@@ -1701,8 +1718,38 @@ async function submitLevel2Original() {
     setLevel2SessionStatus(error?.message || "Inanna não respondeu agora.", "var(--danger)");
     if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.disabled = false;
   } finally {
-    if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.textContent = "Enviar para Inanna";
+    if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.textContent = "OK, chamar Inanna";
   }
+}
+
+function formatLevel2ScoreValue(value) {
+  const score = Number(value || 0);
+  return Number.isFinite(score) ? Math.round(score) : 0;
+}
+
+function renderLevel2CriteriaCards(label, score = {}) {
+  const criteria = [
+    ["Forma", score.structure],
+    ["Rima", score.rhyme],
+    ["Criatividade", score.creativity],
+    ["Autoria", score.autonomy],
+    ["Verossimilhança", score.verisimilitude],
+    ["Coesão", score.coherence],
+    ["Resposta", score.response]
+  ];
+  return `
+    <div class="level2-criteria-block">
+      <h4>${escapeHtml(label)}</h4>
+      <div class="level2-criteria-grid">
+        ${criteria.map(([name, value]) => `
+          <div class="level2-score-card level2-score-card--small">
+            <span>${escapeHtml(name)}</span>
+            <strong>${formatLevel2ScoreValue(value)}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function renderLevel2RoundFeedback(result) {
@@ -1712,15 +1759,19 @@ function renderLevel2RoundFeedback(result) {
     : result.roundWinner === "inanna"
       ? "Inanna venceu o round"
       : "Empate técnico";
+  const shortExplanation = result.shortExplanation || result.short_explanation || result.feedback || "";
   ui.level2RoundFeedback.innerHTML = `
     <h3>${escapeHtml(winnerLabel)}</h3>
-    <p>${escapeHtml(result.feedback || "")}</p>
-    <div class="level2-score-grid">
+    <p>${escapeHtml(shortExplanation)}</p>
+    <div class="level2-score-grid level2-score-grid--summary">
       <div class="level2-score-card"><span>Humano</span><strong>${Number(result.playerScoreTotal || result.playerScore?.total || 0)}</strong></div>
       <div class="level2-score-card"><span>Inanna</span><strong>${Number(result.inannaScoreTotal || result.inannaScore?.total || 0)}</strong></div>
-      <div class="level2-score-card"><span>Rima humana</span><strong>${Number(result.playerScore?.rhyme || 0)}</strong></div>
-      <div class="level2-score-card"><span>Coesão</span><strong>${Number(result.playerScore?.coherence || 0)}</strong></div>
     </div>
+    <details class="level2-criteria">
+      <summary>Ver critérios</summary>
+      ${renderLevel2CriteriaCards("Humano", result.playerScore || {})}
+      ${renderLevel2CriteriaCards("Inanna", result.inannaScore || {})}
+    </details>
   `;
 }
 
@@ -1767,7 +1818,7 @@ async function finalizeLevel2Round() {
     setLevel2SessionStatus(error?.message || "Não consegui fechar o round.", "var(--danger)");
     if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.disabled = false;
   } finally {
-    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.textContent = "Fechar round";
+    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.textContent = "OK, fechar round";
   }
 }
 
@@ -3546,7 +3597,7 @@ function stopGameSessionAndReturnToMenu() {
     ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
   }
   if (ui.modeChallenge) {
-    ui.modeChallenge.checked = false;
+    ui.modeChallenge.checked = true;
     syncModes();
   }
   if (ui.rulesModal?.open) ui.rulesModal.close();
@@ -5835,14 +5886,6 @@ if (ui.level2ResetBtn) {
   ui.level2ResetBtn.addEventListener("click", resetLevel2Match);
 }
 
-if (ui.level2AudioToggleBtn) {
-  ui.level2AudioToggleBtn.addEventListener("click", toggleLevel2Audio);
-}
-
-if (ui.level2DictateBtn) {
-  ui.level2DictateBtn.addEventListener("click", startLevel2Dictation);
-}
-
 if (ui.trackChooserBackBtn) {
   ui.trackChooserBackBtn.addEventListener("click", () => {
     returnToIdentityStep();
@@ -6485,6 +6528,9 @@ if (ui.closePedagogy && ui.pedagogyModal) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
+if (ui.modeChallenge) {
+  ui.modeChallenge.checked = state.modeChallenge;
+}
 syncModes();
 buildThemeGrid();
 updateVerseBlankPreview();

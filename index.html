@@ -4,9 +4,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inanna — IA & Cordel</title>
+  <title>Inanna — Jogo de poesia, rima e peleja com IA</title>
   <meta name="description"
-    content="Aprenda como a Inteligência Artificial prevê palavras através da cultura popular brasileira. Escreva versos de Cordel e descubra a mágica das probabilidades." />
+    content="Jogo de poesia, rima e peleja com IA para escrever quadras de cordel, desafiar Inanna e aprender com a cultura popular brasileira." />
   <link rel="icon" type="image/png" href="inanna-app-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,8 +88,8 @@
           <img src="inanna-app-icon.png" alt="Inanna Logo" class="app-icon" />
         </div>
         <div class="brand-text">
-          <h1>Inanna <span class="badge">Proto-IA</span></h1>
-          <p class="sub">Aprenda como a IA prevê palavras brincando com versos de Cordel e cultura popular brasileira.
+          <h1>Inanna <span class="badge">Cordel 2.0</span></h1>
+          <p class="sub">Jogo de poesia, rima e peleja com IA.
           </p>
         </div>
       </div>
@@ -97,9 +97,9 @@
       <div class="header-right" id="headerRight">
         <div class="toggles glass-pill">
           <label class="mode-toggle">
-            <input id="modeChallenge" type="checkbox" />
+            <input id="modeChallenge" type="checkbox" checked />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span class="toggle-label">Modo Desafio <span id="challengeStatus" style="color:var(--primary); font-family:var(--font-mono); font-size:11px;">[ OFF ]</span></span>
+            <span class="toggle-label">Modo Desafio <span id="challengeStatus" style="color:var(--accent); font-family:var(--font-mono); font-size:11px;">[ ON ]</span></span>
           </label>
         </div>
         <div class="metrics-mini">
@@ -271,27 +271,8 @@
           <div id="level2SetupPanel" class="level2-setup-panel">
             <label class="field-label" for="level2NicknameInput">Como quer aparecer na peleja?</label>
             <input id="level2NicknameInput" class="input-row" maxlength="40" placeholder="Seu apelido público">
-            <div class="level2-setup-grid">
-              <label>
-                <span class="field-label">Entrada</span>
-                <select id="level2InputMode" class="input-row">
-                  <option value="written">Escrita</option>
-                  <option value="dictation">Ditado com revisão</option>
-                </select>
-              </label>
-              <label>
-                <span class="field-label">Ambiência</span>
-                <select id="level2SoundMode" class="input-row">
-                  <option value="none">Sem som</option>
-                  <option value="white_noise">Som branco</option>
-                  <option value="baiao">Baião leve</option>
-                  <option value="hiphop">Hip-hop leve</option>
-                </select>
-              </label>
-            </div>
             <div class="workspace-actions">
               <button id="level2StartBtn" class="btn btn-primary" type="button">Iniciar peleja</button>
-              <button id="level2AudioToggleBtn" class="btn btn-secondary" type="button" disabled>Pausar som</button>
             </div>
             <p id="level2SessionStatus" class="verse-hint form-hint" aria-live="polite"></p>
           </div>
@@ -314,15 +295,14 @@
             <textarea id="level2OriginalInput" class="level2-textarea" rows="6" maxlength="900"
               placeholder="Escreva quatro versos para abrir o round"></textarea>
             <div class="workspace-actions">
-              <button id="level2DictateBtn" class="btn btn-secondary" type="button">Ditar quadra</button>
-              <button id="level2SubmitOriginalBtn" class="btn btn-primary" type="button">Enviar para Inanna</button>
+              <button id="level2SubmitOriginalBtn" class="btn btn-primary" type="button">OK, chamar Inanna</button>
             </div>
             <div id="level2InannaResponse" class="level2-response" hidden></div>
             <label class="field-label" for="level2FinalInput">Sua resposta final</label>
             <textarea id="level2FinalInput" class="level2-textarea" rows="6" maxlength="900"
               placeholder="Melhore sua quadra ou responda à provocação de Inanna" disabled></textarea>
             <div class="workspace-actions">
-              <button id="level2FinalizeRoundBtn" class="btn btn-custom" type="button" disabled>Fechar round</button>
+              <button id="level2FinalizeRoundBtn" class="btn btn-custom" type="button" disabled>OK, fechar round</button>
               <button id="level2NextRoundBtn" class="btn btn-secondary" type="button" hidden>Próximo round</button>
               <button id="level2ResetBtn" class="btn btn-ghost" type="button">Recomeçar peleja</button>
             </div>
