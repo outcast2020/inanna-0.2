@@ -1058,23 +1058,29 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
         const placeholderPrefix = "%" + "VITE_";
         return !text || (text.startsWith(placeholderPrefix) && text.endsWith("%")) ? fallback : value;
       };
+      const withDefault = (value, fallback) => (
+        value === undefined || value === null || value === "" ? fallback : value
+      );
       window.INANNA_APP_CONFIG = {
         ...existingConfig,
         supabaseUrl: pickConfig("%VITE_SUPABASE_URL%", existingConfig.supabaseUrl),
         supabaseAnonKey: pickConfig("%VITE_SUPABASE_ANON_KEY%", existingConfig.supabaseAnonKey),
         level: pickConfig("%VITE_INANNA_LEVEL%", existingConfig.level),
         aiEnabled: pickConfig("%VITE_INANNA_AI_ENABLED%", existingConfig.aiEnabled),
-        level2Enabled: pickConfig("%VITE_INANNA_LEVEL2_ENABLED%", existingConfig.level2Enabled),
-        level2AgentUrl: pickConfig("%VITE_INANNA_LEVEL2_AGENT_URL%", existingConfig.level2AgentUrl),
-        level2RequireUnlock: pickConfig("%VITE_INANNA_LEVEL2_REQUIRE_UNLOCK%", existingConfig.level2RequireUnlock),
+        level2Enabled: pickConfig("%VITE_INANNA_LEVEL2_ENABLED%", withDefault(existingConfig.level2Enabled, "true")),
+        level2AgentUrl: pickConfig(
+          "%VITE_INANNA_LEVEL2_AGENT_URL%",
+          withDefault(existingConfig.level2AgentUrl, "https://inanna-level2-agent.cjaviervidalg.workers.dev")
+        ),
+        level2RequireUnlock: pickConfig("%VITE_INANNA_LEVEL2_REQUIRE_UNLOCK%", withDefault(existingConfig.level2RequireUnlock, "true")),
         level2DictationEnabled: pickConfig("%VITE_INANNA_LEVEL2_DICTATION_ENABLED%", existingConfig.level2DictationEnabled),
         level2AudioEnabled: pickConfig("%VITE_INANNA_LEVEL2_AUDIO_ENABLED%", existingConfig.level2AudioEnabled),
         level2SocialEnabled: pickConfig("%VITE_INANNA_LEVEL2_SOCIAL_ENABLED%", existingConfig.level2SocialEnabled),
-        level2RhymeBankEnabled: pickConfig("%VITE_INANNA_LEVEL2_RHYME_BANK_ENABLED%", existingConfig.level2RhymeBankEnabled),
-        level2XiloPuzzleEnabled: pickConfig("%VITE_INANNA_LEVEL2_XILO_PUZZLE_ENABLED%", existingConfig.level2XiloPuzzleEnabled),
-        blockchainEnabled: pickConfig("%VITE_INANNA_BLOCKCHAIN_ENABLED%", existingConfig.blockchainEnabled),
-        nftMintingEnabled: pickConfig("%VITE_INANNA_NFT_MINTING_ENABLED%", existingConfig.nftMintingEnabled),
-        externalWalletEnabled: pickConfig("%VITE_INANNA_EXTERNAL_WALLET_ENABLED%", existingConfig.externalWalletEnabled),
+        level2RhymeBankEnabled: pickConfig("%VITE_INANNA_LEVEL2_RHYME_BANK_ENABLED%", withDefault(existingConfig.level2RhymeBankEnabled, "true")),
+        level2XiloPuzzleEnabled: pickConfig("%VITE_INANNA_LEVEL2_XILO_PUZZLE_ENABLED%", withDefault(existingConfig.level2XiloPuzzleEnabled, "true")),
+        blockchainEnabled: pickConfig("%VITE_INANNA_BLOCKCHAIN_ENABLED%", withDefault(existingConfig.blockchainEnabled, "false")),
+        nftMintingEnabled: pickConfig("%VITE_INANNA_NFT_MINTING_ENABLED%", withDefault(existingConfig.nftMintingEnabled, "false")),
+        externalWalletEnabled: pickConfig("%VITE_INANNA_EXTERNAL_WALLET_ENABLED%", withDefault(existingConfig.externalWalletEnabled, "false")),
         adminEmails: pickConfig("%VITE_INANNA_ADMIN_EMAILS%", existingConfig.adminEmails),
         turnstileSiteKey: pickConfig("%VITE_INANNA_TURNSTILE_SITE_KEY%", existingConfig.turnstileSiteKey),
         socialEmailEnabled: pickConfig("%VITE_INANNA_SOCIAL_EMAIL_ENABLED%", existingConfig.socialEmailEnabled),
