@@ -953,6 +953,17 @@ function decideWinner(player: MechanicalScore, inanna: MechanicalScore): "player
 	return "draw";
 }
 
+function decideTiebreakWinner(player: MechanicalScore, inanna: MechanicalScore): "player" | "inanna" {
+	const priority: Array<keyof MechanicalScore> = ["total", "response", "rhyme", "creativity", "coherence", "autonomy", "structure"];
+	for (const key of priority) {
+		const playerValue = Number(player[key] || 0);
+		const inannaValue = Number(inanna[key] || 0);
+		if (playerValue > inannaValue) return "player";
+		if (inannaValue > playerValue) return "inanna";
+	}
+	return player.structure >= 10 && player.rhyme >= 10 && player.coherence >= 8 ? "player" : "inanna";
+}
+
 async function scoreQuadra(env: Env, input: {
 	quadra: string;
 	rhymeScheme: string;
@@ -1632,7 +1643,10 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 	]);
 	const rhymeOriginality = await analyzeLevel2RhymeOriginality(env, payload, playerFinalQuadra);
 	const adjustedPlayerScore = applyRhymeOriginality(playerFinal.score, rhymeOriginality);
-	const roundWinner = decideWinner(adjustedPlayerScore, inannaFinal.score);
+	let roundWinner = decideWinner(adjustedPlayerScore, inannaFinal.score);
+	if (roundWinner === "draw" && Number(payload.roundNumber || 1) >= 3) {
+		roundWinner = decideTiebreakWinner(adjustedPlayerScore, inannaFinal.score);
+	}
 	const result: JsonRecord = {
 		ok: true,
 		theme,

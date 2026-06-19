@@ -281,7 +281,7 @@
             <div>
               <p class="workspace-kicker">Nível 2</p>
               <h2>Peleja com Inanna</h2>
-              <p class="step-desc">Três rounds de quadra contra a máquina: ela provoca, rouba imagens do seu verso e você responde com autoria humana.</p>
+              <p class="step-desc">Melhor de três: duas quadras abrem a peleja e a terceira só aparece se houver empate.</p>
             </div>
             <div class="workspace-actions">
               <button id="level2PreviewBackBtn" class="btn btn-ghost" type="button">Voltar aos níveis</button>
@@ -298,34 +298,36 @@
           </div>
           <div id="level2Arena" class="level2-arena" hidden>
             <div class="level2-score-row">
-              <span id="level2RoundBadge" class="level2-badge">Round 1/3</span>
+              <span id="level2RoundBadge" class="level2-badge">Quadra 1/2</span>
               <span id="level2Scoreboard" class="level2-scoreboard">Humano 0 x 0 Inanna</span>
             </div>
-            <div class="level2-challenge">
-              <div>
-                <span class="level2-label">Tema</span>
-                <strong id="level2Theme">-</strong>
+            <div id="level2ActiveRoundPanel">
+              <div class="level2-challenge">
+                <div>
+                  <span class="level2-label">Tema</span>
+                  <strong id="level2Theme">-</strong>
+                </div>
+                <div>
+                  <span class="level2-label">Rima</span>
+                  <strong id="level2RhymeScheme">AABB</strong>
+                </div>
               </div>
-              <div>
-                <span class="level2-label">Rima</span>
-                <strong id="level2RhymeScheme">AABB</strong>
-              </div>
+              <div id="level2ThemeContext" class="level2-context" hidden></div>
+              <label class="field-label" for="level2OriginalInput">Sua quadra inicial</label>
+              <textarea id="level2OriginalInput" class="level2-textarea" rows="6" maxlength="900"
+                placeholder="Escreva quatro versos para abrir o round"></textarea>
+              <div id="level2InannaResponse" class="level2-response" hidden></div>
+              <p id="level2RevisionTimer" class="level2-timer" hidden aria-live="polite"></p>
+              <label class="field-label" for="level2FinalInput">Sua resposta final</label>
+              <textarea id="level2FinalInput" class="level2-textarea" rows="6" maxlength="900"
+                placeholder="Melhore sua quadra ou responda à provocação de Inanna" disabled></textarea>
             </div>
-            <div id="level2ThemeContext" class="level2-context" hidden></div>
-            <label class="field-label" for="level2OriginalInput">Sua quadra inicial</label>
-            <textarea id="level2OriginalInput" class="level2-textarea" rows="6" maxlength="900"
-              placeholder="Escreva quatro versos para abrir o round"></textarea>
-            <div id="level2InannaResponse" class="level2-response" hidden></div>
-            <p id="level2RevisionTimer" class="level2-timer" hidden aria-live="polite"></p>
-            <label class="field-label" for="level2FinalInput">Sua resposta final</label>
-            <textarea id="level2FinalInput" class="level2-textarea" rows="6" maxlength="900"
-              placeholder="Melhore sua quadra ou responda à provocação de Inanna" disabled></textarea>
+            <div id="level2RoundFeedback" class="level2-feedback" aria-live="polite"></div>
+            <div id="level2MatchResult" class="level2-match-result" hidden></div>
             <div class="workspace-actions level2-action-row">
               <button id="level2PrimaryActionBtn" class="btn btn-primary" type="button">Chamar Inanna</button>
               <button id="level2ResetBtn" class="btn btn-ghost level2-reset-link" type="button">Recomeçar peleja</button>
             </div>
-            <div id="level2RoundFeedback" class="level2-feedback" aria-live="polite"></div>
-            <div id="level2MatchResult" class="level2-match-result" hidden></div>
           </div>
         </section>
 
@@ -334,11 +336,11 @@
             <div>
               <p class="workspace-kicker">Painel do jogador</p>
               <h2 id="dashboardGreeting">Meu painel</h2>
-              <p class="step-desc">Seu espaço de conquistas, perfil, pelejas e textos guardados.</p>
+              <p class="step-desc">Seu espaço de perfil, conquistas, pelejas e avanços no jogo.</p>
             </div>
             <div class="workspace-actions">
-              <button id="btnCreateFolheto" class="btn btn-primary" type="button">Criar novo folheto</button>
-              <button id="btnCreateText" class="btn btn-secondary" type="button">Nova sextilha avulsa</button>
+              <button id="btnCreateFolheto" class="btn btn-primary" type="button" hidden>Criar novo folheto</button>
+              <button id="btnCreateText" class="btn btn-secondary" type="button" hidden>Nova sextilha avulsa</button>
               <button id="btnBackToTrackChooser" class="btn btn-ghost" type="button">Voltar ao menu inicial</button>
             </div>
           </div>
@@ -451,44 +453,46 @@
             </div>
             <div id="playerLevel2Results" class="player-results-list" aria-live="polite"></div>
           </section>
-          <div class="dashboard-section-head">
-            <div>
-              <p class="track-card__eyebrow">Caderno autoral</p>
-              <h3>Minhas sextilhas</h3>
+          <div id="dashboardCadernoArea" class="dashboard-caderno-area" hidden>
+            <div class="dashboard-section-head">
+              <div>
+                <p class="track-card__eyebrow">Caderno autoral</p>
+                <h3>Minhas sextilhas</h3>
+              </div>
+              <p id="sextilhaAccessNotice" class="track-card__notice" hidden>ainda estamos trabalhando e sonhando este espaço</p>
             </div>
-            <p id="sextilhaAccessNotice" class="track-card__notice" hidden>ainda estamos trabalhando e sonhando este espaço</p>
+            <div class="dashboard-metrics">
+              <article class="dashboard-metric">
+                <span id="dashboardFolhetoCount">0</span>
+                <small>Folhetos</small>
+              </article>
+              <article class="dashboard-metric">
+                <span id="dashboardTextCount">0</span>
+                <small>Sextilhas iniciadas</small>
+              </article>
+              <article class="dashboard-metric">
+                <span id="dashboardCompletedCount">0</span>
+                <small>Sextilhas concluídas</small>
+              </article>
+              <article class="dashboard-metric dashboard-metric--wide">
+                <span id="dashboardLastEdited">Ainda sem edições</span>
+                <small>Última edição</small>
+              </article>
+            </div>
+            <div class="workspace-toolbar">
+              <label class="field-label" for="dashboardStatusFilter">Filtrar por status</label>
+              <select id="dashboardStatusFilter" class="workspace-select">
+                <option value="all">Todos</option>
+                <option value="rascunho">Rascunho</option>
+                <option value="em revisao">Em revisão</option>
+                <option value="concluida">Concluída</option>
+                <option value="compartilhada com educador">Compartilhada com educador</option>
+                <option value="selecionada para antologia">Selecionada para antologia</option>
+                <option value="arquivada">Arquivada</option>
+              </select>
+            </div>
+            <div id="dashboardTextList" class="text-list folheto-list" aria-live="polite"></div>
           </div>
-          <div class="dashboard-metrics">
-            <article class="dashboard-metric">
-              <span id="dashboardFolhetoCount">0</span>
-              <small>Folhetos</small>
-            </article>
-            <article class="dashboard-metric">
-              <span id="dashboardTextCount">0</span>
-              <small>Sextilhas iniciadas</small>
-            </article>
-            <article class="dashboard-metric">
-              <span id="dashboardCompletedCount">0</span>
-              <small>Sextilhas concluídas</small>
-            </article>
-            <article class="dashboard-metric dashboard-metric--wide">
-              <span id="dashboardLastEdited">Ainda sem edições</span>
-              <small>Última edição</small>
-            </article>
-          </div>
-          <div class="workspace-toolbar">
-            <label class="field-label" for="dashboardStatusFilter">Filtrar por status</label>
-            <select id="dashboardStatusFilter" class="workspace-select">
-              <option value="all">Todos</option>
-              <option value="rascunho">Rascunho</option>
-              <option value="em revisao">Em revisão</option>
-              <option value="concluida">Concluída</option>
-              <option value="compartilhada com educador">Compartilhada com educador</option>
-              <option value="selecionada para antologia">Selecionada para antologia</option>
-              <option value="arquivada">Arquivada</option>
-            </select>
-          </div>
-          <div id="dashboardTextList" class="text-list folheto-list" aria-live="polite"></div>
         </section>
 
         <section id="folhetoWorkspaceSection" class="workspace-panel" aria-label="Folheto ativo">

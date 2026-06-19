@@ -1648,8 +1648,17 @@ select:focus-visible,
 }
 
 .level2-round-pill strong {
+  display: grid;
+  gap: 2px;
+  text-align: right;
   color: var(--text);
   font-size: 14px;
+}
+
+.level2-round-pill small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .level2-reward-note {

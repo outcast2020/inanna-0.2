@@ -70,6 +70,7 @@ const ui = {
   level2AudioToggleBtn: $("level2AudioToggleBtn"),
   level2SessionStatus: $("level2SessionStatus"),
   level2Arena: $("level2Arena"),
+  level2ActiveRoundPanel: $("level2ActiveRoundPanel"),
   level2RoundBadge: $("level2RoundBadge"),
   level2Scoreboard: $("level2Scoreboard"),
   level2Theme: $("level2Theme"),
@@ -96,6 +97,7 @@ const ui = {
   dashboardLastEdited: $("dashboardLastEdited"),
   dashboardStatusFilter: $("dashboardStatusFilter"),
   dashboardTextList: $("dashboardTextList"),
+  dashboardCadernoArea: $("dashboardCadernoArea"),
   playerDisplayNameInput: $("playerDisplayNameInput"),
   savePlayerDisplayNameBtn: $("savePlayerDisplayNameBtn"),
   playerDisplayNameStatus: $("playerDisplayNameStatus"),
@@ -731,6 +733,168 @@ const THEMES = [
       lugares: ["tela", "mundo", "espaço", "matriz"],
       acoes: ["conexão", "download", "clique", "algoritmo"],
       objetosCulturais: ["computador", "celular", "sistema", "internet", "robô"]
+    }
+  },
+  {
+    key: "casa", name: "Casa", emoji: "🏠",
+    desc: "Lar, quintal, cuidado e memória afetiva",
+    trap: "Ex: No fim da tarde eu volto para minha ___",
+    tokens: {
+      substantivos: [
+        "casa", "lar", "porta", "janela", "quintal", "cozinha",
+        "mesa", "rede", "família", "memória", "abrigo", "morada",
+        "telhado", "parede", "chão", "cheiro", "cuidado", "aconchego"
+      ],
+      verbos: [
+        "morar", "voltar", "cuidar", "varrer", "cozinhar", "acolher",
+        "lembrar", "descansar", "brincar", "arrumar", "plantar", "sonhar"
+      ],
+      adjetivos: [
+        "simples", "antigo", "quente", "calmo", "cheiroso", "seguro",
+        "pequeno", "grande", "familiar", "querido", "aberto", "iluminado"
+      ],
+      lugares: [
+        "sala", "quarto", "cozinha", "quintal", "varanda", "terreiro",
+        "porta", "janela", "rua", "beco", "vila", "comunidade"
+      ],
+      acoes: [
+        "chegada", "partilha", "descanso", "conversa", "brincadeira",
+        "lembrança", "acolhida", "cuidado", "reunião", "visita"
+      ],
+      objetosCulturais: [
+        "rede", "panela", "fogão", "mesa", "cadeira", "lamparina",
+        "fotografia", "vaso", "rádio", "caderno", "colcha", "chave"
+      ]
+    }
+  },
+  {
+    key: "mitologia-brasileira", name: "Mitologia Brasileira", emoji: "🌀",
+    desc: "Lendas, encantados, floresta e imaginação popular",
+    trap: "Ex: Na mata escura apareceu o velho ___",
+    tokens: {
+      substantivos: [
+        "saci", "iara", "curupira", "boitatá", "caipora", "cuca",
+        "boto", "mapinguari", "encanto", "mistério", "lenda", "floresta",
+        "rio", "mata", "lua", "fogo", "assobio", "travessura"
+      ],
+      verbos: [
+        "assobiar", "encantar", "proteger", "correr", "sumir", "aparecer",
+        "enganar", "guardar", "nadar", "brilhar", "contar", "escutar"
+      ],
+      adjetivos: [
+        "mágico", "antigo", "encantado", "brasileiro", "travesso",
+        "misterioso", "valente", "noturno", "vermelho", "profundo",
+        "selvagem", "luminoso"
+      ],
+      lugares: [
+        "mata", "floresta", "rio", "lagoa", "trilha", "aldeia",
+        "roçado", "sertão", "beira-rio", "cachoeira", "capoeira", "brejo"
+      ],
+      acoes: [
+        "aparição", "travessura", "proteção", "encantamento", "fuga",
+        "canto", "assobio", "mistério", "história", "contação"
+      ],
+      objetosCulturais: [
+        "gorro", "cachimbo", "redemoinho", "fogueira", "canoa",
+        "pente", "concha", "máscara", "tambor", "amuleto", "lenda", "conto"
+      ]
+    }
+  },
+  {
+    key: "tradicoes-afro-brasileiras", name: "Tradições afro-brasileiras", emoji: "🥁",
+    desc: "Ancestralidade, roda, tambor, corpo e memória coletiva",
+    trap: "Ex: No toque do tambor eu senti muito ___",
+    tokens: {
+      substantivos: [
+        "axé", "tambor", "roda", "terreiro", "ancestralidade", "memória",
+        "corpo", "canto", "dança", "respeito", "comunidade", "oralidade",
+        "força", "raiz", "fé", "tradição", "ginga", "energia"
+      ],
+      verbos: [
+        "tocar", "dançar", "cantar", "saudar", "respeitar", "lembrar",
+        "celebrar", "gingar", "escutar", "aprender", "partilhar", "honrar"
+      ],
+      adjetivos: [
+        "ancestral", "sagrado", "coletivo", "forte", "vivo", "ritmado",
+        "profundo", "brasileiro", "afro", "popular", "respeitoso", "luminoso"
+      ],
+      lugares: [
+        "terreiro", "roda", "rua", "praça", "comunidade", "cozinha",
+        "mercado", "ladeira", "pelourinho", "salvador", "bahia", "quintal"
+      ],
+      acoes: [
+        "toque", "ginga", "canto", "dança", "celebração", "saudação",
+        "partilha", "escuta", "memória", "ensinamento", "festa", "roda"
+      ],
+      objetosCulturais: [
+        "atabaque", "agogô", "berimbau", "pandeiro", "tambor", "saia",
+        "conta", "fio", "acarajé", "dendê", "capoeira", "afoxé",
+        "ijexá", "maracatu", "samba", "abará"
+      ]
+    }
+  },
+  {
+    key: "promocao-da-paz", name: "Promoção da paz", emoji: "🕊️",
+    desc: "Diálogo, escuta, respeito e convivência",
+    trap: "Ex: Quando a briga terminou nasceu a ___",
+    tokens: {
+      substantivos: [
+        "paz", "diálogo", "escuta", "respeito", "cuidado", "perdão",
+        "justiça", "esperança", "abraço", "ponte", "acordo", "amizade",
+        "convivência", "solidariedade", "ternura", "calma", "união", "confiança"
+      ],
+      verbos: [
+        "ouvir", "acolher", "dialogar", "cuidar", "perdoar", "mediar",
+        "pacificar", "respeitar", "abraçar", "reparar", "conversar", "unir"
+      ],
+      adjetivos: [
+        "calmo", "justo", "sereno", "solidário", "fraterno", "gentil",
+        "humano", "coletivo", "sincero", "possível", "necessário", "vivo"
+      ],
+      lugares: [
+        "escola", "rua", "casa", "praça", "comunidade", "sala",
+        "bairro", "mundo", "roda", "cidade", "pátio", "família"
+      ],
+      acoes: [
+        "escuta", "mediação", "acordo", "reconciliação", "conversa",
+        "acolhida", "cuidado", "partilha", "abraço", "respeito", "encontro"
+      ],
+      objetosCulturais: [
+        "pomba", "bandeira", "carta", "cartaz", "roda", "microfone",
+        "livro", "ponte", "flor", "mural", "mensagem", "canção"
+      ]
+    }
+  },
+  {
+    key: "mulher", name: "Mulher", emoji: "♀️",
+    desc: "Voz, cuidado, força, autoria e futuro",
+    trap: "Ex: Na roda ela levantou sua ___",
+    tokens: {
+      substantivos: [
+        "mulher", "voz", "força", "autoria", "cuidado", "coragem",
+        "memória", "trabalho", "sonho", "ciência", "poesia", "direito",
+        "roda", "família", "liderança", "esperança", "respeito", "futuro"
+      ],
+      verbos: [
+        "criar", "cuidar", "liderar", "ensinar", "trabalhar", "sonhar",
+        "resistir", "poetar", "descobrir", "proteger", "falar", "brilhar"
+      ],
+      adjetivos: [
+        "forte", "livre", "sábia", "criativa", "corajosa", "inteira",
+        "presente", "digna", "popular", "brasileira", "jovem", "ancestral"
+      ],
+      lugares: [
+        "casa", "escola", "rua", "roda", "palco", "laboratório",
+        "campo", "cidade", "comunidade", "terreiro", "biblioteca", "oficina"
+      ],
+      acoes: [
+        "fala", "escuta", "liderança", "partilha", "pesquisa", "cuidado",
+        "defesa", "criação", "conquista", "aprendizado", "poesia", "encontro"
+      ],
+      objetosCulturais: [
+        "caderno", "microfone", "livro", "agulha", "panela", "tambor",
+        "violão", "computador", "jaleco", "lenço", "cordel", "flor"
+      ]
     }
   }
 ];
@@ -1556,9 +1720,17 @@ function getLevel2PrimaryActionLabel() {
 
 function syncLevel2PrimaryAction() {
   const roundState = state.level2.roundState || LEVEL2_ROUND_STATES.COMPOSING_INITIAL;
+  const activeRoundVisible = ![
+    LEVEL2_ROUND_STATES.ROUND_RESULT,
+    LEVEL2_ROUND_STATES.MATCH_RESULT
+  ].includes(roundState);
+  if (ui.level2ActiveRoundPanel) ui.level2ActiveRoundPanel.hidden = !activeRoundVisible;
   if (ui.level2PrimaryActionBtn) {
     ui.level2PrimaryActionBtn.textContent = getLevel2PrimaryActionLabel();
     ui.level2PrimaryActionBtn.disabled = isLevel2BusyState(roundState);
+  }
+  if (ui.level2ResetBtn) {
+    ui.level2ResetBtn.hidden = roundState === LEVEL2_ROUND_STATES.MATCH_RESULT;
   }
   if (ui.level2OriginalInput) {
     ui.level2OriginalInput.disabled = roundState !== LEVEL2_ROUND_STATES.COMPOSING_INITIAL;
@@ -1796,15 +1968,31 @@ function validateLevel2Quadra(value) {
   return { ok: true, quadra: lines.join("\n") };
 }
 
+function getLevel2RoundBadgeLabel() {
+  const playedRounds = (state.level2.roundResults || []).filter(Boolean).length;
+  if (state.level2.matchFinished) {
+    const total = Math.max(playedRounds, Number(state.level2.currentRound || 0), 1);
+    return `Peleja encerrada em ${total} ${total === 1 ? "quadra" : "quadras"}`;
+  }
+  if (Number(state.level2.currentRound || 1) >= 3) return "Desempate 3/3";
+  return `Quadra ${Number(state.level2.currentRound || 1)}/2`;
+}
+
+function getLevel2RoundScoreLabel(result = {}) {
+  const player = Number(result.playerScoreTotal || result.playerScore?.total || 0);
+  const inanna = Number(result.inannaScoreTotal || result.inannaScore?.total || 0);
+  return `Humano ${player} x ${inanna} Inanna`;
+}
+
 function renderLevel2Scoreboard() {
-  if (ui.level2RoundBadge) ui.level2RoundBadge.textContent = `Round ${state.level2.currentRound}/${state.level2.roundCount}`;
+  if (ui.level2RoundBadge) ui.level2RoundBadge.textContent = getLevel2RoundBadgeLabel();
   if (ui.level2Scoreboard) {
     const playedRounds = (state.level2.roundResults || []).filter(Boolean).length;
     const scoreCanBeShown = state.level2.matchFinished || playedRounds >= 2 || state.level2.currentRound >= 3;
     ui.level2Scoreboard.textContent = scoreCanBeShown
       ? `Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna`
       : playedRounds > 0
-        ? "Placar guardado ate a segunda quadra"
+        ? "Placar da peleja guardado até a segunda quadra"
         : "Humano 0 x 0 Inanna";
   }
   if (ui.level2Theme) ui.level2Theme.textContent = state.level2.theme || "-";
@@ -2023,10 +2211,16 @@ function getLevel2RoundWinnerLabel(result = {}) {
 
 function renderLevel2RoundCheckpoint(result) {
   if (!ui.level2RoundFeedback) return;
+  const shortExplanation = result.shortExplanation || result.short_explanation || result.feedback || "";
   ui.level2RoundFeedback.innerHTML = `
-    <h3>Primeira quadra guardada</h3>
-    <p>A peleja segura o placar por enquanto. Escreva a segunda quadra antes de ver o resultado.</p>
+    <h3>Primeira quadra avaliada</h3>
+    <p>${escapeHtml(shortExplanation || "A pontuação desta quadra foi registrada. A peleja fecha depois da segunda, salvo empate.")}</p>
+    <div class="level2-score-grid level2-score-grid--summary">
+      <div class="level2-score-card"><span>Humano</span><strong>${Number(result.playerScoreTotal || result.playerScore?.total || 0)}</strong></div>
+      <div class="level2-score-card"><span>Inanna</span><strong>${Number(result.inannaScoreTotal || result.inannaScore?.total || 0)}</strong></div>
+    </div>
     ${renderLevel2RewardSummary(result)}
+    ${renderLevel2CompactCriteria(result)}
   `;
 }
 
@@ -2037,7 +2231,7 @@ function renderLevel2StoredResults() {
   const tieAfterTwo = state.level2.currentRound >= 2 && state.level2.playerWins === state.level2.inannaWins && !state.level2.matchFinished;
   const hasTiebreak = visibleResults.length >= 3;
   const summary = tieAfterTwo
-    ? "Cada lado segurou sua voz. Agora vem uma quadra de desempate."
+    ? "Cada lado segurou sua voz. Agora vem uma quadra de desempate com novo tema."
     : hasTiebreak
       ? "A quadra de desempate fechou a peleja."
       : "As duas primeiras quadras já bastaram para fechar a peleja.";
@@ -2048,7 +2242,7 @@ function renderLevel2StoredResults() {
       ${visibleResults.map((item, index) => `
         <div class="level2-round-pill">
           <span>Quadra ${index + 1}</span>
-          <strong>${escapeHtml(getLevel2RoundWinnerLabel(item))}</strong>
+          <strong>${escapeHtml(getLevel2RoundWinnerLabel(item))}<small>${escapeHtml(getLevel2RoundScoreLabel(item))}</small></strong>
         </div>
       `).join("")}
     </div>
@@ -2123,7 +2317,7 @@ async function finalizeLevel2Round(options = {}) {
     } else {
       if (state.level2.currentRound === 1) {
         renderLevel2RoundCheckpoint(result);
-        setLevel2SessionStatus("Primeira quadra registrada. A segunda vem antes do placar.", "var(--accent)");
+        setLevel2SessionStatus("Primeira quadra pontuada. A segunda decide se a peleja fecha ou pede desempate.", "var(--accent)");
       } else {
         renderLevel2StoredResults();
         setLevel2SessionStatus("Empate em duas quadras. A próxima decide.", "var(--accent)");
@@ -2141,6 +2335,7 @@ async function finalizeLevel2Round(options = {}) {
 
 function finishLevel2Match() {
   state.level2.matchFinished = true;
+  renderLevel2Scoreboard();
   const playerWon = state.level2.playerWins > state.level2.inannaWins;
   const inannaWon = state.level2.inannaWins > state.level2.playerWins;
   const title = playerWon ? "Você venceu a peleja" : inannaWon ? "Inanna venceu a peleja" : "Empate de autoria";
@@ -2339,6 +2534,13 @@ function syncSextilhaTrackAccess(options = {}) {
   }
 
   return hasAccess;
+}
+
+function setCadernoDashboardVisible(visible) {
+  const shouldShow = !!visible;
+  if (ui.dashboardCadernoArea) ui.dashboardCadernoArea.hidden = !shouldShow;
+  if (ui.btnCreateFolheto) ui.btnCreateFolheto.hidden = !shouldShow;
+  if (ui.btnCreateText) ui.btnCreateText.hidden = !shouldShow;
 }
 
 function assertSextilhaWorkspaceAccess() {
@@ -2601,18 +2803,15 @@ function openQuadraLevelChooser() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-async function openPlayerDashboard(options = {}) {
+async function openPlayerDashboard() {
   state.selectedTrack = "playerPanel";
   hideGameExperience();
   setView("playerDashboard", ui.userDashboardSection);
   loadPlayerProgress();
+  setCadernoDashboardVisible(false);
+  if (ui.dashboardGreeting) ui.dashboardGreeting.textContent = `${getPlayerDisplayName()}, este é seu painel`;
   renderPlayerPanel();
   refreshPlayerPanelData().catch(() => {});
-  if (canAccessSextilhaWorkspace()) {
-    await openSextilhaDashboard({ ...options, openedFromPanel: true });
-    return;
-  }
-  renderDashboardRestrictedCaderno();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -5734,6 +5933,7 @@ async function openSextilhaDashboard(options = {}) {
   state.activeFolheto = null;
   hideGameExperience();
   setView("sextilhaDashboard", ui.userDashboardSection);
+  setCadernoDashboardVisible(true);
   renderPlayerPanel();
   const identity = buildIdentityPayload();
   const cachedPayload = settings.forceRefresh ? null : readDashboardCache(identity);
