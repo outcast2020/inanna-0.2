@@ -13,6 +13,7 @@ const mockEnv = {
 	DEFAULT_JUDGE_MODEL: "@cf/meta/llama-3.1-8b-instruct",
 	ROUND_COUNT: 3,
 	MAX_QUADRA_CHARS: 900,
+	LEVEL2_THEMES_CSV_URL: "data:text/csv,o_que_acontenceu,tematica,fonte%0AContexto%20do%20juiz,tema%20do%20juiz,fonte%20do%20juiz",
 	AI: {
 		async run() {
 			return {
@@ -72,10 +73,16 @@ describe("Inanna Level 2 worker", () => {
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(request, mockEnv, ctx);
 		await waitOnExecutionContext(ctx);
-		const body = await response.json() as { ok: boolean; challenge: { theme: string; rhymeScheme: string } };
+		const body = await response.json() as {
+			ok: boolean;
+			challenge: { theme: string; context: string; source: string; thematicSource: string; rhymeScheme: string };
+		};
 		expect(response.status).toBe(200);
 		expect(body.ok).toBe(true);
-		expect(body.challenge.theme).toBeTruthy();
+		expect(body.challenge.theme).toBe("tema do juiz");
+		expect(body.challenge.context).toBe("Contexto do juiz");
+		expect(body.challenge.source).toBe("fonte do juiz");
+		expect(body.challenge.thematicSource).toBe("worker_csv");
 		expect(["AABB", "ABAB", "ABCB", "ABBA"]).toContain(body.challenge.rhymeScheme);
 	});
 

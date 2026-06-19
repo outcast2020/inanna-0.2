@@ -352,9 +352,6 @@ const state = {
   dashboardLoadRequestId: 0,
   playerLevel2Profile: null,
   playerLevel2ProfileStatus: "idle",
-  thematicCsvItems: [],
-  thematicCsvStatus: "idle",
-  thematicCsvMessage: "",
 };
 
 const APP_VARIANT = "inanna-main";
@@ -432,8 +429,6 @@ const INANNA_ADMIN_EMAILS = new Set([
 const LEVEL2_NICKNAME_STORAGE_KEY = "inanna_level2_nickname_v1";
 const LEVEL2_SESSION_STORAGE_KEY = "inanna_level2_session_v2";
 const PLAYER_DISPLAY_NAME_STORAGE_KEY = "inanna_player_display_name_v1";
-const THEMATIC_CSV_URL = "tematicas_jogo.csv";
-const THEMATIC_CSV_SAMPLE_SIZE = 12;
 const LEVEL2_ROUND_STATES = {
   COMPOSING_INITIAL: "COMPOSING_INITIAL",
   SUBMITTING_INITIAL: "SUBMITTING_INITIAL",
@@ -737,136 +732,6 @@ const THEMES = [
       acoes: ["conexão", "download", "clique", "algoritmo"],
       objetosCulturais: ["computador", "celular", "sistema", "internet", "robô"]
     }
-  },
-  {
-    key: "casa", name: "Casa", emoji: "🏠",
-    desc: "Lar, quintal, cuidado e memória afetiva",
-    trap: "Ex: No fim da tarde eu volto para minha ___",
-    tokens: {
-      substantivos: [
-        "casa", "lar", "porta", "janela", "quintal", "cozinha",
-        "mesa", "rede", "família", "memória", "abrigo", "morada",
-        "telhado", "parede", "chão", "cheiro", "cuidado", "aconchego"
-      ],
-      verbos: [
-        "morar", "voltar", "cuidar", "varrer", "cozinhar", "acolher",
-        "lembrar", "descansar", "brincar", "arrumar", "plantar", "sonhar"
-      ],
-      adjetivos: [
-        "simples", "antigo", "quente", "calmo", "cheiroso", "seguro",
-        "pequeno", "grande", "familiar", "querido", "aberto", "iluminado"
-      ],
-      lugares: [
-        "sala", "quarto", "cozinha", "quintal", "varanda", "terreiro",
-        "porta", "janela", "rua", "beco", "vila", "comunidade"
-      ],
-      acoes: [
-        "chegada", "partilha", "descanso", "conversa", "brincadeira",
-        "lembrança", "acolhida", "cuidado", "reunião", "visita"
-      ],
-      objetosCulturais: [
-        "rede", "panela", "fogão", "mesa", "cadeira", "lamparina",
-        "fotografia", "vaso", "rádio", "caderno", "colcha", "chave"
-      ]
-    }
-  },
-  {
-    key: "mitologia-brasileira", name: "Mitologia Brasileira", emoji: "🌀",
-    desc: "Lendas, encantados, floresta e imaginação popular",
-    trap: "Ex: Na mata escura apareceu o velho ___",
-    tokens: {
-      substantivos: [
-        "saci", "iara", "curupira", "boitatá", "caipora", "cuca",
-        "boto", "mapinguari", "encanto", "mistério", "lenda", "floresta",
-        "rio", "mata", "lua", "fogo", "assobio", "travessura"
-      ],
-      verbos: [
-        "assobiar", "encantar", "proteger", "correr", "sumir", "aparecer",
-        "enganar", "guardar", "nadar", "brilhar", "contar", "escutar"
-      ],
-      adjetivos: [
-        "mágico", "antigo", "encantado", "brasileiro", "travesso",
-        "misterioso", "valente", "noturno", "vermelho", "profundo",
-        "selvagem", "luminoso"
-      ],
-      lugares: [
-        "mata", "floresta", "rio", "lagoa", "trilha", "aldeia",
-        "roçado", "sertão", "beira-rio", "cachoeira", "capoeira", "brejo"
-      ],
-      acoes: [
-        "aparição", "travessura", "proteção", "encantamento", "fuga",
-        "canto", "assobio", "mistério", "história", "contação"
-      ],
-      objetosCulturais: [
-        "gorro", "cachimbo", "redemoinho", "fogueira", "canoa",
-        "pente", "concha", "máscara", "tambor", "amuleto", "lenda", "conto"
-      ]
-    }
-  },
-  {
-    key: "tradicoes-afro-brasileiras", name: "Tradições afro-brasileiras", emoji: "🥁",
-    desc: "Ancestralidade, roda, tambor, corpo e memória coletiva",
-    trap: "Ex: No toque do tambor eu senti muito ___",
-    tokens: {
-      substantivos: [
-        "axé", "tambor", "roda", "terreiro", "ancestralidade", "memória",
-        "corpo", "canto", "dança", "respeito", "comunidade", "oralidade",
-        "força", "raiz", "fé", "tradição", "ginga", "energia"
-      ],
-      verbos: [
-        "tocar", "dançar", "cantar", "saudar", "respeitar", "lembrar",
-        "celebrar", "gingar", "escutar", "aprender", "partilhar", "honrar"
-      ],
-      adjetivos: [
-        "ancestral", "sagrado", "coletivo", "forte", "vivo", "ritmado",
-        "profundo", "brasileiro", "afro", "popular", "respeitoso", "luminoso"
-      ],
-      lugares: [
-        "terreiro", "roda", "rua", "praça", "comunidade", "cozinha",
-        "mercado", "ladeira", "pelourinho", "salvador", "bahia", "quintal"
-      ],
-      acoes: [
-        "toque", "ginga", "canto", "dança", "celebração", "saudação",
-        "partilha", "escuta", "memória", "ensinamento", "festa", "roda"
-      ],
-      objetosCulturais: [
-        "atabaque", "agogô", "berimbau", "pandeiro", "tambor", "saia",
-        "conta", "fio", "acarajé", "dendê", "capoeira", "afoxé",
-        "ijexá", "maracatu", "samba", "abará"
-      ]
-    }
-  },
-  {
-    key: "promocao-da-paz", name: "Promoção da paz", emoji: "🕊️",
-    desc: "Diálogo, escuta, respeito e convivência",
-    trap: "Ex: Quando a briga terminou nasceu a ___",
-    tokens: {
-      substantivos: [
-        "paz", "diálogo", "escuta", "respeito", "cuidado", "perdão",
-        "justiça", "esperança", "abraço", "ponte", "acordo", "amizade",
-        "convivência", "solidariedade", "ternura", "calma", "união", "confiança"
-      ],
-      verbos: [
-        "ouvir", "acolher", "dialogar", "cuidar", "perdoar", "mediar",
-        "pacificar", "respeitar", "abraçar", "reparar", "conversar", "unir"
-      ],
-      adjetivos: [
-        "calmo", "justo", "sereno", "solidário", "fraterno", "gentil",
-        "humano", "coletivo", "sincero", "possível", "necessário", "vivo"
-      ],
-      lugares: [
-        "escola", "rua", "casa", "praça", "comunidade", "sala",
-        "bairro", "mundo", "roda", "cidade", "pátio", "família"
-      ],
-      acoes: [
-        "escuta", "mediação", "acordo", "reconciliação", "conversa",
-        "acolhida", "cuidado", "partilha", "abraço", "respeito", "encontro"
-      ],
-      objetosCulturais: [
-        "pomba", "bandeira", "carta", "cartaz", "roda", "microfone",
-        "livro", "ponte", "flor", "mural", "mensagem", "canção"
-      ]
-    }
   }
 ];
 
@@ -896,123 +761,6 @@ function normalizeVerseAnalysisText(value) {
 
 function tokenizeVerseAnalysisText(value) {
   return normalizeVerseAnalysisText(value).split(/\s+/).filter(Boolean);
-}
-
-function parseCsvText(text) {
-  const rows = [];
-  let row = [];
-  let cell = "";
-  let inQuotes = false;
-  const source = String(text || "").replace(/^\uFEFF/, "");
-
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    const next = source[index + 1];
-    if (char === "\"") {
-      if (inQuotes && next === "\"") {
-        cell += "\"";
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      row.push(cell);
-      cell = "";
-      continue;
-    }
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(cell);
-      if (row.some((item) => String(item || "").trim())) rows.push(row);
-      row = [];
-      cell = "";
-      continue;
-    }
-    cell += char;
-  }
-
-  row.push(cell);
-  if (row.some((item) => String(item || "").trim())) rows.push(row);
-  return rows;
-}
-
-function buildThemeTokensFromText(value) {
-  const stop = new Set([
-    "para", "com", "que", "uma", "por", "dos", "das", "seu", "sua", "sem",
-    "anos", "depois", "ainda", "sobre", "entre", "mais", "como", "pela", "pelo"
-  ]);
-  const tokens = tokenizeVerseAnalysisText(value)
-    .filter((token) => token.length > 2 && !stop.has(token))
-    .filter((token, index, list) => list.indexOf(token) === index);
-  return tokens.slice(0, 36);
-}
-
-function normalizeThematicCsvRow(rawRow, index) {
-  const contexto = String(rawRow?.contexto || rawRow?.o_que_acontenceu || rawRow?.o_que_aconteceu || "").trim();
-  const tematica = String(rawRow?.tematica || rawRow?.tema || "").trim();
-  const fonte = String(rawRow?.fonte || rawRow?.source || "").trim();
-  if (!contexto || !tematica) return null;
-  const tokenText = `${tematica} ${contexto}`;
-  return {
-    key: `csv_${hashProgressText(`${tematica}:${contexto}:${index}`)}`,
-    name: tematica,
-    emoji: "✦",
-    desc: contexto.length > 150 ? `${contexto.slice(0, 147)}...` : contexto,
-    trap: `Ex: Na notícia ecoa ${tematica.split(/[,\s]+/).filter(Boolean).slice(0, 3).join(" ")}`,
-    context: contexto,
-    source: fonte,
-    tokens: {
-      substantivos: buildThemeTokensFromText(tokenText),
-    },
-  };
-}
-
-function parseThematicCsv(text) {
-  const rows = parseCsvText(text);
-  if (rows.length < 2) return [];
-  const headers = rows[0].map((item) => normalizeVerseAnalysisText(item).replace(/\s+/g, "_"));
-  return rows.slice(1).map((row, index) => {
-    const raw = headers.reduce((acc, header, headerIndex) => {
-      acc[header || `col_${headerIndex}`] = row[headerIndex] || "";
-      return acc;
-    }, {});
-    return normalizeThematicCsvRow(raw, index);
-  }).filter(Boolean);
-}
-
-function getRandomItems(items, count) {
-  const pool = [...items];
-  const picked = [];
-  while (pool.length && picked.length < count) {
-    const index = Math.floor(Math.random() * pool.length);
-    picked.push(pool.splice(index, 1)[0]);
-  }
-  return picked;
-}
-
-async function loadThematicCsvBank(options = {}) {
-  if (state.thematicCsvStatus === "ready" && !options.force) return state.thematicCsvItems;
-  if (state.thematicCsvStatus === "loading") return state.thematicCsvItems;
-  state.thematicCsvStatus = "loading";
-  state.thematicCsvMessage = "";
-  try {
-    const response = await fetch(THEMATIC_CSV_URL, { headers: { Accept: "text/csv,text/plain,*/*" } });
-    if (!response.ok) throw new Error(`CSV ${response.status}`);
-    const text = await response.text();
-    const items = parseThematicCsv(text);
-    if (!items.length) throw new Error("CSV sem temáticas válidas.");
-    state.thematicCsvItems = items;
-    state.thematicCsvStatus = "ready";
-    return items;
-  } catch (error) {
-    console.warn("Nao foi possivel carregar tematicas_jogo.csv.", error);
-    state.thematicCsvItems = [];
-    state.thematicCsvStatus = "error";
-    state.thematicCsvMessage = error?.message || "CSV indisponivel";
-    return [];
-  }
 }
 
 function normalizeVerseForSyllableCount(value) {
@@ -2104,16 +1852,6 @@ async function startLevel2Match() {
   }
 }
 
-function getRandomThematicChallenge() {
-  const item = getRandomItems(state.thematicCsvItems, 1)[0];
-  if (!item) return null;
-  return {
-    theme: item.name,
-    context: item.context || item.desc || "",
-    source: item.source || "",
-  };
-}
-
 async function beginLevel2Round(roundNumber) {
   stopLevel2RevisionTimer();
   state.level2.currentRound = roundNumber;
@@ -2128,17 +1866,16 @@ async function beginLevel2Round(roundNumber) {
   state.level2.revisionExpiresAt = 0;
   state.level2.lastRoundResult = null;
   resetLevel2RoundInputs();
-  await loadThematicCsvBank();
   const result = await callLevel2Agent("/v2/round/generate", {
     sessionId: state.level2.sessionId,
     roundNumber
   });
   const fallback = LEVEL2_LOCAL_CHALLENGES[(roundNumber - 1) % LEVEL2_LOCAL_CHALLENGES.length];
-  const localTheme = getRandomThematicChallenge();
-  state.level2.theme = localTheme?.theme || result.challenge?.theme || fallback.theme;
-  state.level2.themeContext = localTheme?.context || result.challenge?.context || "";
-  state.level2.themeSource = localTheme?.source || result.challenge?.source || "";
-  state.level2.rhymeScheme = result.challenge?.rhymeScheme || fallback.rhymeScheme;
+  const challenge = result.challenge || {};
+  state.level2.theme = challenge.theme || fallback.theme;
+  state.level2.themeContext = challenge.context || "";
+  state.level2.themeSource = challenge.source || "";
+  state.level2.rhymeScheme = challenge.rhymeScheme || fallback.rhymeScheme;
   renderLevel2Scoreboard();
   setLevel2RoundState(LEVEL2_ROUND_STATES.COMPOSING_INITIAL);
 }
@@ -2176,6 +1913,8 @@ async function submitLevel2Original() {
       nickname: state.level2.nickname,
       roundNumber: state.level2.currentRound,
       theme: state.level2.theme,
+      themeContext: state.level2.themeContext,
+      themeSource: state.level2.themeSource,
       rhymeScheme: state.level2.rhymeScheme,
       playerQuadra: state.level2.originalQuadra,
       playerOriginalQuadra: state.level2.originalQuadra
@@ -2360,6 +2099,8 @@ async function finalizeLevel2Round(options = {}) {
       nickname: state.level2.nickname,
       roundNumber: state.level2.currentRound,
       theme: state.level2.theme,
+      themeContext: state.level2.themeContext,
+      themeSource: state.level2.themeSource,
       rhymeScheme: state.level2.rhymeScheme,
       playerOriginalQuadra: state.level2.originalQuadra,
       playerFinalQuadra: state.level2.finalQuadra,
@@ -2857,7 +2598,6 @@ function openQuadraLevelChooser() {
   setView("quadraLevels", ui.quadraLevelsSection);
   loadPlayerProgress();
   syncLevel2TrackAccess();
-  loadThematicCsvBank().catch(() => {});
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -5327,20 +5067,12 @@ function openVectorModal(index) {
 
 // ── Etapa 1 — montar grade de temas ──────────────────────────────────
 function getThemeGridItems() {
-  if (state.thematicCsvItems.length) {
-    return getRandomItems(state.thematicCsvItems, Math.min(THEMATIC_CSV_SAMPLE_SIZE, state.thematicCsvItems.length));
-  }
   return THEMES;
 }
 
 function buildThemeGrid() {
   if (!ui.themeGrid) return;
   ui.themeGrid.innerHTML = "";
-  if (state.thematicCsvStatus === "idle") {
-    loadThematicCsvBank().then(() => {
-      if (state.view === "game" && state.phase === 1) buildThemeGrid();
-    });
-  }
   const themes = getThemeGridItems();
   themes.forEach(th => {
     const card = document.createElement("button");

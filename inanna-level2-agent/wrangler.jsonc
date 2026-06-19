@@ -27,6 +27,7 @@
     "SOCIAL_VOTING_ENABLED": false,
     "LEVEL2_RHYME_BANK_ENABLED": true,
     "LEVEL2_XILO_PUZZLE_ENABLED": true,
+    "LEVEL2_THEMES_CSV_URL": "https://inanna.cordel2pontozero.com/tematicas_jogo.csv",
     "BLOCKCHAIN_ENABLED": false,
     "NFT_MINTING_ENABLED": false,
     "EXTERNAL_WALLET_ENABLED": false,

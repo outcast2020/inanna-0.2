@@ -26,6 +26,7 @@ type Env = {
 	MAX_QUADRA_CHARS?: string | number;
 	LEVEL2_RHYME_BANK_ENABLED?: string | boolean;
 	LEVEL2_XILO_PUZZLE_ENABLED?: string | boolean;
+	LEVEL2_THEMES_CSV_URL?: string;
 	BLOCKCHAIN_ENABLED?: string | boolean;
 	NFT_MINTING_ENABLED?: string | boolean;
 	EXTERNAL_WALLET_ENABLED?: string | boolean;
@@ -47,6 +48,8 @@ type RoundPayload = {
 	nickname?: string;
 	roundNumber?: number;
 	theme?: string;
+	themeContext?: string;
+	themeSource?: string;
 	rhymeScheme?: string;
 	playerQuadra?: string;
 	playerOriginalQuadra?: string;
@@ -144,6 +147,12 @@ type RewardGrant = {
 	metadata?: JsonRecord;
 };
 
+type Level2ThematicChallenge = {
+	theme: string;
+	context: string;
+	source: string;
+};
+
 const DEFAULT_ALLOWED_ORIGINS = [
 	"https://inanna.cordel2pontozero.com",
 	"https://inanna-five.vercel.app",
@@ -170,6 +179,7 @@ const THEMES = [
 ];
 
 const THEME_STYLE_GUIDANCE = "As temáticas devem ser traduzidas para a linguagem do cordel e do cotidiano juvenil. Evite termos técnicos, burocráticos ou academicistas nas provocações da IA. O foco é a vivência poética do direito, não o texto da lei.";
+const DEFAULT_LEVEL2_THEMES_CSV_URL = "https://inanna.cordel2pontozero.com/tematicas_jogo.csv";
 
 const SCHEMES = ["AABB", "ABAB", "ABCB", "ABBA"];
 const FALLBACK_MODEL = "@cf/meta/llama-3.1-8b-instruct";
@@ -179,6 +189,7 @@ const LEVEL2_PUZZLE_SLUG = "xilogravura-peleja";
 const LEVEL2_PUZZLE_TOTAL_PIECES = 30;
 const LEVEL2_MAX_PIECES_PER_ROUND = 4;
 const LEVEL2_MAX_PIECES_PER_MATCH = 10;
+let level2ThematicCache: { url: string; loadedAt: number; items: Level2ThematicChallenge[] } | null = null;
 const COMMON_RHYME_SUFFIXES = [
 	"acao", "icao", "eirao", "eiro", "eira", "ente", "dade", "ade", "aria", "oria",
 	"ura", "eza", "oso", "osa", "oes", "aes", "ais", "eis", "ois", "uis",
@@ -239,6 +250,88 @@ function cleanText(value: unknown, max = 900): string {
 		.replace(/\n{3,}/g, "\n\n")
 		.trim()
 		.slice(0, max);
+}
+
+function parseCsvText(text: string): string[][] {
+	const rows: string[][] = [];
+	let row: string[] = [];
+	let cell = "";
+	let inQuotes = false;
+	const source = String(text || "").replace(/^\uFEFF/, "");
+	for (let index = 0; index < source.length; index += 1) {
+		const char = source[index];
+		const next = source[index + 1];
+		if (char === "\"") {
+			if (inQuotes && next === "\"") {
+				cell += "\"";
+				index += 1;
+			} else {
+				inQuotes = !inQuotes;
+			}
+			continue;
+		}
+		if (char === "," && !inQuotes) {
+			row.push(cell);
+			cell = "";
+			continue;
+		}
+		if ((char === "\n" || char === "\r") && !inQuotes) {
+			if (char === "\r" && next === "\n") index += 1;
+			row.push(cell);
+			if (row.some((item) => cleanText(item, 200))) rows.push(row);
+			row = [];
+			cell = "";
+			continue;
+		}
+		cell += char;
+	}
+	row.push(cell);
+	if (row.some((item) => cleanText(item, 200))) rows.push(row);
+	return rows;
+}
+
+function normalizeCsvHeader(value: string): string {
+	return String(value || "")
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "");
+}
+
+function parseLevel2ThematicCsv(text: string): Level2ThematicChallenge[] {
+	const rows = parseCsvText(text);
+	if (rows.length < 2) return [];
+	const headers = rows[0].map((item) => normalizeCsvHeader(item));
+	return rows.slice(1).map((row) => {
+		const raw = headers.reduce<Record<string, string>>((acc, header, index) => {
+			acc[header || `col_${index}`] = row[index] || "";
+			return acc;
+		}, {});
+		const context = cleanText(raw.contexto || raw.o_que_acontenceu || raw.o_que_aconteceu, 1400);
+		const theme = cleanText(raw.tematica || raw.tema, 180);
+		const source = cleanText(raw.fonte || raw.source, 500);
+		return theme && context ? { theme, context, source } : null;
+	}).filter((item): item is Level2ThematicChallenge => !!item);
+}
+
+async function loadLevel2ThematicChallenges(env: Env): Promise<Level2ThematicChallenge[]> {
+	const url = cleanText(env.LEVEL2_THEMES_CSV_URL, 500) || DEFAULT_LEVEL2_THEMES_CSV_URL;
+	const now = Date.now();
+	if (level2ThematicCache && level2ThematicCache.url === url && now - level2ThematicCache.loadedAt < 10 * 60_000) {
+		return level2ThematicCache.items;
+	}
+	try {
+		const response = await fetch(url, { headers: { accept: "text/csv,text/plain,*/*" } });
+		if (!response.ok) throw new Error(`csv_${response.status}`);
+		const items = parseLevel2ThematicCsv(await response.text());
+		if (!items.length) throw new Error("csv_empty");
+		level2ThematicCache = { url, loadedAt: now, items };
+		return items;
+	} catch (error) {
+		console.warn("Level 2 thematic CSV unavailable; using fallback themes", String((error as Error)?.message || error));
+		return level2ThematicCache?.items || [];
+	}
 }
 
 function inspectContentPrivacy(value: unknown): ContentPrivacyCheck {
@@ -518,6 +611,7 @@ function buildInannaRepairPrompt(input: {
 	playerQuadra: string;
 	rawResponse: string;
 	theme: string;
+	themeContext?: string;
 	rhymeScheme: string;
 	stolenWords: string[];
 	errors: string[];
@@ -525,6 +619,7 @@ function buildInannaRepairPrompt(input: {
 	return `Repare a resposta da Inanna para uma peleja de quadras.
 
 Tema: ${input.theme}
+Contexto cultural do tema: ${input.themeContext || "(sem contexto adicional)"}
 Esquema obrigatório: ${input.rhymeScheme}
 Erros detectados: ${input.errors.join(", ")}
 Palavras/imagens roubadas: ${input.stolenWords.join(", ") || "nenhuma"}
@@ -585,6 +680,7 @@ async function generateWithMaritaca(env: Env, prompt: string): Promise<string> {
 function buildInannaPrompt(input: {
 	playerQuadra: string;
 	theme: string;
+	themeContext?: string;
 	rhymeScheme: string;
 	stolenWords: string[];
 	roundNumber: number;
@@ -592,6 +688,7 @@ function buildInannaPrompt(input: {
 	return `Gere a resposta da Inanna para uma peleja de quadras.
 
 Tema do round: ${input.theme}
+Contexto cultural do tema: ${input.themeContext || "(sem contexto adicional)"}
 Esquema de rima obrigatório: ${input.rhymeScheme}
 Round: ${input.roundNumber}
 Palavras/imagens roubadas do jogador: ${input.stolenWords.join(", ") || "nenhuma"}
@@ -624,9 +721,12 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 }> {
 	const playerQuadra = cleanText(payload.playerQuadra || payload.playerOriginalQuadra, maxQuadraChars(env));
 	const stolenWords = stealWords(playerQuadra);
+	const theme = cleanText(payload.theme, 120) || randomFrom(THEMES);
+	const themeContext = cleanText(payload.themeContext, 1400);
 	const prompt = buildInannaPrompt({
 		playerQuadra,
-		theme: cleanText(payload.theme, 120) || randomFrom(THEMES),
+		theme,
+		themeContext,
 		rhymeScheme: cleanText(payload.rhymeScheme, 8) || "AABB",
 		stolenWords,
 		roundNumber: Number(payload.roundNumber || 1),
@@ -650,7 +750,8 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 		const repairPrompt = buildInannaRepairPrompt({
 			playerQuadra,
 			rawResponse: text,
-			theme: cleanText(payload.theme, 120) || randomFrom(THEMES),
+			theme,
+			themeContext,
 			rhymeScheme: cleanText(payload.rhymeScheme, 8) || "AABB",
 			stolenWords,
 			errors: validation.errors,
@@ -725,12 +826,14 @@ function buildJudgePrompt(input: {
 	playerQuadra: string;
 	inannaQuadra?: string;
 	theme: string;
+	themeContext?: string;
 	rhymeScheme: string;
 	isFinal: boolean;
 }): string {
 	return `Avalie uma quadra em português brasileiro para o jogo educacional Inanna.
 
 Tema: ${input.theme}
+Contexto cultural do tema: ${input.themeContext || "(sem contexto adicional)"}
 Esquema esperado: ${input.rhymeScheme}
 E final do jogador depois da provocação? ${input.isFinal ? "sim" : "nao"}
 
@@ -766,6 +869,7 @@ async function evaluateRubric(env: Env, input: {
 	playerQuadra: string;
 	inannaQuadra?: string;
 	theme: string;
+	themeContext?: string;
 	rhymeScheme: string;
 	isFinal: boolean;
 }): Promise<AiRubric> {
@@ -853,6 +957,7 @@ async function scoreQuadra(env: Env, input: {
 	quadra: string;
 	rhymeScheme: string;
 	theme: string;
+	themeContext?: string;
 	isFinal?: boolean;
 	inannaQuadra?: string;
 }): Promise<{ score: MechanicalScore; ai: AiRubric }> {
@@ -864,6 +969,7 @@ async function scoreQuadra(env: Env, input: {
 		playerQuadra: input.quadra,
 		inannaQuadra: input.inannaQuadra,
 		theme: input.theme,
+		themeContext: input.themeContext,
 		rhymeScheme: input.rhymeScheme,
 		isFinal: !!input.isFinal,
 	});
@@ -1439,9 +1545,14 @@ async function startSession(request: Request, env: Env): Promise<Response> {
 	}, { status: 201 }, env, request);
 }
 
-function generateChallenge(): JsonRecord {
+async function generateChallenge(env: Env): Promise<JsonRecord> {
+	const catalog = await loadLevel2ThematicChallenges(env);
+	const selected = catalog.length ? randomFrom(catalog) : null;
 	return {
-		theme: randomFrom(THEMES),
+		theme: selected?.theme || randomFrom(THEMES),
+		context: selected?.context || "",
+		source: selected?.source || "",
+		thematicSource: selected ? "worker_csv" : "worker_fallback",
 		rhymeScheme: randomFrom(SCHEMES),
 		seedImage: randomFrom(["ônibus", "caderno", "praça", "rio", "tambor", "celular", "bola", "feira"]),
 	};
@@ -1458,19 +1569,23 @@ async function respondRound(request: Request, env: Env): Promise<Response> {
 	const privacy = inspectContentPrivacy(playerQuadra);
 	if (!privacy.ok) return privacyErrorResponse(privacy, env, request);
 	const theme = cleanText(payload.theme, 160) || randomFrom(THEMES);
+	const themeContext = cleanText(payload.themeContext, 1400);
 	const rhymeScheme = cleanText(payload.rhymeScheme, 8) || randomFrom(SCHEMES);
 	const [playerPrelim, inanna] = await Promise.all([
-		scoreQuadra(env, { quadra: playerQuadra, rhymeScheme, theme }),
-		generateInannaResponse(env, { ...payload, playerQuadra, theme, rhymeScheme }),
+		scoreQuadra(env, { quadra: playerQuadra, rhymeScheme, theme, themeContext }),
+		generateInannaResponse(env, { ...payload, playerQuadra, theme, themeContext, rhymeScheme }),
 	]);
 	const inannaScored = await scoreQuadra(env, {
 		quadra: inanna.quadra,
 		rhymeScheme,
 		theme,
+		themeContext,
 	});
 	return json({
 		ok: true,
 		theme,
+		themeContext,
+		themeSource: cleanText(payload.themeSource, 500),
 		rhymeScheme,
 		playerPrelim,
 		inanna,
@@ -1496,12 +1611,14 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 	const privacy = inspectContentPrivacy(`${payload.playerOriginalQuadra || ""}\n${playerFinalQuadra}`);
 	if (!privacy.ok) return privacyErrorResponse(privacy, env, request);
 	const theme = cleanText(payload.theme, 160) || randomFrom(THEMES);
+	const themeContext = cleanText(payload.themeContext, 1400);
 	const rhymeScheme = cleanText(payload.rhymeScheme, 8) || "AABB";
 	const [playerFinal, inannaFinal] = await Promise.all([
 		scoreQuadra(env, {
 			quadra: playerFinalQuadra,
 			rhymeScheme,
 			theme,
+			themeContext,
 			isFinal: true,
 			inannaQuadra,
 		}),
@@ -1509,6 +1626,7 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 			quadra: inannaQuadra,
 			rhymeScheme,
 			theme,
+			themeContext,
 			isFinal: false,
 		}),
 	]);
@@ -1517,6 +1635,9 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 	const roundWinner = decideWinner(adjustedPlayerScore, inannaFinal.score);
 	const result: JsonRecord = {
 		ok: true,
+		theme,
+		themeContext,
+		themeSource: cleanText(payload.themeSource, 500),
 		roundWinner,
 		playerScore: adjustedPlayerScore,
 		playerAiRubric: playerFinal.ai,
@@ -1640,7 +1761,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 		return getSession(request, env, decodeURIComponent(url.pathname.replace("/v2/session/", "")));
 	}
 	if (request.method === "POST" && url.pathname === "/v2/round/generate") {
-		return json({ ok: true, challenge: generateChallenge() }, { status: 200 }, env, request);
+		return json({ ok: true, challenge: await generateChallenge(env) }, { status: 200 }, env, request);
 	}
 	if (request.method === "POST" && url.pathname === "/v2/round/respond") return respondRound(request, env);
 	if (request.method === "POST" && url.pathname === "/v2/round/finalize") return finalizeRound(request, env);
