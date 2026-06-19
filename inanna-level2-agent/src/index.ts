@@ -24,6 +24,11 @@ type Env = {
 	DEFAULT_JUDGE_MODEL?: string;
 	ROUND_COUNT?: string | number;
 	MAX_QUADRA_CHARS?: string | number;
+	LEVEL2_RHYME_BANK_ENABLED?: string | boolean;
+	LEVEL2_XILO_PUZZLE_ENABLED?: string | boolean;
+	BLOCKCHAIN_ENABLED?: string | boolean;
+	NFT_MINTING_ENABLED?: string | boolean;
+	EXTERNAL_WALLET_ENABLED?: string | boolean;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -69,6 +74,7 @@ type MechanicalScore = {
 	total: number;
 	rubrics: Record<string, boolean>;
 	finalWords: string[];
+	rhymeKeys: string[];
 };
 
 type AiRubric = {
@@ -79,6 +85,63 @@ type AiRubric = {
 	autonomy: number;
 	flags: Record<string, boolean>;
 	feedback: string;
+};
+
+type ContentPrivacyIssue = {
+	type: string;
+};
+
+type ContentPrivacyCheck = {
+	ok: boolean;
+	piiDetected: boolean;
+	issues: ContentPrivacyIssue[];
+	sanitizedText: string;
+	immutableMetadataAllowed: boolean;
+};
+
+type RhymeBankEntry = {
+	playerId: string;
+	sessionId: string;
+	verseNumber: number;
+	finalWord: string;
+	normalizedFinalWord: string;
+	rhymeKey: string;
+	rhymeFamily: string;
+	fullVerse: string;
+	isRepeatedExactWord: boolean;
+	isRepeatedRhymeFamily: boolean;
+	earnedOriginalityBonus: boolean;
+};
+
+type RhymeOriginalityAnalysis = {
+	entries: RhymeBankEntry[];
+	summary: {
+		enabled: boolean;
+		newFinalWordCount: number;
+		newRhymeFamilyCount: number;
+		exactRepeatCount: number;
+		rhymeFamilyRepeatCount: number;
+		earnedOriginalityBonus: boolean;
+		originalityDelta: number;
+		repeatedFinalWords: string[];
+		repeatedRhymeKeys: string[];
+	};
+};
+
+type SessionScoreUpdate = {
+	playerWins: number;
+	inannaWins: number;
+	finished: boolean;
+};
+
+type RewardGrant = {
+	eventType: string;
+	amount: number;
+	rewardUnit: string;
+	reason: string;
+	criterionSource: string;
+	pieceColor: string;
+	metadata?: JsonRecord;
 };
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -112,6 +175,32 @@ const SCHEMES = ["AABB", "ABAB", "ABCB", "ABBA"];
 const FALLBACK_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 const GENERATION_PROVIDER = "maritaca";
 const MARITACA_CHAT_URL = "https://chat.maritaca.ai/api/chat/completions";
+const LEVEL2_PUZZLE_SLUG = "xilogravura-peleja";
+const LEVEL2_PUZZLE_TOTAL_PIECES = 30;
+const LEVEL2_MAX_PIECES_PER_ROUND = 4;
+const LEVEL2_MAX_PIECES_PER_MATCH = 10;
+const COMMON_RHYME_SUFFIXES = [
+	"acao", "icao", "eirao", "eiro", "eira", "ente", "dade", "ade", "aria", "oria",
+	"ura", "eza", "oso", "osa", "oes", "aes", "ais", "eis", "ois", "uis",
+	"ao", "ia", "or", "ar", "er", "ir", "im", "al", "el", "ol", "ul",
+	"az", "as", "ez", "es", "iz", "is", "oz", "os", "uz", "us",
+];
+const RHYME_SUFFIX_ALIASES: Record<string, string> = {
+	az: "as",
+	ez: "es",
+	iz: "is",
+	oz: "os",
+	uz: "us",
+	aos: "ao",
+};
+const REWARD_COLORS: Record<string, string> = {
+	participacao_round: "barro",
+	vitoria_round: "ouro",
+	rima_inedita: "azul-rima",
+	criatividade_alta: "verde-imagem",
+	vitoria_peleja: "vermelho-autoria",
+	coerencia_final: "lilas-sentido",
+};
 
 function json(data: unknown, init: ResponseInit = {}, env?: Env, request?: Request): Response {
 	const headers = new Headers(init.headers);
@@ -152,12 +241,81 @@ function cleanText(value: unknown, max = 900): string {
 		.slice(0, max);
 }
 
+function inspectContentPrivacy(value: unknown): ContentPrivacyCheck {
+	const text = cleanText(value, 1400);
+	const patterns: Array<[ContentPrivacyIssue["type"], RegExp]> = [
+		["email", /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi],
+		["phone", /(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-.\s]?\d{4}/g],
+		["social_handle", /(^|[\s([{])@[a-z0-9._-]{3,}/gi],
+		["url", /\b(?:https?:\/\/|www\.)\S+/gi],
+		["cpf_like_number", /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g],
+	];
+	const issueTypes = new Set<string>();
+	let sanitizedText = text;
+	for (const [type, pattern] of patterns) {
+		if (pattern.test(text)) {
+			issueTypes.add(type);
+			sanitizedText = sanitizedText.replace(pattern, "[dado protegido]");
+		}
+		pattern.lastIndex = 0;
+	}
+	return {
+		ok: issueTypes.size === 0,
+		piiDetected: issueTypes.size > 0,
+		issues: [...issueTypes].map((type) => ({ type })),
+		sanitizedText,
+		immutableMetadataAllowed: issueTypes.size === 0,
+	};
+}
+
+function privacyErrorResponse(check: ContentPrivacyCheck, env: Env, request: Request): Response {
+	return json({
+		ok: false,
+		error: "privacy_pii_detected",
+		message: "Proteja seus dados: retire e-mail, telefone, arroba, link ou documento dos versos antes de enviar.",
+		privacy: {
+			piiDetected: check.piiDetected,
+			issues: check.issues,
+			immutableMetadataAllowed: false,
+		},
+	}, { status: 400 }, env, request);
+}
+
 function normalizeWord(value: string): string {
 	return value
 		.normalize("NFD")
 		.replace(/[\u0300-\u036f]/g, "")
 		.toLowerCase()
 		.replace(/[^a-z0-9ç]/gi, "");
+}
+
+function normalizeRhymeSuffix(value: string): string {
+	let key = normalizeWord(value).replace(/ç/g, "c");
+	if (!key) return "";
+	if (key.endsWith("z") || key.endsWith("x")) key = `${key.slice(0, -1)}s`;
+	if (key.endsWith("aos")) return "ao";
+	return RHYME_SUFFIX_ALIASES[key] || key;
+}
+
+function accentedVowelTail(value: string): string {
+	const source = String(value || "").toLowerCase().normalize("NFC");
+	const matches = [...source.matchAll(/[áàâãéêíóôõúü]/g)];
+	const last = matches[matches.length - 1];
+	if (!last || typeof last.index !== "number") return "";
+	const key = normalizeRhymeSuffix(source.slice(last.index));
+	return key.length <= 5 ? key : "";
+}
+
+function phoneticRhymeKey(word: string): string {
+	const normalized = normalizeWord(word).replace(/ç/g, "c");
+	if (!normalized) return "";
+	const accentedTail = accentedVowelTail(word);
+	if (accentedTail) return accentedTail;
+	for (const suffix of COMMON_RHYME_SUFFIXES) {
+		if (normalized.endsWith(suffix)) return normalizeRhymeSuffix(suffix);
+	}
+	const finalSyllable = normalized.match(/[aeiou][^aeiou]*$/)?.[0] || normalized.slice(-2);
+	return normalizeRhymeSuffix(finalSyllable);
 }
 
 function getLines(quadra: string): string[] {
@@ -181,6 +339,9 @@ function rhymeTail(word: string, size = 2): string {
 function scorePair(a: string, b: string): number {
 	if (!a || !b) return 0;
 	if (a === b) return 0;
+	const keyA = phoneticRhymeKey(a);
+	const keyB = phoneticRhymeKey(b);
+	if (keyA && keyA === keyB) return keyA.length >= 2 ? 10 : 6;
 	if (rhymeTail(a, 3) && rhymeTail(a, 3) === rhymeTail(b, 3)) return 10;
 	if (rhymeTail(a, 2) && rhymeTail(a, 2) === rhymeTail(b, 2)) return 8;
 	if (rhymeTail(a, 1) && rhymeTail(a, 1) === rhymeTail(b, 1)) return 4;
@@ -202,6 +363,7 @@ function clampScore(value: number, max: number): number {
 function mechanicalScore(quadra: string, scheme: string, options: { isFinal?: boolean; inannaQuadra?: string } = {}): MechanicalScore {
 	const lines = getLines(quadra);
 	const finalWords = lines.slice(0, 4).map(getFinalWord);
+	const rhymeKeys = finalWords.map(phoneticRhymeKey);
 	const structure = lines.length === 4 ? 10 : lines.length >= 3 ? 5 : 0;
 	const pairs = expectedPairs(scheme);
 	const pairScores = pairs.map(([a, b]) => scorePair(finalWords[a], finalWords[b]));
@@ -230,6 +392,7 @@ function mechanicalScore(quadra: string, scheme: string, options: { isFinal?: bo
 		response,
 		total,
 		finalWords,
+		rhymeKeys,
 		rubrics: {
 			hasFourVerses: lines.length === 4,
 			matchesRhymeScheme: rhyme >= 12,
@@ -314,6 +477,74 @@ function quadraToText(value: unknown): string {
 	return lines.length ? lines.join("\n") : cleanText(value, 900);
 }
 
+function extractGeneratedVerseLines(parsed: JsonRecord | null, rawText: string): { lines: string[]; hasEmbeddedBreaks: boolean } {
+	const candidate = parsed?.verses || parsed?.quadra || parsed?.poem || parsed?.resposta || rawText;
+	if (Array.isArray(candidate)) {
+		const hasEmbeddedBreaks = candidate.some((item) => /[\r\n]/.test(String(item || "")));
+		const lines = candidate
+			.flatMap((item) => String(item || "").split(/\r?\n/))
+			.map((line) => cleanText(line, 180))
+			.filter(Boolean);
+		return { lines, hasEmbeddedBreaks };
+	}
+	return { lines: getLines(String(candidate || rawText)), hasEmbeddedBreaks: false };
+}
+
+function estimateVerseSyllables(line: string): number {
+	const normalized = String(line || "")
+		.toLowerCase()
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/qu/g, "k")
+		.replace(/gu([ei])/g, "g$1");
+	return (normalized.match(/[aeiou]+/g) || []).length;
+}
+
+function validateGeneratedInanna(parsed: JsonRecord | null, rawText: string, scheme: string): { ok: boolean; lines: string[]; errors: string[] } {
+	const { lines, hasEmbeddedBreaks } = extractGeneratedVerseLines(parsed, rawText);
+	const errors: string[] = [];
+	if (hasEmbeddedBreaks) errors.push("verse_array_contains_line_breaks");
+	if (lines.length !== 4) errors.push(`expected_4_verses_got_${lines.length}`);
+	if (lines.some((line) => line.length < 8 || line.length > 120)) errors.push("verse_length_out_of_bounds");
+	const syllables = lines.slice(0, 4).map(estimateVerseSyllables);
+	if (syllables.some((count) => count < 5 || count > 16)) errors.push("meter_out_of_tolerance");
+	const finalWords = lines.slice(0, 4).map(getFinalWord);
+	const rhymeMatches = expectedPairs(scheme).map(([a, b]) => scorePair(finalWords[a], finalWords[b]) >= 6);
+	if (rhymeMatches.length && rhymeMatches.some((matched) => !matched)) errors.push("rhyme_scheme_not_met");
+	return { ok: errors.length === 0, lines: lines.slice(0, 4), errors };
+}
+
+function buildInannaRepairPrompt(input: {
+	playerQuadra: string;
+	rawResponse: string;
+	theme: string;
+	rhymeScheme: string;
+	stolenWords: string[];
+	errors: string[];
+}): string {
+	return `Repare a resposta da Inanna para uma peleja de quadras.
+
+Tema: ${input.theme}
+Esquema obrigatório: ${input.rhymeScheme}
+Erros detectados: ${input.errors.join(", ")}
+Palavras/imagens roubadas: ${input.stolenWords.join(", ") || "nenhuma"}
+
+Quadra do jogador:
+${input.playerQuadra}
+
+Resposta anterior da Inanna:
+${input.rawResponse}
+
+Retorne somente JSON válido com exatamente este formato:
+{
+  "verses": ["verso 1", "verso 2", "verso 3", "verso 4"],
+  "stolenWords": ["palavra1", "palavra2"],
+  "provocation": "uma frase curta chamando o jogador para melhorar"
+}
+
+Cada item de "verses" deve ser um verso único, sem quebra de linha interna. Preserve oralidade popular, sem humilhar a pessoa jogadora.`;
+}
+
 async function runWorkersAi(env: Env, prompt: string, model?: string): Promise<string> {
 	const selected = model || env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL;
 	const result = await env.AI.run(selected, {
@@ -379,7 +610,7 @@ Regras:
 - Preserve oralidade popular sem caricatura regional.
 - Retorne somente JSON válido neste formato:
 {
-  "quadra": ["verso 1", "verso 2", "verso 3", "verso 4"],
+  "verses": ["verso 1", "verso 2", "verso 3", "verso 4"],
   "stolenWords": ["palavra1", "palavra2"],
   "provocation": "uma frase curta chamando o jogador para melhorar"
 }`;
@@ -403,6 +634,8 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 
 	let provider = GENERATION_PROVIDER;
 	let text = "";
+	let parsed: JsonRecord | null = null;
+	let validation: { ok: boolean; lines: string[]; errors: string[] } | null = null;
 	try {
 		text = await generateWithMaritaca(env, prompt);
 	} catch (error) {
@@ -411,9 +644,36 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 		text = await runWorkersAi(env, prompt, env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL);
 	}
 
-	const parsed = extractJsonObject(text);
-	const lines = normalizeQuadraLines(parsed?.quadra || parsed?.poem || parsed?.resposta || text);
-	const safeLines = lines.length === 4 ? lines : buildFallbackInannaQuadra(playerQuadra, stolenWords, payload.rhymeScheme || "AABB");
+	parsed = extractJsonObject(text);
+	validation = validateGeneratedInanna(parsed, text, payload.rhymeScheme || "AABB");
+	if (!validation.ok) {
+		const repairPrompt = buildInannaRepairPrompt({
+			playerQuadra,
+			rawResponse: text,
+			theme: cleanText(payload.theme, 120) || randomFrom(THEMES),
+			rhymeScheme: cleanText(payload.rhymeScheme, 8) || "AABB",
+			stolenWords,
+			errors: validation.errors,
+		});
+		try {
+			const repairedText = provider === GENERATION_PROVIDER
+				? await generateWithMaritaca(env, repairPrompt)
+				: await runWorkersAi(env, repairPrompt, env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL);
+			const repairedParsed = extractJsonObject(repairedText);
+			const repairedValidation = validateGeneratedInanna(repairedParsed, repairedText, payload.rhymeScheme || "AABB");
+			if (repairedValidation.ok) {
+				text = repairedText;
+				parsed = repairedParsed;
+				validation = repairedValidation;
+				provider = `${provider}+repair`;
+			}
+		} catch (error) {
+			console.warn("Inanna generation repair failed, using validated fallback", String((error as Error)?.message || error));
+		}
+	}
+
+	const safeLines = validation?.ok ? validation.lines : buildFallbackInannaQuadra(playerQuadra, stolenWords, payload.rhymeScheme || "AABB");
+	if (!validation?.ok) provider = "validated-fallback";
 	return {
 		quadra: safeLines.join("\n"),
 		stolenWords: normalizeStringArray(parsed?.stolenWords || parsed?.palavras_roubadas || stolenWords).slice(0, 4),
@@ -535,7 +795,7 @@ async function evaluateRubric(env: Env, input: {
 			languageIsUnderstandable: mechanical.rubrics.hasReadableLanguage,
 			keepsHumanVoice: true,
 		},
-		feedback: "A avaliação automática usou rubricas locais porque o juiz de IA não respondeu a tempo.",
+		feedback: "Avaliação concluída em modo rápido, mantendo rima, forma e autoria avaliadas localmente.",
 	};
 }
 
@@ -649,6 +909,437 @@ async function supabaseFetch(env: Env, path: string, init: RequestInit): Promise
 	}
 }
 
+function enabledByDefault(value: unknown, fallback = true): boolean {
+	if (typeof value === "undefined" || value === null || value === "") return fallback;
+	return truthy(value);
+}
+
+async function fetchExistingRhymeRows(env: Env, sessionId: string, playerId: string): Promise<JsonRecord[]> {
+	if (!enabledByDefault(env.LEVEL2_RHYME_BANK_ENABLED, true) || !sessionId || !playerId) return [];
+	const data = await supabaseFetch(
+		env,
+		`level2_rhyme_bank?session_id=eq.${encodeURIComponent(sessionId)}&player_id=eq.${encodeURIComponent(playerId)}&select=normalized_final_word,rhyme_key`,
+		{ method: "GET" },
+	);
+	return Array.isArray(data) ? data as JsonRecord[] : [];
+}
+
+async function analyzeLevel2RhymeOriginality(env: Env, payload: RoundPayload, quadra: string): Promise<RhymeOriginalityAnalysis> {
+	const enabled = enabledByDefault(env.LEVEL2_RHYME_BANK_ENABLED, true);
+	const playerId = cleanText(payload.playerId, 120);
+	const sessionId = cleanText(payload.sessionId, 80);
+	const existingRows = enabled ? await fetchExistingRhymeRows(env, sessionId, playerId) : [];
+	const existingWords = new Set(existingRows.map((row) => cleanText(row.normalized_final_word, 80)).filter(Boolean));
+	const existingKeys = new Set(existingRows.map((row) => cleanText(row.rhyme_key, 40)).filter(Boolean));
+	const currentWords = new Set<string>();
+	const currentKeys = new Set<string>();
+	const entries = getLines(quadra).slice(0, 4).map((line, index) => {
+		const finalWord = getFinalWord(line);
+		const normalizedFinalWord = normalizeWord(finalWord);
+		const rhymeKey = phoneticRhymeKey(finalWord);
+		const isRepeatedExactWord = !!normalizedFinalWord && (existingWords.has(normalizedFinalWord) || currentWords.has(normalizedFinalWord));
+		const isRepeatedRhymeFamily = !!rhymeKey && (existingKeys.has(rhymeKey) || currentKeys.has(rhymeKey));
+		if (normalizedFinalWord) currentWords.add(normalizedFinalWord);
+		if (rhymeKey) currentKeys.add(rhymeKey);
+		return {
+			playerId,
+			sessionId,
+			verseNumber: index + 1,
+			finalWord,
+			normalizedFinalWord,
+			rhymeKey,
+			rhymeFamily: rhymeKey,
+			fullVerse: cleanText(line, 260),
+			isRepeatedExactWord,
+			isRepeatedRhymeFamily,
+			earnedOriginalityBonus: !!rhymeKey && !isRepeatedExactWord && !isRepeatedRhymeFamily,
+		};
+	});
+	const newFinalWordCount = entries.filter((entry) => entry.normalizedFinalWord && !entry.isRepeatedExactWord).length;
+	const newRhymeFamilyCount = entries.filter((entry) => entry.rhymeKey && !entry.isRepeatedRhymeFamily).length;
+	const exactRepeatCount = entries.filter((entry) => entry.isRepeatedExactWord).length;
+	const rhymeFamilyRepeatCount = entries.filter((entry) => entry.isRepeatedRhymeFamily).length;
+	const positiveDelta = (newFinalWordCount > 0 ? 2 : 0) + (newRhymeFamilyCount > 0 ? 3 : 0);
+	const originalityDelta = Math.max(-6, Math.min(5, positiveDelta - exactRepeatCount * 2));
+	return {
+		entries,
+		summary: {
+			enabled,
+			newFinalWordCount,
+			newRhymeFamilyCount,
+			exactRepeatCount,
+			rhymeFamilyRepeatCount,
+			earnedOriginalityBonus: entries.some((entry) => entry.earnedOriginalityBonus),
+			originalityDelta,
+			repeatedFinalWords: entries.filter((entry) => entry.isRepeatedExactWord).map((entry) => entry.finalWord),
+			repeatedRhymeKeys: [...new Set(entries.filter((entry) => entry.isRepeatedRhymeFamily).map((entry) => entry.rhymeKey).filter(Boolean))],
+		},
+	};
+}
+
+function applyRhymeOriginality(score: MechanicalScore, analysis: RhymeOriginalityAnalysis): MechanicalScore {
+	const next: MechanicalScore = {
+		...score,
+		finalWords: [...score.finalWords],
+		rhymeKeys: [...score.rhymeKeys],
+		rubrics: {
+			...score.rubrics,
+			hasNewRhymeFamily: analysis.summary.newRhymeFamilyCount > 0,
+			avoidsExactFinalWordRepeat: analysis.summary.exactRepeatCount === 0,
+		},
+	};
+	const delta = analysis.summary.originalityDelta;
+	if (delta > 0) {
+		let remaining = delta;
+		const rhymeBonus = Math.min(20 - next.rhyme, remaining);
+		next.rhyme += rhymeBonus;
+		remaining -= rhymeBonus;
+		if (remaining > 0) next.creativity = clampScore(next.creativity + remaining, 20);
+	} else if (delta < 0) {
+		next.rhyme = clampScore(next.rhyme + delta, 20);
+	}
+	next.total = next.structure + next.rhyme + next.creativity + next.autonomy + next.verisimilitude + next.coherence + next.response;
+	return next;
+}
+
+async function saveRhymeBankEntries(env: Env, entries: RhymeBankEntry[], roundId: string): Promise<void> {
+	if (!enabledByDefault(env.LEVEL2_RHYME_BANK_ENABLED, true) || !entries.length) return;
+	const sessionId = entries[0]?.sessionId;
+	const playerId = entries[0]?.playerId;
+	if (!sessionId || !playerId) return;
+	await supabaseFetch(env, "level2_rhyme_bank", {
+		method: "POST",
+		body: JSON.stringify(entries.map((entry) => ({
+			player_id: entry.playerId,
+			session_id: entry.sessionId,
+			round_id: roundId || null,
+			quadra_id: roundId || null,
+			verse_number: entry.verseNumber,
+			final_word: entry.finalWord,
+			normalized_final_word: entry.normalizedFinalWord,
+			rhyme_key: entry.rhymeKey,
+			rhyme_family: entry.rhymeFamily,
+			full_verse: entry.fullVerse,
+			is_repeated_exact_word: entry.isRepeatedExactWord,
+			is_repeated_rhyme_family: entry.isRepeatedRhymeFamily,
+			earned_originality_bonus: entry.earnedOriginalityBonus,
+		}))),
+	});
+}
+
+async function ensurePlayerWallet(env: Env, playerId: string): Promise<JsonRecord | null> {
+	const cleanPlayerId = cleanText(playerId, 120);
+	if (!cleanPlayerId) return null;
+	await supabaseFetch(env, "player_wallets?on_conflict=player_id", {
+		method: "POST",
+		headers: { prefer: "resolution=ignore-duplicates,return=minimal" },
+		body: JSON.stringify({ player_id: cleanPlayerId }),
+	});
+	const data = await supabaseFetch(
+		env,
+		`player_wallets?player_id=eq.${encodeURIComponent(cleanPlayerId)}&select=*`,
+		{ method: "GET" },
+	);
+	return Array.isArray(data) ? data[0] as JsonRecord || null : null;
+}
+
+async function getLevel2Puzzle(env: Env): Promise<JsonRecord | null> {
+	const data = await supabaseFetch(
+		env,
+		`puzzles?slug=eq.${encodeURIComponent(LEVEL2_PUZZLE_SLUG)}&select=puzzle_id,total_pieces`,
+		{ method: "GET" },
+	);
+	return Array.isArray(data) ? data[0] as JsonRecord || null : null;
+}
+
+async function getSessionRewardTotal(env: Env, sessionId: string, playerId: string): Promise<number> {
+  if (!sessionId || !playerId) return 0;
+  const data = await supabaseFetch(
+    env,
+    `reward_ledger?session_id=eq.${encodeURIComponent(sessionId)}&player_id=eq.${encodeURIComponent(playerId)}&reward_unit=eq.xilo_piece&select=amount`,
+		{ method: "GET" },
+	);
+  if (!Array.isArray(data)) return 0;
+  return Math.max(0, data.reduce((sum, row) => sum + Number((row as JsonRecord).amount || 0), 0));
+}
+
+function asRows(data: unknown): JsonRecord[] {
+	if (!Array.isArray(data)) return [];
+	return data.filter((row) => row && typeof row === "object") as JsonRecord[];
+}
+
+async function getPlayerProfile(request: Request, env: Env, playerId: string): Promise<Response> {
+	const cleanPlayerId = cleanText(playerId, 120);
+	if (!cleanPlayerId) return json({ ok: false, error: "missing_player_id" }, { status: 400 }, env, request);
+	const headerPlayerId = cleanText(request.headers.get("x-inanna-player-id"), 120);
+	if (headerPlayerId && headerPlayerId !== cleanPlayerId) {
+		return json({ ok: false, error: "player_id_mismatch" }, { status: 403 }, env, request);
+	}
+	if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+		return json({
+			ok: true,
+			playerId: cleanPlayerId,
+			source: "ephemeral",
+			wallet: null,
+			rewards: [],
+			sessions: [],
+			rounds: [],
+			pieces: [],
+			totalPieces: LEVEL2_PUZZLE_TOTAL_PIECES,
+		}, { status: 200 }, env, request);
+	}
+
+	const encodedPlayerId = encodeURIComponent(cleanPlayerId);
+	const [walletRows, rewardRows, sessionRows, roundRows, pieceRows, puzzle] = await Promise.all([
+		supabaseFetch(env, `player_wallets?player_id=eq.${encodedPlayerId}&select=wallet_id,player_id,internal_balance_pieces,internal_balance_peleja_points,level1_pieces_count,level2_pieces_count,completed_puzzles_count,updated_at`, { method: "GET" }),
+		supabaseFetch(env, `reward_ledger?player_id=eq.${encodedPlayerId}&select=ledger_id,session_id,level,event_type,amount,reward_unit,reason,related_round_id,metadata_json,created_at&order=created_at.desc&limit=80`, { method: "GET" }),
+		supabaseFetch(env, `inanna_sessions?player_id=eq.${encodedPlayerId}&select=session_id,nickname,current_round,player_wins,inanna_wins,status,created_at,finished_at&order=created_at.desc&limit=12`, { method: "GET" }),
+		supabaseFetch(env, `inanna_rounds?player_id=eq.${encodedPlayerId}&select=round_id,session_id,round_number,theme,rhyme_scheme,player_original_quadra,player_final_quadra,inanna_quadra,player_score,inanna_score,round_winner,created_at,ai_evaluation_json&order=created_at.desc&limit=30`, { method: "GET" }),
+		supabaseFetch(env, `puzzle_pieces?player_id=eq.${encodedPlayerId}&select=piece_id,puzzle_id,level,session_id,round_id,piece_index,piece_color,criterion_source,status,earned_at,metadata_json&order=earned_at.desc&limit=120`, { method: "GET" }),
+		getLevel2Puzzle(env),
+	]);
+
+	return json({
+		ok: true,
+		playerId: cleanPlayerId,
+		source: "supabase",
+		wallet: asRows(walletRows)[0] || null,
+		rewards: asRows(rewardRows),
+		sessions: asRows(sessionRows),
+		rounds: asRows(roundRows),
+		pieces: asRows(pieceRows),
+		totalPieces: Number(puzzle?.total_pieces || LEVEL2_PUZZLE_TOTAL_PIECES),
+	}, { status: 200 }, env, request);
+}
+
+function capRewardGrants(grants: RewardGrant[], maxPieces: number): RewardGrant[] {
+  let remaining = Math.max(0, maxPieces);
+  const capped: RewardGrant[] = [];
+	for (const grant of grants) {
+		if (remaining <= 0) break;
+		const amount = Math.min(Math.max(0, Math.round(grant.amount)), remaining);
+		if (amount > 0) {
+			capped.push({ ...grant, amount });
+			remaining -= amount;
+		}
+	}
+	return capped;
+}
+
+function buildRoundRewardGrants(result: JsonRecord, analysis: RhymeOriginalityAnalysis): RewardGrant[] {
+	const playerScore = result.playerScore as MechanicalScore | undefined;
+	const grants: RewardGrant[] = [
+		{
+			eventType: "piece_earned",
+			amount: 1,
+			rewardUnit: "xilo_piece",
+			reason: "participacao_round",
+			criterionSource: "participacao_round",
+			pieceColor: REWARD_COLORS.participacao_round,
+		},
+	];
+	if (result.roundWinner === "player") {
+		grants.push({
+			eventType: "piece_earned",
+			amount: 1,
+			rewardUnit: "xilo_piece",
+			reason: "vitoria_round",
+			criterionSource: "vitoria_round",
+			pieceColor: REWARD_COLORS.vitoria_round,
+		});
+	}
+	if (analysis.summary.earnedOriginalityBonus) {
+		grants.push({
+			eventType: "rhyme_bonus",
+			amount: 1,
+			rewardUnit: "xilo_piece",
+			reason: "rima_inedita",
+			criterionSource: "rima_inedita",
+			pieceColor: REWARD_COLORS.rima_inedita,
+			metadata: { rhymeOriginality: analysis.summary },
+		});
+	}
+	if (Number(playerScore?.creativity || 0) >= 16) {
+		grants.push({
+			eventType: "creativity_bonus",
+			amount: 1,
+			rewardUnit: "xilo_piece",
+			reason: "criatividade_alta",
+			criterionSource: "criatividade_alta",
+			pieceColor: REWARD_COLORS.criatividade_alta,
+		});
+	}
+	return capRewardGrants(grants, LEVEL2_MAX_PIECES_PER_ROUND);
+}
+
+function buildMatchRewardGrants(result: JsonRecord, sessionUpdate: SessionScoreUpdate): RewardGrant[] {
+	if (!sessionUpdate.finished) return [];
+	const playerScore = result.playerScore as MechanicalScore | undefined;
+	const grants: RewardGrant[] = [];
+	if (sessionUpdate.playerWins > sessionUpdate.inannaWins) {
+		grants.push({
+			eventType: "piece_earned",
+			amount: 2,
+			rewardUnit: "xilo_piece",
+			reason: "vitoria_peleja",
+			criterionSource: "vitoria_peleja",
+			pieceColor: REWARD_COLORS.vitoria_peleja,
+		});
+	}
+	if (Number(playerScore?.coherence || 0) >= 12) {
+		grants.push({
+			eventType: "piece_earned",
+			amount: 1,
+			rewardUnit: "xilo_piece",
+			reason: "coerencia_final",
+			criterionSource: "coerencia_final",
+			pieceColor: REWARD_COLORS.coerencia_final,
+		});
+	}
+	return grants;
+}
+
+async function recordLevel2Rewards(
+	env: Env,
+	payload: RoundPayload,
+	result: JsonRecord,
+	roundId: string,
+	analysis: RhymeOriginalityAnalysis,
+	sessionUpdate: SessionScoreUpdate,
+): Promise<JsonRecord> {
+	const playerId = cleanText(payload.playerId, 120);
+	const sessionId = cleanText(payload.sessionId, 80);
+	if (!enabledByDefault(env.LEVEL2_XILO_PUZZLE_ENABLED, true) || !playerId || !sessionId) {
+		return { enabled: false, piecesEarned: 0 };
+	}
+	const [wallet, puzzle, sessionAlreadyEarned] = await Promise.all([
+		ensurePlayerWallet(env, playerId),
+		getLevel2Puzzle(env),
+		getSessionRewardTotal(env, sessionId, playerId),
+	]);
+	if (!wallet || !puzzle?.puzzle_id) return { enabled: false, piecesEarned: 0 };
+	const totalPieces = Number(puzzle.total_pieces || LEVEL2_PUZZLE_TOTAL_PIECES);
+	const currentLevel2Pieces = Number(wallet.level2_pieces_count || 0);
+	const candidateGrants = [
+		...buildRoundRewardGrants(result, analysis),
+		...buildMatchRewardGrants(result, sessionUpdate),
+	];
+	const maxByMatch = Math.max(0, LEVEL2_MAX_PIECES_PER_MATCH - sessionAlreadyEarned);
+	const maxByPuzzle = Math.max(0, totalPieces - currentLevel2Pieces);
+	const grants = capRewardGrants(candidateGrants, Math.min(maxByMatch, maxByPuzzle));
+	const piecesEarned = grants.reduce((sum, grant) => sum + grant.amount, 0);
+	if (!piecesEarned) {
+		return {
+			enabled: true,
+			piecesEarned: 0,
+			level2PiecesCount: currentLevel2Pieces,
+			totalPieces,
+			reasons: [],
+		};
+	}
+
+	const piecePayload: JsonRecord[] = [];
+	let nextPieceIndex = currentLevel2Pieces + 1;
+	for (const grant of grants) {
+		for (let index = 0; index < grant.amount; index += 1) {
+			piecePayload.push({
+				player_id: playerId,
+				puzzle_id: puzzle.puzzle_id,
+				level: 2,
+				session_id: sessionId,
+				round_id: roundId || null,
+				piece_index: nextPieceIndex,
+				piece_color: grant.pieceColor,
+				criterion_source: grant.criterionSource,
+				status: "earned",
+				metadata_json: {
+					reason: grant.reason,
+					...(grant.metadata || {}),
+				},
+			});
+			nextPieceIndex += 1;
+		}
+	}
+
+	const inserted = await supabaseFetch(env, "puzzle_pieces", {
+		method: "POST",
+		body: JSON.stringify(piecePayload),
+	});
+	const insertedPieces = Array.isArray(inserted) ? inserted as JsonRecord[] : [];
+	const ledgerRows: JsonRecord[] = [];
+	let pieceCursor = 0;
+	for (const grant of grants) {
+		for (let index = 0; index < grant.amount; index += 1) {
+			const piece = insertedPieces[pieceCursor] || {};
+			ledgerRows.push({
+				player_id: playerId,
+				session_id: sessionId,
+				level: 2,
+				event_type: grant.eventType,
+				amount: 1,
+				reward_unit: grant.rewardUnit,
+				reason: grant.reason,
+				related_piece_id: piece.piece_id || null,
+				related_round_id: roundId || null,
+				metadata_json: {
+					criterionSource: grant.criterionSource,
+					blockchainEnabled: false,
+					nftMintingEnabled: false,
+					externalWalletEnabled: false,
+					...(grant.metadata || {}),
+				},
+			});
+			pieceCursor += 1;
+		}
+	}
+	await supabaseFetch(env, "reward_ledger", {
+		method: "POST",
+		body: JSON.stringify(ledgerRows),
+	});
+
+	const updatedLevel2Pieces = currentLevel2Pieces + piecesEarned;
+	const completedPuzzle = currentLevel2Pieces < totalPieces && updatedLevel2Pieces >= totalPieces;
+	if (completedPuzzle) {
+		await supabaseFetch(env, "reward_ledger", {
+			method: "POST",
+			body: JSON.stringify({
+				player_id: playerId,
+				session_id: sessionId,
+				level: 2,
+				event_type: "puzzle_completed",
+				amount: 1,
+				reward_unit: "authorship_mark",
+				reason: "xilogravura_completa",
+				related_round_id: roundId || null,
+				metadata_json: {
+					puzzleSlug: LEVEL2_PUZZLE_SLUG,
+					totalPieces,
+					futureNftEligible: true,
+					blockchainEnabled: false,
+					nftMintingEnabled: false,
+				},
+			}),
+		});
+	}
+	await supabaseFetch(env, `player_wallets?player_id=eq.${encodeURIComponent(playerId)}`, {
+		method: "PATCH",
+		body: JSON.stringify({
+			internal_balance_pieces: Number(wallet.internal_balance_pieces || 0) + piecesEarned,
+			level2_pieces_count: updatedLevel2Pieces,
+			completed_puzzles_count: Number(wallet.completed_puzzles_count || 0) + (completedPuzzle ? 1 : 0),
+		}),
+	});
+
+	return {
+		enabled: true,
+		piecesEarned,
+		level2PiecesCount: updatedLevel2Pieces,
+		totalPieces,
+		completedPuzzle,
+		reasons: grants.map((grant) => grant.reason),
+	};
+}
+
 async function upsertPlayer(env: Env, payload: SessionPayload): Promise<void> {
 	const playerId = cleanText(payload.playerId, 120);
 	if (!playerId) return;
@@ -661,6 +1352,7 @@ async function upsertPlayer(env: Env, payload: SessionPayload): Promise<void> {
 			updated_at: new Date().toISOString(),
 		}),
 	});
+	await ensurePlayerWallet(env, playerId);
 }
 
 async function createSession(env: Env, payload: SessionPayload): Promise<JsonRecord | null> {
@@ -681,8 +1373,8 @@ async function createSession(env: Env, payload: SessionPayload): Promise<JsonRec
 	return Array.isArray(data) ? data[0] as JsonRecord : null;
 }
 
-async function updateSessionScore(env: Env, sessionId: string, winner: string, roundNumber: number): Promise<void> {
-	if (!sessionId) return;
+async function updateSessionScore(env: Env, sessionId: string, winner: string, roundNumber: number): Promise<SessionScoreUpdate> {
+	if (!sessionId) return { playerWins: 0, inannaWins: 0, finished: roundNumber >= 3 };
 	const current = await supabaseFetch(env, `inanna_sessions?session_id=eq.${encodeURIComponent(sessionId)}&select=player_wins,inanna_wins`, {
 		method: "GET",
 		headers: { prefer: "return=representation" },
@@ -690,7 +1382,7 @@ async function updateSessionScore(env: Env, sessionId: string, winner: string, r
 	const row = Array.isArray(current) ? current[0] as JsonRecord | undefined : undefined;
 	const playerWins = Number(row?.player_wins || 0) + (winner === "player" ? 1 : 0);
 	const inannaWins = Number(row?.inanna_wins || 0) + (winner === "inanna" ? 1 : 0);
-	const finished = roundNumber >= 3 || playerWins >= 2 || inannaWins >= 2;
+	const finished = roundNumber >= 3 || playerWins >= 2 || inannaWins >= 2 || (roundNumber >= 2 && playerWins !== inannaWins);
 	await supabaseFetch(env, `inanna_sessions?session_id=eq.${encodeURIComponent(sessionId)}`, {
 		method: "PATCH",
 		body: JSON.stringify({
@@ -701,6 +1393,7 @@ async function updateSessionScore(env: Env, sessionId: string, winner: string, r
 			finished_at: finished ? new Date().toISOString() : null,
 		}),
 	});
+	return { playerWins, inannaWins, finished };
 }
 
 async function saveRound(env: Env, payload: RoundPayload, result: JsonRecord): Promise<JsonRecord | null> {
@@ -719,6 +1412,7 @@ async function saveRound(env: Env, payload: RoundPayload, result: JsonRecord): P
 			player_score: Number(result.playerScoreTotal || 0),
 			inanna_score: Number(result.inannaScoreTotal || 0),
 			round_winner: cleanText(result.roundWinner, 20),
+			content_privacy_json: result.contentPrivacy || {},
 			ai_evaluation_json: result,
 		}),
 	});
@@ -761,6 +1455,8 @@ async function respondRound(request: Request, env: Env): Promise<Response> {
 	const payload = await readJson<RoundPayload>(request);
 	const playerQuadra = cleanText(payload.playerQuadra || payload.playerOriginalQuadra, maxQuadraChars(env));
 	if (!playerQuadra) return json({ ok: false, error: "missing_quadra" }, { status: 400 }, env, request);
+	const privacy = inspectContentPrivacy(playerQuadra);
+	if (!privacy.ok) return privacyErrorResponse(privacy, env, request);
 	const theme = cleanText(payload.theme, 160) || randomFrom(THEMES);
 	const rhymeScheme = cleanText(payload.rhymeScheme, 8) || randomFrom(SCHEMES);
 	const [playerPrelim, inanna] = await Promise.all([
@@ -780,6 +1476,11 @@ async function respondRound(request: Request, env: Env): Promise<Response> {
 		inanna,
 		inannaScore: inannaScored.score,
 		generationProvider: inanna.provider,
+		contentPrivacy: {
+			piiDetected: privacy.piiDetected,
+			issues: privacy.issues,
+			immutableMetadataAllowed: privacy.immutableMetadataAllowed,
+		},
 	}, { status: 200 }, env, request);
 }
 
@@ -792,6 +1493,8 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 	const playerFinalQuadra = cleanText(payload.playerFinalQuadra || payload.playerQuadra, maxQuadraChars(env));
 	const inannaQuadra = cleanText(payload.inannaQuadra, maxQuadraChars(env));
 	if (!playerFinalQuadra || !inannaQuadra) return json({ ok: false, error: "missing_final_or_inanna_quadra" }, { status: 400 }, env, request);
+	const privacy = inspectContentPrivacy(`${payload.playerOriginalQuadra || ""}\n${playerFinalQuadra}`);
+	if (!privacy.ok) return privacyErrorResponse(privacy, env, request);
 	const theme = cleanText(payload.theme, 160) || randomFrom(THEMES);
 	const rhymeScheme = cleanText(payload.rhymeScheme, 8) || "AABB";
 	const [playerFinal, inannaFinal] = await Promise.all([
@@ -809,22 +1512,33 @@ async function finalizeRound(request: Request, env: Env): Promise<Response> {
 			isFinal: false,
 		}),
 	]);
-	const roundWinner = decideWinner(playerFinal.score, inannaFinal.score);
-	const result = {
+	const rhymeOriginality = await analyzeLevel2RhymeOriginality(env, payload, playerFinalQuadra);
+	const adjustedPlayerScore = applyRhymeOriginality(playerFinal.score, rhymeOriginality);
+	const roundWinner = decideWinner(adjustedPlayerScore, inannaFinal.score);
+	const result: JsonRecord = {
 		ok: true,
 		roundWinner,
-		playerScore: playerFinal.score,
+		playerScore: adjustedPlayerScore,
 		playerAiRubric: playerFinal.ai,
 		inannaScore: inannaFinal.score,
 		inannaAiRubric: inannaFinal.ai,
-		playerScoreTotal: playerFinal.score.total,
+		playerScoreTotal: adjustedPlayerScore.total,
 		inannaScoreTotal: inannaFinal.score.total,
-		shortExplanation: buildRoundShortExplanation(roundWinner, playerFinal.score, inannaFinal.score, playerFinal.ai.feedback),
-		feedback: buildRoundFeedback(roundWinner, playerFinal.score, inannaFinal.score, playerFinal.ai.feedback),
+		shortExplanation: buildRoundShortExplanation(roundWinner, adjustedPlayerScore, inannaFinal.score, playerFinal.ai.feedback),
+		feedback: buildRoundFeedback(roundWinner, adjustedPlayerScore, inannaFinal.score, playerFinal.ai.feedback),
+		rhymeOriginality: rhymeOriginality.summary,
+		contentPrivacy: {
+			piiDetected: privacy.piiDetected,
+			issues: privacy.issues,
+			immutableMetadataAllowed: privacy.immutableMetadataAllowed,
+		},
 	};
 	const savedRound = await saveRound(env, payload, result);
-	await updateSessionScore(env, cleanText(payload.sessionId, 80), roundWinner, Number(payload.roundNumber || 1));
-	return json({ ...result, roundId: savedRound?.round_id || null }, { status: 200 }, env, request);
+	const roundId = cleanText(savedRound?.round_id, 80);
+	await saveRhymeBankEntries(env, rhymeOriginality.entries, roundId);
+	const sessionUpdate = await updateSessionScore(env, cleanText(payload.sessionId, 80), roundWinner, Number(payload.roundNumber || 1));
+	const rewardSummary = await recordLevel2Rewards(env, payload, result, roundId, rhymeOriginality, sessionUpdate);
+	return json({ ...result, roundId: roundId || null, sessionUpdate, rewardSummary }, { status: 200 }, env, request);
 }
 
 function buildRoundFeedback(winner: string, player: MechanicalScore, inanna: MechanicalScore, feedback: string): string {
@@ -910,7 +1624,16 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 			judgeModel: env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL,
 			maritacaConfigured: !!env.MARITACA_API_KEY,
 			supabaseConfigured: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY),
+			level2RhymeBankEnabled: enabledByDefault(env.LEVEL2_RHYME_BANK_ENABLED, true),
+			level2XiloPuzzleEnabled: enabledByDefault(env.LEVEL2_XILO_PUZZLE_ENABLED, true),
+			blockchainEnabled: false,
+			nftMintingEnabled: false,
+			externalWalletEnabled: false,
 		}, { status: 200 }, env, request);
+	}
+	if (request.method === "GET" && url.pathname.startsWith("/v2/player/") && url.pathname.endsWith("/profile")) {
+		const playerId = url.pathname.replace(/^\/v2\/player\//, "").replace(/\/profile$/, "");
+		return getPlayerProfile(request, env, decodeURIComponent(playerId));
 	}
 	if (request.method === "POST" && url.pathname === "/v2/session/start") return startSession(request, env);
 	if (request.method === "GET" && url.pathname.startsWith("/v2/session/")) {
@@ -926,7 +1649,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-	async fetch(request, env): Promise<Response> {
+	async fetch(request, env, _ctx): Promise<Response> {
 		try {
 			return await handleRequest(request, env as Env);
 		} catch (error) {

@@ -226,33 +226,53 @@
           <div class="step-header">
             <img src="emoji.png" alt="Inanna" class="inanna-avatar" />
             <h2>Escolha sua trilha</h2>
-            <p class="step-desc">Depois da validação do check-in, você pode seguir pela experiência lúdica das quadras ou abrir seu caderno pessoal de sextilhas.</p>
+            <p class="step-desc">Depois da validação do check-in, entre no jogo de quadras ou acompanhe seu painel de jogador.</p>
           </div>
           <div class="track-chooser-grid">
             <article class="track-card">
               <p class="track-card__eyebrow">Trilha Game</p>
               <h3>Jogar com quadras</h3>
-              <p>Continue no fluxo já existente, com sugestões da Inanna, pontuação do modo desafio e placar.</p>
+              <p>Acesse o Nível 1 de rima guiada e, quando suas marcas de autoria liberarem, a peleja do Nível 2.</p>
               <button id="chooseGameTrackBtn" class="btn btn-primary" type="button">Entrar no jogo</button>
             </article>
             <article class="track-card track-card--warm">
-              <p class="track-card__eyebrow">Trilha Autoral</p>
-              <h3>Entrar no meu caderno de sextilhas</h3>
-              <p>Escreva com calma, salve rascunhos, acompanhe versões e amadureça seus textos sem gamificação.</p>
-              <button id="chooseSextilhaTrackBtn" class="btn btn-custom" type="button" aria-describedby="sextilhaAccessNotice">Abrir meu caderno</button>
-              <p id="sextilhaAccessNotice" class="track-card__notice" hidden>ainda estamos trabalhando e sonhando este espaço</p>
+              <p class="track-card__eyebrow">Perfil</p>
+              <h3>Painel do jogador</h3>
+              <p>Veja seus pedacinhos, pontos, pelejas, textos guardados e ajuste seus dados de perfil.</p>
+              <button id="choosePlayerPanelBtn" class="btn btn-custom" type="button">Abrir painel</button>
+            </article>
+          </div>
+          <div class="workspace-actions">
+            <button id="trackChooserBackBtn" class="btn btn-ghost" type="button">Voltar para a validação</button>
+          </div>
+        </section>
+
+        <section id="quadraLevelsSection" class="workspace-panel" aria-label="Níveis do jogo de quadras">
+          <div class="workspace-head">
+            <div>
+              <p class="workspace-kicker">Jogo de quadras</p>
+              <h2>Escolha o nível</h2>
+              <p class="step-desc">O Nível 1 fortalece rima, métrica e autoria. O Nível 2 abre a peleja com Inanna quando suas conquistas amadurecem.</p>
+            </div>
+            <div class="workspace-actions">
+              <button id="quadraLevelsBackBtn" class="btn btn-ghost" type="button">Voltar ao menu inicial</button>
+            </div>
+          </div>
+          <div class="track-chooser-grid">
+            <article class="track-card">
+              <p class="track-card__eyebrow">Nível 1</p>
+              <h3>Quadra guiada</h3>
+              <p>Escolha um tema, complete versos, sustente a rima e junte pedacinhos de maestria.</p>
+              <button id="startLevel1TrackBtn" class="btn btn-primary" type="button">Abrir Nível 1</button>
             </article>
             <article class="track-card track-card--level2">
-              <p class="track-card__eyebrow">Nível 2 Preview</p>
-              <h3>Enfrentar a Inanna persuasiva</h3>
+              <p class="track-card__eyebrow">Nível 2</p>
+              <h3>Peleja com Inanna</h3>
               <p>Esta trilha abre quando sua maestria no Nível 1 prova domínio da quadra, da rima e da autoria humana.</p>
               <button id="chooseLevel2TrackBtn" class="btn btn-secondary" type="button" aria-describedby="level2AccessNotice">Abrir Nível 2</button>
               <div id="level2ProgressSummary" class="track-card__progress"></div>
               <p id="level2AccessNotice" class="track-card__notice">Domine a rima humana no Nível 1 para liberar o Nível 2.</p>
             </article>
-          </div>
-          <div class="workspace-actions">
-            <button id="trackChooserBackBtn" class="btn btn-ghost" type="button">Voltar para a validação</button>
           </div>
         </section>
 
@@ -264,7 +284,7 @@
               <p class="step-desc">Três rounds de quadra contra a máquina: ela provoca, rouba imagens do seu verso e você responde com autoria humana.</p>
             </div>
             <div class="workspace-actions">
-              <button id="level2PreviewBackBtn" class="btn btn-ghost" type="button">Voltar às trilhas</button>
+              <button id="level2PreviewBackBtn" class="btn btn-ghost" type="button">Voltar aos níveis</button>
             </div>
           </div>
           <div id="level2PreviewStatus" class="level2-preview-panel"></div>
@@ -291,38 +311,152 @@
                 <strong id="level2RhymeScheme">AABB</strong>
               </div>
             </div>
+            <div id="level2ThemeContext" class="level2-context" hidden></div>
             <label class="field-label" for="level2OriginalInput">Sua quadra inicial</label>
             <textarea id="level2OriginalInput" class="level2-textarea" rows="6" maxlength="900"
               placeholder="Escreva quatro versos para abrir o round"></textarea>
-            <div class="workspace-actions">
-              <button id="level2SubmitOriginalBtn" class="btn btn-primary" type="button">OK, chamar Inanna</button>
-            </div>
             <div id="level2InannaResponse" class="level2-response" hidden></div>
+            <p id="level2RevisionTimer" class="level2-timer" hidden aria-live="polite"></p>
             <label class="field-label" for="level2FinalInput">Sua resposta final</label>
             <textarea id="level2FinalInput" class="level2-textarea" rows="6" maxlength="900"
               placeholder="Melhore sua quadra ou responda à provocação de Inanna" disabled></textarea>
-            <div class="workspace-actions">
-              <button id="level2FinalizeRoundBtn" class="btn btn-custom" type="button" disabled>OK, fechar round</button>
-              <button id="level2NextRoundBtn" class="btn btn-secondary" type="button" hidden>Próximo round</button>
-              <button id="level2ResetBtn" class="btn btn-ghost" type="button">Recomeçar peleja</button>
+            <div class="workspace-actions level2-action-row">
+              <button id="level2PrimaryActionBtn" class="btn btn-primary" type="button">Chamar Inanna</button>
+              <button id="level2ResetBtn" class="btn btn-ghost level2-reset-link" type="button">Recomeçar peleja</button>
             </div>
             <div id="level2RoundFeedback" class="level2-feedback" aria-live="polite"></div>
             <div id="level2MatchResult" class="level2-match-result" hidden></div>
           </div>
         </section>
 
-        <section id="userDashboardSection" class="workspace-panel" aria-label="Caderno de sextilhas">
+        <section id="userDashboardSection" class="workspace-panel" aria-label="Painel do jogador">
           <div class="workspace-head">
             <div>
-              <p class="workspace-kicker">Caderno de sextilhas</p>
-              <h2 id="dashboardGreeting">Minhas sextilhas</h2>
-              <p class="step-desc">Seu espaço pessoal de escrita, memória e revisão.</p>
+              <p class="workspace-kicker">Painel do jogador</p>
+              <h2 id="dashboardGreeting">Meu painel</h2>
+              <p class="step-desc">Seu espaço de conquistas, perfil, pelejas e textos guardados.</p>
             </div>
             <div class="workspace-actions">
               <button id="btnCreateFolheto" class="btn btn-primary" type="button">Criar novo folheto</button>
               <button id="btnCreateText" class="btn btn-secondary" type="button">Nova sextilha avulsa</button>
               <button id="btnBackToTrackChooser" class="btn btn-ghost" type="button">Voltar ao menu inicial</button>
             </div>
+          </div>
+          <div class="player-panel-grid">
+            <section class="player-panel-card player-panel-card--profile" aria-label="Perfil do jogador">
+              <div class="player-panel-card__head">
+                <div>
+                  <p class="track-card__eyebrow">Perfil</p>
+                  <h3>Como Inanna chama você</h3>
+                </div>
+              </div>
+              <label class="field-label" for="playerDisplayNameInput">Como quer ser chamado/a</label>
+              <div class="player-inline-form">
+                <input id="playerDisplayNameInput" class="workspace-input" maxlength="40" placeholder="Seu nome de jogo">
+                <button id="savePlayerDisplayNameBtn" class="btn btn-secondary" type="button">Salvar</button>
+              </div>
+              <p id="playerDisplayNameStatus" class="workspace-meta" aria-live="polite"></p>
+              <div id="dashboardProfileSummary" class="player-profile-summary"></div>
+              <div class="workspace-actions">
+                <button id="toggleDashboardProfileEditBtn" class="btn btn-ghost" type="button">Editar dados estatísticos</button>
+              </div>
+              <div id="dashboardProfileEditPanel" class="profile-panel profile-panel--dashboard" hidden>
+                <div class="profile-row">
+                  <span class="field-label">Estou nas oficinas Cordel 2.0</span>
+                  <div class="segmented-choice" role="radiogroup" aria-label="Participa das oficinas Cordel 2.0">
+                    <label><input type="radio" name="dashboardProfileWorkshop" id="dashboardProfileWorkshopYes" value="yes">Sim</label>
+                    <label><input type="radio" name="dashboardProfileWorkshop" id="dashboardProfileWorkshopNo" value="no">Não</label>
+                  </div>
+                </div>
+                <div class="profile-row">
+                  <span class="field-label">Já usou algum chatbot de IA</span>
+                  <div class="segmented-choice" role="radiogroup" aria-label="Já usou algum chatbot de IA">
+                    <label><input type="radio" name="dashboardProfileAiChatbot" id="dashboardProfileAiChatbotYes" value="yes">Sim</label>
+                    <label><input type="radio" name="dashboardProfileAiChatbot" id="dashboardProfileAiChatbotNo" value="no">Não</label>
+                  </div>
+                </div>
+                <label class="field-label" for="dashboardProfileGender">Gênero</label>
+                <select id="dashboardProfileGender" class="input-row">
+                  <option value="">Selecione</option>
+                  <option value="masculino">Masculino</option>
+                  <option value="feminino">Feminino</option>
+                  <option value="outro">Outro</option>
+                  <option value="prefiro_nao_dizer">Prefiro não dizer</option>
+                </select>
+                <label class="field-label" for="dashboardProfileRace">Identificação racial</label>
+                <select id="dashboardProfileRace" class="input-row">
+                  <option value="">Selecione</option>
+                  <option value="branco">Branco</option>
+                  <option value="indigena">Indígena</option>
+                  <option value="pardo">Pardo</option>
+                  <option value="preto">Preto</option>
+                  <option value="outro">Outro</option>
+                </select>
+                <label class="field-label" for="dashboardProfileAgeRange">Faixa etária</label>
+                <select id="dashboardProfileAgeRange" class="input-row">
+                  <option value="">Selecione</option>
+                  <option value="menos_de_11">Menos de 11</option>
+                  <option value="12_14">12-14</option>
+                  <option value="15_17">15-17</option>
+                  <option value="18_29">18-29</option>
+                  <option value="30_44">30-44</option>
+                  <option value="45_59">45-59</option>
+                  <option value="maior_de_60">Maior de 60</option>
+                </select>
+                <label class="field-label" for="dashboardProfileMunicipioInput">Município</label>
+                <input id="dashboardProfileMunicipioInput" class="input-row" list="dashboardProfileMunicipioOptions"
+                  placeholder="Digite para buscar cidade - UF">
+                <datalist id="dashboardProfileMunicipioOptions"></datalist>
+                <label class="profile-check">
+                  <input type="checkbox" id="dashboardProfileOutsideBrazil">
+                  <span>Fora do Brasil</span>
+                </label>
+                <button id="saveDashboardProfileBtn" class="btn btn-secondary" type="button">Salvar dados estatísticos</button>
+                <p id="dashboardProfileStatus" class="verse-hint form-hint" aria-live="polite"></p>
+              </div>
+            </section>
+            <section class="player-panel-card" aria-label="Ganhos do Nível 1">
+              <div class="player-panel-card__head">
+                <div>
+                  <p class="track-card__eyebrow">Nível 1</p>
+                  <h3>Pedacinhos de maestria</h3>
+                </div>
+              </div>
+              <div id="playerLevel1Rewards" class="player-reward-block"></div>
+              <div class="workspace-actions">
+                <button id="playerUnlockLevel2Btn" class="btn btn-secondary" type="button">Conversar com Inanna</button>
+                <button id="playerGoLevel1Btn" class="btn btn-ghost" type="button">Jogar Nível 1</button>
+              </div>
+            </section>
+            <section class="player-panel-card player-panel-card--level2" aria-label="Ganhos do Nível 2">
+              <div class="player-panel-card__head">
+                <div>
+                  <p class="track-card__eyebrow">Nível 2</p>
+                  <h3>Pelejas e xilogravura</h3>
+                </div>
+              </div>
+              <div id="playerLevel2Rewards" class="player-reward-block"></div>
+              <div class="workspace-actions">
+                <button id="playerGoLevel2Btn" class="btn btn-secondary" type="button">Abrir peleja</button>
+                <button id="refreshPlayerPanelBtn" class="btn btn-ghost" type="button">Atualizar painel</button>
+              </div>
+            </section>
+          </div>
+          <section class="player-results-panel" aria-label="Resultados das pelejas">
+            <div class="player-panel-card__head">
+              <div>
+                <p class="track-card__eyebrow">Resultados</p>
+                <h3>Quadras do Nível 2</h3>
+              </div>
+            </div>
+            <div id="playerLevel2Results" class="player-results-list" aria-live="polite"></div>
+          </section>
+          <div class="dashboard-section-head">
+            <div>
+              <p class="track-card__eyebrow">Caderno autoral</p>
+              <h3>Minhas sextilhas</h3>
+            </div>
+            <p id="sextilhaAccessNotice" class="track-card__notice" hidden>ainda estamos trabalhando e sonhando este espaço</p>
           </div>
           <div class="dashboard-metrics">
             <article class="dashboard-metric">
@@ -936,6 +1070,11 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
         level2DictationEnabled: pickConfig("%VITE_INANNA_LEVEL2_DICTATION_ENABLED%", existingConfig.level2DictationEnabled),
         level2AudioEnabled: pickConfig("%VITE_INANNA_LEVEL2_AUDIO_ENABLED%", existingConfig.level2AudioEnabled),
         level2SocialEnabled: pickConfig("%VITE_INANNA_LEVEL2_SOCIAL_ENABLED%", existingConfig.level2SocialEnabled),
+        level2RhymeBankEnabled: pickConfig("%VITE_INANNA_LEVEL2_RHYME_BANK_ENABLED%", existingConfig.level2RhymeBankEnabled),
+        level2XiloPuzzleEnabled: pickConfig("%VITE_INANNA_LEVEL2_XILO_PUZZLE_ENABLED%", existingConfig.level2XiloPuzzleEnabled),
+        blockchainEnabled: pickConfig("%VITE_INANNA_BLOCKCHAIN_ENABLED%", existingConfig.blockchainEnabled),
+        nftMintingEnabled: pickConfig("%VITE_INANNA_NFT_MINTING_ENABLED%", existingConfig.nftMintingEnabled),
+        externalWalletEnabled: pickConfig("%VITE_INANNA_EXTERNAL_WALLET_ENABLED%", existingConfig.externalWalletEnabled),
         adminEmails: pickConfig("%VITE_INANNA_ADMIN_EMAILS%", existingConfig.adminEmails),
         turnstileSiteKey: pickConfig("%VITE_INANNA_TURNSTILE_SITE_KEY%", existingConfig.turnstileSiteKey),
         socialEmailEnabled: pickConfig("%VITE_INANNA_SOCIAL_EMAIL_ENABLED%", existingConfig.socialEmailEnabled),

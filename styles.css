@@ -566,6 +566,18 @@ h1 {
   line-height: 1.4;
 }
 
+.theme-source {
+  margin-top: auto;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* ── Etapa 2: Verso incompleto ───────────────────────────────────── */
 .history-inline {
   display: flex;
@@ -1454,6 +1466,32 @@ select:focus-visible,
   background: rgba(255, 255, 255, 0.05);
 }
 
+.level2-context {
+  margin: -4px 0 16px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(6, 182, 212, 0.24);
+  background: rgba(6, 182, 212, 0.08);
+  color: #cffafe;
+  line-height: 1.6;
+}
+
+.level2-context strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #67e8f9;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.level2-context a {
+  display: inline-flex;
+  margin-top: 8px;
+  color: #fdba74;
+  font-weight: 800;
+}
+
 .level2-label {
   display: block;
   margin-bottom: 4px;
@@ -1479,6 +1517,30 @@ select:focus-visible,
 .level2-textarea:focus-visible {
   outline: 2px solid rgba(249, 115, 22, 0.85);
   outline-offset: 2px;
+}
+
+.level2-timer {
+  margin: 4px 0 12px;
+  color: #fde68a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.level2-timer--warn {
+  color: #fdba74;
+}
+
+.level2-timer--urgent {
+  color: #fecaca;
+}
+
+.level2-action-row {
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.level2-reset-link {
+  color: var(--muted);
 }
 
 .level2-response,
@@ -1531,6 +1593,79 @@ select:focus-visible,
 .level2-score-grid--summary {
   grid-template-columns: repeat(2, minmax(120px, 1fr));
   max-width: 420px;
+}
+
+.level2-criteria-table {
+  width: 100%;
+  margin-top: 14px;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.24);
+  font-size: 13px;
+}
+
+.level2-criteria-table th,
+.level2-criteria-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.level2-criteria-table th {
+  color: #fed7aa;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.level2-criteria-table td:nth-child(2),
+.level2-criteria-table td:nth-child(3),
+.level2-criteria-table th:nth-child(2),
+.level2-criteria-table th:nth-child(3) {
+  text-align: right;
+}
+
+.level2-round-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.level2-round-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.level2-round-pill span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.level2-round-pill strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.level2-reward-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+
+.level2-reward-note p {
+  margin: 0;
+}
+
+.level2-reward-note p + p {
+  margin-top: 4px;
 }
 
 .level2-criteria {
@@ -1869,6 +2004,146 @@ select:focus-visible,
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 10px;
+}
+
+.player-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.player-panel-card,
+.player-results-panel {
+  padding: 18px;
+  border-radius: var(--r-lg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.player-panel-card--profile {
+  border-color: rgba(6, 182, 212, 0.18);
+  background: rgba(6, 182, 212, 0.06);
+}
+
+.player-panel-card--level2 {
+  border-color: rgba(34, 197, 94, 0.2);
+  background: rgba(8, 17, 14, 0.76);
+}
+
+.player-panel-card__head,
+.dashboard-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.player-panel-card__head h3,
+.dashboard-section-head h3 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.player-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0 4px;
+}
+
+.player-profile-summary,
+.player-reward-block,
+.player-results-list {
+  display: grid;
+  gap: 12px;
+}
+
+.player-profile-summary {
+  margin-top: 12px;
+}
+
+.player-profile-summary__row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.player-profile-summary__row span,
+.player-reward-metrics span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.player-profile-summary__row strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.player-reward-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.player-reward-metrics div {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.player-reward-metrics strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.player-mark-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.player-mark {
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.player-mark--done {
+  background: rgba(34, 197, 94, 0.12);
+  color: #bbf7d0;
+}
+
+.player-results-panel {
+  margin: 18px 0;
+}
+
+.player-result-card {
+  padding: 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  background: rgba(139, 92, 246, 0.07);
+}
+
+.player-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.profile-panel--dashboard {
+  margin-top: 12px;
 }
 
 .dashboard-metric {
@@ -2856,6 +3131,8 @@ select:focus-visible,
   }
 
   .track-chooser-grid,
+  .player-panel-grid,
+  .player-reward-metrics,
   .dashboard-metrics,
   .editor-layout,
   .editor-form-grid {
@@ -2871,6 +3148,15 @@ select:focus-visible,
 
   .workspace-select {
     max-width: none;
+  }
+
+  .player-inline-form,
+  .player-profile-summary__row {
+    grid-template-columns: 1fr;
+  }
+
+  .player-profile-summary__row strong {
+    text-align: left;
   }
 
   .quadra {

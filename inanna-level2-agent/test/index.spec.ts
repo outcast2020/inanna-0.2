@@ -76,6 +76,67 @@ describe("Inanna Level 2 worker", () => {
 		expect(response.status).toBe(200);
 		expect(body.ok).toBe(true);
 		expect(body.challenge.theme).toBeTruthy();
-		expect(["AABB", "ABAB", "ABCB"]).toContain(body.challenge.rhymeScheme);
+		expect(["AABB", "ABAB", "ABCB", "ABBA"]).toContain(body.challenge.rhymeScheme);
+	});
+
+	it("returns an empty player profile without Supabase", async () => {
+		const request = new IncomingRequest("http://example.com/v2/player/player-1/profile", {
+			method: "GET",
+			headers: { "x-inanna-player-id": "player-1" },
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, mockEnv, ctx);
+		await waitOnExecutionContext(ctx);
+		const body = await response.json() as { ok: boolean; source: string; rounds: unknown[] };
+		expect(response.status).toBe(200);
+		expect(body.ok).toBe(true);
+		expect(body.source).toBe("ephemeral");
+		expect(body.rounds).toEqual([]);
+	});
+
+	it("blocks obvious personal data before AI processing", async () => {
+		const request = new IncomingRequest("http://example.com/v2/round/respond", {
+			method: "POST",
+			body: JSON.stringify({
+				playerId: "player-1",
+				sessionId: "session-1",
+				playerQuadra: "Meu email e jovem@example.com\nna rua vou cantar\nretiro esse dado agora\npra peleja continuar",
+			}),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, mockEnv, ctx);
+		await waitOnExecutionContext(ctx);
+		const body = await response.json() as { ok: boolean; error: string; privacy: { piiDetected: boolean } };
+		expect(response.status).toBe(400);
+		expect(body.ok).toBe(false);
+		expect(body.error).toBe("privacy_pii_detected");
+		expect(body.privacy.piiDetected).toBe(true);
+	});
+
+	it("treats phonetic rhyme families as repeated within the current peleja session", async () => {
+		const request = new IncomingRequest("http://example.com/v2/round/finalize", {
+			method: "POST",
+			body: JSON.stringify({
+				playerId: "player-1",
+				sessionId: "session-1",
+				roundNumber: 1,
+				theme: "paz na quebrada sem calar a voz",
+				rhymeScheme: "AABB",
+				playerOriginalQuadra: "Eu planto sonho pela paz\nna praça volto a cantar\nminha voz corre atrás\ndo direito de sonhar",
+				playerFinalQuadra: "Eu planto sonho pela paz\nna praça volto a cantar\nminha voz corre atrás\ndo direito de sonhar",
+				inannaQuadra: "Tua palavra pede chao\neu respondo no terreiro\nse quiser ganhar sertao\ncuida mais do verso inteiro",
+			}),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, mockEnv, ctx);
+		await waitOnExecutionContext(ctx);
+		const body = await response.json() as {
+			ok: boolean;
+			rhymeOriginality: { rhymeFamilyRepeatCount: number; repeatedRhymeKeys: string[] };
+		};
+		expect(response.status).toBe(200);
+		expect(body.ok).toBe(true);
+		expect(body.rhymeOriginality.rhymeFamilyRepeatCount).toBeGreaterThan(0);
+		expect(body.rhymeOriginality.repeatedRhymeKeys).toContain("as");
 	});
 });

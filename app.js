@@ -49,7 +49,11 @@ const ui = {
 
   // trilhas
   trackChooserSection: $("trackChooserSection"),
+  quadraLevelsSection: $("quadraLevelsSection"),
   chooseGameTrackBtn: $("chooseGameTrackBtn"),
+  choosePlayerPanelBtn: $("choosePlayerPanelBtn"),
+  startLevel1TrackBtn: $("startLevel1TrackBtn"),
+  quadraLevelsBackBtn: $("quadraLevelsBackBtn"),
   chooseSextilhaTrackBtn: $("chooseSextilhaTrackBtn"),
   sextilhaAccessNotice: $("sextilhaAccessNotice"),
   chooseLevel2TrackBtn: $("chooseLevel2TrackBtn"),
@@ -70,13 +74,16 @@ const ui = {
   level2Scoreboard: $("level2Scoreboard"),
   level2Theme: $("level2Theme"),
   level2RhymeScheme: $("level2RhymeScheme"),
+  level2ThemeContext: $("level2ThemeContext"),
   level2OriginalInput: $("level2OriginalInput"),
   level2DictateBtn: $("level2DictateBtn"),
   level2SubmitOriginalBtn: $("level2SubmitOriginalBtn"),
   level2InannaResponse: $("level2InannaResponse"),
+  level2RevisionTimer: $("level2RevisionTimer"),
   level2FinalInput: $("level2FinalInput"),
   level2FinalizeRoundBtn: $("level2FinalizeRoundBtn"),
   level2NextRoundBtn: $("level2NextRoundBtn"),
+  level2PrimaryActionBtn: $("level2PrimaryActionBtn"),
   level2ResetBtn: $("level2ResetBtn"),
   level2RoundFeedback: $("level2RoundFeedback"),
   level2MatchResult: $("level2MatchResult"),
@@ -89,6 +96,31 @@ const ui = {
   dashboardLastEdited: $("dashboardLastEdited"),
   dashboardStatusFilter: $("dashboardStatusFilter"),
   dashboardTextList: $("dashboardTextList"),
+  playerDisplayNameInput: $("playerDisplayNameInput"),
+  savePlayerDisplayNameBtn: $("savePlayerDisplayNameBtn"),
+  playerDisplayNameStatus: $("playerDisplayNameStatus"),
+  dashboardProfileSummary: $("dashboardProfileSummary"),
+  toggleDashboardProfileEditBtn: $("toggleDashboardProfileEditBtn"),
+  dashboardProfileEditPanel: $("dashboardProfileEditPanel"),
+  dashboardProfileWorkshopYes: $("dashboardProfileWorkshopYes"),
+  dashboardProfileWorkshopNo: $("dashboardProfileWorkshopNo"),
+  dashboardProfileAiChatbotYes: $("dashboardProfileAiChatbotYes"),
+  dashboardProfileAiChatbotNo: $("dashboardProfileAiChatbotNo"),
+  dashboardProfileGender: $("dashboardProfileGender"),
+  dashboardProfileRace: $("dashboardProfileRace"),
+  dashboardProfileAgeRange: $("dashboardProfileAgeRange"),
+  dashboardProfileMunicipioInput: $("dashboardProfileMunicipioInput"),
+  dashboardProfileMunicipioOptions: $("dashboardProfileMunicipioOptions"),
+  dashboardProfileOutsideBrazil: $("dashboardProfileOutsideBrazil"),
+  saveDashboardProfileBtn: $("saveDashboardProfileBtn"),
+  dashboardProfileStatus: $("dashboardProfileStatus"),
+  playerLevel1Rewards: $("playerLevel1Rewards"),
+  playerUnlockLevel2Btn: $("playerUnlockLevel2Btn"),
+  playerGoLevel1Btn: $("playerGoLevel1Btn"),
+  playerLevel2Rewards: $("playerLevel2Rewards"),
+  playerGoLevel2Btn: $("playerGoLevel2Btn"),
+  refreshPlayerPanelBtn: $("refreshPlayerPanelBtn"),
+  playerLevel2Results: $("playerLevel2Results"),
   btnCreateFolheto: $("btnCreateFolheto"),
   btnCreateText: $("btnCreateText"),
   btnBackToTrackChooser: $("btnBackToTrackChooser"),
@@ -236,7 +268,10 @@ const state = {
   faixaEtaria: "",
   profileComplete: false,
   profileSaving: false,
+  dashboardProfileSaving: false,
+  dashboardProfileEditOpen: false,
   profileFormParticipantId: "",
+  dashboardProfileFormParticipantId: "",
   municipiosBrasilLoaded: false,
   municipiosBrasilLoading: false,
   municipiosBrasilError: "",
@@ -267,6 +302,7 @@ const state = {
     nickname: "",
     inputMode: "written",
     soundMode: "none",
+    roundState: "COMPOSING_INITIAL",
     currentRound: 1,
     roundCount: 3,
     playerWins: 0,
@@ -278,9 +314,14 @@ const state = {
     inannaQuadra: "",
     stolenWords: [],
     generationProvider: "",
+    revisionExpiresAt: 0,
+    revisionTimerId: null,
+    roundResults: [],
     roundClosed: false,
     matchFinished: false,
     lastRoundResult: null,
+    themeContext: "",
+    themeSource: "",
     audio: null,
     dictation: null
   },
@@ -309,6 +350,11 @@ const state = {
   editorAvatarState: "observing",
   editorAvatarLockedUntil: 0,
   dashboardLoadRequestId: 0,
+  playerLevel2Profile: null,
+  playerLevel2ProfileStatus: "idle",
+  thematicCsvItems: [],
+  thematicCsvStatus: "idle",
+  thematicCsvMessage: "",
 };
 
 const APP_VARIANT = "inanna-main";
@@ -384,6 +430,21 @@ const INANNA_ADMIN_EMAILS = new Set([
   ...readListConfigValue(window.INANNA_APP_CONFIG?.adminEmails)
 ]);
 const LEVEL2_NICKNAME_STORAGE_KEY = "inanna_level2_nickname_v1";
+const LEVEL2_SESSION_STORAGE_KEY = "inanna_level2_session_v2";
+const PLAYER_DISPLAY_NAME_STORAGE_KEY = "inanna_player_display_name_v1";
+const THEMATIC_CSV_URL = "tematicas_jogo.csv";
+const THEMATIC_CSV_SAMPLE_SIZE = 12;
+const LEVEL2_ROUND_STATES = {
+  COMPOSING_INITIAL: "COMPOSING_INITIAL",
+  SUBMITTING_INITIAL: "SUBMITTING_INITIAL",
+  GENERATING_INANNA: "GENERATING_INANNA",
+  REVISING_RESPONSE: "REVISING_RESPONSE",
+  SUBMITTING_FINAL: "SUBMITTING_FINAL",
+  JUDGING: "JUDGING",
+  ROUND_RESULT: "ROUND_RESULT",
+  MATCH_RESULT: "MATCH_RESULT"
+};
+const LEVEL2_REVISION_TIME_SECONDS = 120;
 const LEVEL2_LOCAL_CHALLENGES = [
   { theme: "ônibus lotado e sonho no bolso", rhymeScheme: "AABB" },
   { theme: "paz na quebrada sem calar a voz", rhymeScheme: "ABAB" },
@@ -837,6 +898,123 @@ function tokenizeVerseAnalysisText(value) {
   return normalizeVerseAnalysisText(value).split(/\s+/).filter(Boolean);
 }
 
+function parseCsvText(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+  const source = String(text || "").replace(/^\uFEFF/, "");
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (char === "\"") {
+      if (inQuotes && next === "\"") {
+        cell += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      if (row.some((item) => String(item || "").trim())) rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+
+  row.push(cell);
+  if (row.some((item) => String(item || "").trim())) rows.push(row);
+  return rows;
+}
+
+function buildThemeTokensFromText(value) {
+  const stop = new Set([
+    "para", "com", "que", "uma", "por", "dos", "das", "seu", "sua", "sem",
+    "anos", "depois", "ainda", "sobre", "entre", "mais", "como", "pela", "pelo"
+  ]);
+  const tokens = tokenizeVerseAnalysisText(value)
+    .filter((token) => token.length > 2 && !stop.has(token))
+    .filter((token, index, list) => list.indexOf(token) === index);
+  return tokens.slice(0, 36);
+}
+
+function normalizeThematicCsvRow(rawRow, index) {
+  const contexto = String(rawRow?.contexto || rawRow?.o_que_acontenceu || rawRow?.o_que_aconteceu || "").trim();
+  const tematica = String(rawRow?.tematica || rawRow?.tema || "").trim();
+  const fonte = String(rawRow?.fonte || rawRow?.source || "").trim();
+  if (!contexto || !tematica) return null;
+  const tokenText = `${tematica} ${contexto}`;
+  return {
+    key: `csv_${hashProgressText(`${tematica}:${contexto}:${index}`)}`,
+    name: tematica,
+    emoji: "✦",
+    desc: contexto.length > 150 ? `${contexto.slice(0, 147)}...` : contexto,
+    trap: `Ex: Na notícia ecoa ${tematica.split(/[,\s]+/).filter(Boolean).slice(0, 3).join(" ")}`,
+    context: contexto,
+    source: fonte,
+    tokens: {
+      substantivos: buildThemeTokensFromText(tokenText),
+    },
+  };
+}
+
+function parseThematicCsv(text) {
+  const rows = parseCsvText(text);
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((item) => normalizeVerseAnalysisText(item).replace(/\s+/g, "_"));
+  return rows.slice(1).map((row, index) => {
+    const raw = headers.reduce((acc, header, headerIndex) => {
+      acc[header || `col_${headerIndex}`] = row[headerIndex] || "";
+      return acc;
+    }, {});
+    return normalizeThematicCsvRow(raw, index);
+  }).filter(Boolean);
+}
+
+function getRandomItems(items, count) {
+  const pool = [...items];
+  const picked = [];
+  while (pool.length && picked.length < count) {
+    const index = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(index, 1)[0]);
+  }
+  return picked;
+}
+
+async function loadThematicCsvBank(options = {}) {
+  if (state.thematicCsvStatus === "ready" && !options.force) return state.thematicCsvItems;
+  if (state.thematicCsvStatus === "loading") return state.thematicCsvItems;
+  state.thematicCsvStatus = "loading";
+  state.thematicCsvMessage = "";
+  try {
+    const response = await fetch(THEMATIC_CSV_URL, { headers: { Accept: "text/csv,text/plain,*/*" } });
+    if (!response.ok) throw new Error(`CSV ${response.status}`);
+    const text = await response.text();
+    const items = parseThematicCsv(text);
+    if (!items.length) throw new Error("CSV sem temáticas válidas.");
+    state.thematicCsvItems = items;
+    state.thematicCsvStatus = "ready";
+    return items;
+  } catch (error) {
+    console.warn("Nao foi possivel carregar tematicas_jogo.csv.", error);
+    state.thematicCsvItems = [];
+    state.thematicCsvStatus = "error";
+    state.thematicCsvMessage = error?.message || "CSV indisponivel";
+    return [];
+  }
+}
+
 function normalizeVerseForSyllableCount(value) {
   return String(value || "")
     .toLowerCase()
@@ -1042,10 +1220,45 @@ function getProgressPlayerId() {
   ).trim();
 }
 
+function getStoredPlayerDisplayName() {
+  try {
+    return String(window.localStorage?.getItem(PLAYER_DISPLAY_NAME_STORAGE_KEY) || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function getPlayerDisplayName() {
+  return String(
+    getStoredPlayerDisplayName()
+    || state.playerProgress?.nickname
+    || state.name
+    || state.playerData?.nome
+    || state.playerData?.name
+    || "Participante"
+  ).trim();
+}
+
+function savePlayerDisplayName(value) {
+  const nickname = String(value || "").trim().slice(0, 40) || "Participante";
+  try {
+    window.localStorage?.setItem(PLAYER_DISPLAY_NAME_STORAGE_KEY, nickname);
+    window.localStorage?.setItem(LEVEL2_NICKNAME_STORAGE_KEY, nickname);
+  } catch (_) {
+    // Persistencia local e opcional.
+  }
+  const progress = ensurePlayerProgress();
+  savePlayerProgress({ ...progress, nickname });
+  state.level2.nickname = nickname;
+  if (ui.level2NicknameInput) ui.level2NicknameInput.value = nickname;
+  renderPlayerPanel();
+  return nickname;
+}
+
 function createDefaultPlayerProgress() {
   return {
     playerId: getProgressPlayerId(),
-    nickname: state.name || state.playerData?.nome || state.playerData?.name || "Participante",
+    nickname: getPlayerDisplayName(),
     levelUnlocked: 1,
     perfectQuadrasCount: 0,
     uniquePerfectQuadraHashes: [],
@@ -1063,7 +1276,7 @@ function hydratePlayerProgress(rawProgress = {}) {
     ...fallback,
     ...rawProgress,
     playerId: getProgressPlayerId(),
-    nickname: state.name || rawProgress.nickname || fallback.nickname,
+    nickname: getStoredPlayerDisplayName() || state.name || rawProgress.nickname || fallback.nickname,
     levelUnlocked: Math.max(1, Math.min(3, Number(rawProgress.levelUnlocked || fallback.levelUnlocked) || 1)),
     perfectQuadrasCount: Math.max(0, Number(rawProgress.perfectQuadrasCount || 0) || 0),
     uniquePerfectQuadraHashes: Array.isArray(rawProgress.uniquePerfectQuadraHashes)
@@ -1358,7 +1571,7 @@ function getLevel2DefaultNickname() {
   } catch (_) {
     // localStorage pode falhar em modo privado.
   }
-  return String(state.name || state.playerData?.nome || state.playerData?.name || "Jogador").trim();
+  return String(getPlayerDisplayName() || "Jogador").trim();
 }
 
 function saveLevel2Nickname(nickname) {
@@ -1384,7 +1597,7 @@ function renderLevel2PreviewPanel() {
   ui.level2PreviewStatus.innerHTML = `
     <div class="level2-preview-status">
       <strong>${escapeHtml(getLevel2StatusMessage(progress))}</strong>
-      <p>A peleja acontece em 3 rounds: você escreve, Inanna responde em quadra e você melhora sua resposta para vencer a máquina.</p>
+      <p>A peleja começa com duas quadras; a terceira só entra se for preciso desempatar.</p>
       <p>${escapeHtml(agentStatus)}</p>
       ${renderLevel2MiniProgress(progress)}
     </div>
@@ -1393,6 +1606,7 @@ function renderLevel2PreviewPanel() {
 }
 
 function resetLevel2RoundInputs() {
+  stopLevel2RevisionTimer();
   if (ui.level2OriginalInput) ui.level2OriginalInput.value = "";
   if (ui.level2FinalInput) {
     ui.level2FinalInput.value = "";
@@ -1405,18 +1619,26 @@ function resetLevel2RoundInputs() {
     ui.level2InannaResponse.hidden = true;
     ui.level2InannaResponse.innerHTML = "";
   }
+  if (ui.level2RevisionTimer) {
+    ui.level2RevisionTimer.hidden = true;
+    ui.level2RevisionTimer.textContent = "";
+    ui.level2RevisionTimer.classList.remove("level2-timer--warn", "level2-timer--urgent");
+  }
   if (ui.level2RoundFeedback) ui.level2RoundFeedback.innerHTML = "";
+  syncLevel2PrimaryAction();
 }
 
 function resetLevel2State(keepIdentity = true) {
   const nickname = keepIdentity ? state.level2.nickname : "";
   const playerId = keepIdentity ? state.level2.playerId : "";
+  stopLevel2RevisionTimer();
   state.level2 = {
     sessionId: "",
     playerId,
     nickname,
     inputMode: "written",
     soundMode: "none",
+    roundState: LEVEL2_ROUND_STATES.COMPOSING_INITIAL,
     currentRound: 1,
     roundCount: 3,
     playerWins: 0,
@@ -1428,12 +1650,213 @@ function resetLevel2State(keepIdentity = true) {
     inannaQuadra: "",
     stolenWords: [],
     generationProvider: "",
+    revisionExpiresAt: 0,
+    revisionTimerId: null,
+    roundResults: [],
     roundClosed: false,
     matchFinished: false,
     lastRoundResult: null,
+    themeContext: "",
+    themeSource: "",
     audio: state.level2.audio || null,
     dictation: null
   };
+}
+
+function saveLevel2SessionSnapshot() {
+  try {
+    if (!state.level2.sessionId) return;
+    const snapshot = {
+      ...state.level2,
+      audio: null,
+      dictation: null,
+      revisionTimerId: null,
+      savedAt: Date.now(),
+      originalInput: ui.level2OriginalInput?.value || "",
+      finalInput: ui.level2FinalInput?.value || ""
+    };
+    window.localStorage?.setItem(LEVEL2_SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch (_) {
+    // localStorage pode estar indisponivel em alguns navegadores.
+  }
+}
+
+function clearLevel2SessionSnapshot() {
+  try {
+    window.localStorage?.removeItem(LEVEL2_SESSION_STORAGE_KEY);
+  } catch (_) {
+    // localStorage pode estar indisponivel em alguns navegadores.
+  }
+}
+
+function restoreLevel2SessionSnapshot() {
+  let snapshot = null;
+  try {
+    const raw = window.localStorage?.getItem(LEVEL2_SESSION_STORAGE_KEY);
+    snapshot = raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    clearLevel2SessionSnapshot();
+    return false;
+  }
+  if (!snapshot?.sessionId || snapshot.matchFinished) {
+    clearLevel2SessionSnapshot();
+    return false;
+  }
+
+  stopLevel2RevisionTimer();
+  const restoredRoundState = isLevel2BusyState(snapshot.roundState)
+    ? (snapshot.inannaQuadra ? LEVEL2_ROUND_STATES.REVISING_RESPONSE : LEVEL2_ROUND_STATES.COMPOSING_INITIAL)
+    : (snapshot.roundState || LEVEL2_ROUND_STATES.COMPOSING_INITIAL);
+
+  state.level2 = {
+    ...state.level2,
+    ...snapshot,
+    currentRound: Math.min(3, Math.max(1, Number(snapshot.currentRound || 1))),
+    roundCount: Math.min(3, Math.max(2, Number(snapshot.roundCount || 3))),
+    playerWins: Math.max(0, Number(snapshot.playerWins || 0)),
+    inannaWins: Math.max(0, Number(snapshot.inannaWins || 0)),
+    roundState: restoredRoundState,
+    roundResults: Array.isArray(snapshot.roundResults) ? snapshot.roundResults.filter(Boolean) : [],
+    audio: null,
+    dictation: null,
+    revisionTimerId: null,
+    matchFinished: false
+  };
+
+  if (ui.level2NicknameInput) ui.level2NicknameInput.value = state.level2.nickname || getLevel2DefaultNickname();
+  if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = true;
+  if (ui.level2Arena) ui.level2Arena.hidden = false;
+  if (ui.level2MatchResult) ui.level2MatchResult.hidden = true;
+  if (ui.level2OriginalInput) ui.level2OriginalInput.value = snapshot.originalInput || state.level2.originalQuadra || "";
+  if (ui.level2FinalInput) ui.level2FinalInput.value = snapshot.finalInput || state.level2.finalQuadra || state.level2.originalQuadra || "";
+
+  if (state.level2.inannaQuadra) {
+    renderLevel2InannaResponse({
+      generationProvider: state.level2.generationProvider,
+      inanna: {
+        quadra: state.level2.inannaQuadra,
+        stolenWords: state.level2.stolenWords || [],
+        provider: state.level2.generationProvider,
+        provocation: "Retomamos a peleja de onde ela parou."
+      }
+    });
+  } else if (ui.level2InannaResponse) {
+    ui.level2InannaResponse.hidden = true;
+    ui.level2InannaResponse.innerHTML = "";
+  }
+
+  renderLevel2Scoreboard();
+  if (state.level2.roundState === LEVEL2_ROUND_STATES.ROUND_RESULT) {
+    if (state.level2.currentRound === 1) {
+      renderLevel2RoundCheckpoint(state.level2.roundResults?.[0] || state.level2.lastRoundResult || {});
+    } else {
+      renderLevel2StoredResults();
+    }
+  } else if (ui.level2RoundFeedback) {
+    ui.level2RoundFeedback.innerHTML = "";
+  }
+
+  if (state.level2.roundState === LEVEL2_ROUND_STATES.REVISING_RESPONSE) {
+    const expiresAt = Number(state.level2.revisionExpiresAt || 0);
+    startLevel2RevisionTimer(expiresAt > Date.now() ? expiresAt : Date.now() + 30_000);
+  } else {
+    setLevel2RoundState(state.level2.roundState, { skipSave: true });
+  }
+  syncLevel2PrimaryAction();
+  setLevel2SessionStatus("Peleja retomada. Continue do ponto em que parou.", "var(--accent)");
+  return true;
+}
+
+function setLevel2RoundState(roundState, options = {}) {
+  state.level2.roundState = roundState || LEVEL2_ROUND_STATES.COMPOSING_INITIAL;
+  syncLevel2PrimaryAction();
+  if (!options.skipSave) saveLevel2SessionSnapshot();
+}
+
+function isLevel2BusyState(roundState = state.level2.roundState) {
+  return [
+    LEVEL2_ROUND_STATES.SUBMITTING_INITIAL,
+    LEVEL2_ROUND_STATES.GENERATING_INANNA,
+    LEVEL2_ROUND_STATES.SUBMITTING_FINAL,
+    LEVEL2_ROUND_STATES.JUDGING
+  ].includes(roundState);
+}
+
+function getLevel2PrimaryActionLabel() {
+  switch (state.level2.roundState) {
+    case LEVEL2_ROUND_STATES.SUBMITTING_INITIAL:
+      return "Enviando quadra...";
+    case LEVEL2_ROUND_STATES.GENERATING_INANNA:
+      return "Inanna está preparando a resposta...";
+    case LEVEL2_ROUND_STATES.REVISING_RESPONSE:
+      return "Fechar minha resposta";
+    case LEVEL2_ROUND_STATES.SUBMITTING_FINAL:
+      return "Enviando resposta...";
+    case LEVEL2_ROUND_STATES.JUDGING:
+      return "O juiz está avaliando...";
+    case LEVEL2_ROUND_STATES.ROUND_RESULT:
+      if (state.level2.currentRound === 1) return "Escrever segunda quadra";
+      if (state.level2.playerWins === state.level2.inannaWins) return "Quadra de desempate";
+      return "Continuar";
+    case LEVEL2_ROUND_STATES.MATCH_RESULT:
+      return "Jogar outra peleja";
+    case LEVEL2_ROUND_STATES.COMPOSING_INITIAL:
+    default:
+      return "Chamar Inanna";
+  }
+}
+
+function syncLevel2PrimaryAction() {
+  const roundState = state.level2.roundState || LEVEL2_ROUND_STATES.COMPOSING_INITIAL;
+  if (ui.level2PrimaryActionBtn) {
+    ui.level2PrimaryActionBtn.textContent = getLevel2PrimaryActionLabel();
+    ui.level2PrimaryActionBtn.disabled = isLevel2BusyState(roundState);
+  }
+  if (ui.level2OriginalInput) {
+    ui.level2OriginalInput.disabled = roundState !== LEVEL2_ROUND_STATES.COMPOSING_INITIAL;
+  }
+  if (ui.level2FinalInput) {
+    ui.level2FinalInput.disabled = roundState !== LEVEL2_ROUND_STATES.REVISING_RESPONSE;
+  }
+  if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.hidden = true;
+  if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.hidden = true;
+  if (ui.level2NextRoundBtn) ui.level2NextRoundBtn.hidden = true;
+}
+
+function formatLevel2Timer(seconds) {
+  const safe = Math.max(0, Math.ceil(Number(seconds) || 0));
+  const minutes = Math.floor(safe / 60);
+  const rest = safe % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
+
+function stopLevel2RevisionTimer() {
+  if (state.level2?.revisionTimerId) {
+    window.clearInterval(state.level2.revisionTimerId);
+    state.level2.revisionTimerId = null;
+  }
+}
+
+function updateLevel2RevisionTimer() {
+  if (!ui.level2RevisionTimer || state.level2.roundState !== LEVEL2_ROUND_STATES.REVISING_RESPONSE) return;
+  const remainingMs = Number(state.level2.revisionExpiresAt || 0) - Date.now();
+  const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  ui.level2RevisionTimer.hidden = false;
+  ui.level2RevisionTimer.textContent = `Tempo de revisão: ${formatLevel2Timer(remainingSeconds)}`;
+  ui.level2RevisionTimer.classList.toggle("level2-timer--warn", remainingSeconds <= 30 && remainingSeconds > 10);
+  ui.level2RevisionTimer.classList.toggle("level2-timer--urgent", remainingSeconds <= 10);
+  if (remainingMs <= 0) {
+    stopLevel2RevisionTimer();
+    finalizeLevel2Round({ auto: true });
+  }
+}
+
+function startLevel2RevisionTimer(expiresAt = Date.now() + LEVEL2_REVISION_TIME_SECONDS * 1000) {
+  stopLevel2RevisionTimer();
+  state.level2.revisionExpiresAt = expiresAt;
+  updateLevel2RevisionTimer();
+  state.level2.revisionTimerId = window.setInterval(updateLevel2RevisionTimer, 1000);
+  saveLevel2SessionSnapshot();
 }
 
 function openLevel2Preview() {
@@ -1444,6 +1867,10 @@ function openLevel2Preview() {
   resetLevel2State(false);
   resetLevel2RoundInputs();
   renderLevel2PreviewPanel();
+  if (restoreLevel2SessionSnapshot()) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
   if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = false;
   if (ui.level2Arena) ui.level2Arena.hidden = true;
   if (ui.level2MatchResult) ui.level2MatchResult.hidden = true;
@@ -1593,6 +2020,20 @@ function normalizeLevel2QuadraInput(value) {
     .join("\n");
 }
 
+function inspectLevel2Privacy(value) {
+  const text = String(value || "");
+  const patterns = [
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+    /(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?(?:9\s*)?\d{4}[-.\s]?\d{4}/g,
+    /(^|[\s([{])@[a-z0-9._-]{3,}/gi,
+    /\b(?:https?:\/\/|www\.)\S+/gi,
+    /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g
+  ];
+  return {
+    ok: !patterns.some((pattern) => pattern.test(text))
+  };
+}
+
 function validateLevel2Quadra(value) {
   const lines = normalizeLevel2QuadraInput(value).split("\n").filter(Boolean);
   if (lines.length !== 4) {
@@ -1601,14 +2042,32 @@ function validateLevel2Quadra(value) {
   if (lines.join(" ").length < 35) {
     return { ok: false, message: "Escreva um pouco mais para a quadra ganhar corpo." };
   }
+  if (!inspectLevel2Privacy(lines.join("\n")).ok) {
+    return { ok: false, message: "Retire e-mail, telefone, arroba, link ou documento dos versos antes de enviar." };
+  }
   return { ok: true, quadra: lines.join("\n") };
 }
 
 function renderLevel2Scoreboard() {
   if (ui.level2RoundBadge) ui.level2RoundBadge.textContent = `Round ${state.level2.currentRound}/${state.level2.roundCount}`;
-  if (ui.level2Scoreboard) ui.level2Scoreboard.textContent = `Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna`;
+  if (ui.level2Scoreboard) {
+    const playedRounds = (state.level2.roundResults || []).filter(Boolean).length;
+    const scoreCanBeShown = state.level2.matchFinished || playedRounds >= 2 || state.level2.currentRound >= 3;
+    ui.level2Scoreboard.textContent = scoreCanBeShown
+      ? `Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna`
+      : playedRounds > 0
+        ? "Placar guardado ate a segunda quadra"
+        : "Humano 0 x 0 Inanna";
+  }
   if (ui.level2Theme) ui.level2Theme.textContent = state.level2.theme || "-";
   if (ui.level2RhymeScheme) ui.level2RhymeScheme.textContent = state.level2.rhymeScheme || "AABB";
+  if (ui.level2ThemeContext) {
+    const context = String(state.level2.themeContext || "").trim();
+    ui.level2ThemeContext.hidden = !context;
+    ui.level2ThemeContext.innerHTML = context
+      ? `<strong>Contexto</strong><p>${escapeHtml(context)}</p>${state.level2.themeSource ? `<a href="${escapeHtml(state.level2.themeSource)}" target="_blank" rel="noopener noreferrer">Fonte do tema</a>` : ""}`
+      : "";
+  }
 }
 
 async function startLevel2Match() {
@@ -1619,6 +2078,7 @@ async function startLevel2Match() {
   state.level2.nickname = nickname;
   state.level2.inputMode = inputMode;
   state.level2.soundMode = soundMode;
+  setLevel2RoundState(LEVEL2_ROUND_STATES.COMPOSING_INITIAL);
   saveLevel2Nickname(nickname);
   setLevel2SessionStatus("Abrindo a roda da peleja...", "var(--muted)");
   if (ui.level2StartBtn) ui.level2StartBtn.disabled = true;
@@ -1644,23 +2104,43 @@ async function startLevel2Match() {
   }
 }
 
+function getRandomThematicChallenge() {
+  const item = getRandomItems(state.thematicCsvItems, 1)[0];
+  if (!item) return null;
+  return {
+    theme: item.name,
+    context: item.context || item.desc || "",
+    source: item.source || "",
+  };
+}
+
 async function beginLevel2Round(roundNumber) {
+  stopLevel2RevisionTimer();
   state.level2.currentRound = roundNumber;
+  state.level2.roundState = LEVEL2_ROUND_STATES.COMPOSING_INITIAL;
   state.level2.roundClosed = false;
   state.level2.originalQuadra = "";
   state.level2.finalQuadra = "";
   state.level2.inannaQuadra = "";
   state.level2.stolenWords = [];
+  state.level2.themeContext = "";
+  state.level2.themeSource = "";
+  state.level2.revisionExpiresAt = 0;
   state.level2.lastRoundResult = null;
   resetLevel2RoundInputs();
+  await loadThematicCsvBank();
   const result = await callLevel2Agent("/v2/round/generate", {
     sessionId: state.level2.sessionId,
     roundNumber
   });
   const fallback = LEVEL2_LOCAL_CHALLENGES[(roundNumber - 1) % LEVEL2_LOCAL_CHALLENGES.length];
-  state.level2.theme = result.challenge?.theme || fallback.theme;
+  const localTheme = getRandomThematicChallenge();
+  state.level2.theme = localTheme?.theme || result.challenge?.theme || fallback.theme;
+  state.level2.themeContext = localTheme?.context || result.challenge?.context || "";
+  state.level2.themeSource = localTheme?.source || result.challenge?.source || "";
   state.level2.rhymeScheme = result.challenge?.rhymeScheme || fallback.rhymeScheme;
   renderLevel2Scoreboard();
+  setLevel2RoundState(LEVEL2_ROUND_STATES.COMPOSING_INITIAL);
 }
 
 function renderLevel2InannaResponse(result) {
@@ -1680,16 +2160,14 @@ function renderLevel2InannaResponse(result) {
 }
 
 async function submitLevel2Original() {
+  if (isLevel2BusyState()) return;
   const validation = validateLevel2Quadra(ui.level2OriginalInput?.value || "");
   if (!validation.ok) {
     setLevel2SessionStatus(validation.message, "var(--danger)");
     return;
   }
   state.level2.originalQuadra = validation.quadra;
-  if (ui.level2SubmitOriginalBtn) {
-    ui.level2SubmitOriginalBtn.disabled = true;
-    ui.level2SubmitOriginalBtn.textContent = "Inanna está respondendo...";
-  }
+  setLevel2RoundState(LEVEL2_ROUND_STATES.GENERATING_INANNA);
   setLevel2SessionStatus("Inanna está roubando imagens da sua quadra...", "var(--muted)");
   try {
     const result = await callLevel2Agent("/v2/round/respond", {
@@ -1711,14 +2189,13 @@ async function submitLevel2Original() {
       ui.level2FinalInput.value = state.level2.originalQuadra;
       ui.level2FinalInput.focus();
     }
-    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.disabled = false;
+    setLevel2RoundState(LEVEL2_ROUND_STATES.REVISING_RESPONSE);
+    startLevel2RevisionTimer();
     setLevel2SessionStatus("Agora melhore sua resposta e tente vencer o round.", "var(--accent)");
   } catch (error) {
     console.error(error);
     setLevel2SessionStatus(error?.message || "Inanna não respondeu agora.", "var(--danger)");
-    if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.disabled = false;
-  } finally {
-    if (ui.level2SubmitOriginalBtn) ui.level2SubmitOriginalBtn.textContent = "OK, chamar Inanna";
+    setLevel2RoundState(LEVEL2_ROUND_STATES.COMPOSING_INITIAL);
   }
 }
 
@@ -1752,7 +2229,95 @@ function renderLevel2CriteriaCards(label, score = {}) {
   `;
 }
 
-function renderLevel2RoundFeedback(result) {
+function renderLevel2RewardSummary(result = {}) {
+  const reward = result.rewardSummary || {};
+  const rhyme = result.rhymeOriginality || {};
+  const notes = [];
+  const piecesEarned = Number(reward.piecesEarned || 0);
+  if (piecesEarned > 0) {
+    const total = Number(reward.totalPieces || 30);
+    const current = Number(reward.level2PiecesCount || 0);
+    notes.push(`+${piecesEarned} pedacinho${piecesEarned > 1 ? "s" : ""} da xilogravura (${Math.min(current, total)}/${total}).`);
+  }
+  if (rhyme.earnedOriginalityBonus) {
+    notes.push("Rima inédita reconhecida nesta peleja.");
+  } else if (Number(rhyme.exactRepeatCount || 0) > 0) {
+    notes.push("Repetição de palavra final: sem bônus de rima inédita.");
+  } else if (Number(rhyme.rhymeFamilyRepeatCount || 0) > 0) {
+    notes.push("Família sonora repetida: a rima vale, mas não rende ineditismo.");
+  }
+  if (!notes.length) return "";
+  return `<div class="level2-reward-note">${notes.map((note) => `<p>${escapeHtml(note)}</p>`).join("")}</div>`;
+}
+
+function renderLevel2CompactCriteria(result = {}) {
+  const rows = [
+    ["Rima", "rhyme"],
+    ["Ritmo", "structure"],
+    ["Criatividade", "creativity"],
+    ["Coerência", "coherence"],
+    ["Resposta", "response"]
+  ];
+  return `
+    <table class="level2-criteria-table">
+      <thead><tr><th>Critério</th><th>Você</th><th>Inanna</th></tr></thead>
+      <tbody>
+        ${rows.map(([label, key]) => `
+          <tr>
+            <td>${escapeHtml(label)}</td>
+            <td>${formatLevel2ScoreValue(result.playerScore?.[key])}</td>
+            <td>${formatLevel2ScoreValue(result.inannaScore?.[key])}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function getLevel2RoundWinnerLabel(result = {}) {
+  return result.roundWinner === "player"
+    ? "Você venceu"
+    : result.roundWinner === "inanna"
+      ? "Inanna venceu"
+      : "Empate técnico";
+}
+
+function renderLevel2RoundCheckpoint(result) {
+  if (!ui.level2RoundFeedback) return;
+  ui.level2RoundFeedback.innerHTML = `
+    <h3>Primeira quadra guardada</h3>
+    <p>A peleja segura o placar por enquanto. Escreva a segunda quadra antes de ver o resultado.</p>
+    ${renderLevel2RewardSummary(result)}
+  `;
+}
+
+function renderLevel2StoredResults() {
+  if (!ui.level2RoundFeedback) return;
+  const results = state.level2.roundResults || [];
+  const visibleResults = results.filter(Boolean);
+  const tieAfterTwo = state.level2.currentRound >= 2 && state.level2.playerWins === state.level2.inannaWins && !state.level2.matchFinished;
+  const hasTiebreak = visibleResults.length >= 3;
+  const summary = tieAfterTwo
+    ? "Cada lado segurou sua voz. Agora vem uma quadra de desempate."
+    : hasTiebreak
+      ? "A quadra de desempate fechou a peleja."
+      : "As duas primeiras quadras já bastaram para fechar a peleja.";
+  ui.level2RoundFeedback.innerHTML = `
+    <h3>${tieAfterTwo ? "Empate: a terceira quadra decide" : "Resultado das quadras"}</h3>
+    <p>${summary}</p>
+    <div class="level2-round-list">
+      ${visibleResults.map((item, index) => `
+        <div class="level2-round-pill">
+          <span>Quadra ${index + 1}</span>
+          <strong>${escapeHtml(getLevel2RoundWinnerLabel(item))}</strong>
+        </div>
+      `).join("")}
+    </div>
+    ${visibleResults.slice(-1).map(renderLevel2RewardSummary).join("")}
+  `;
+}
+
+function renderLevel2RoundFeedback(result, options = {}) {
   if (!ui.level2RoundFeedback) return;
   const winnerLabel = result.roundWinner === "player"
     ? "Você venceu o round"
@@ -1767,6 +2332,8 @@ function renderLevel2RoundFeedback(result) {
       <div class="level2-score-card"><span>Humano</span><strong>${Number(result.playerScoreTotal || result.playerScore?.total || 0)}</strong></div>
       <div class="level2-score-card"><span>Inanna</span><strong>${Number(result.inannaScoreTotal || result.inannaScore?.total || 0)}</strong></div>
     </div>
+    ${renderLevel2RewardSummary(result)}
+    ${renderLevel2CompactCriteria(result)}
     <details class="level2-criteria">
       <summary>Ver critérios</summary>
       ${renderLevel2CriteriaCards("Humano", result.playerScore || {})}
@@ -1775,18 +2342,17 @@ function renderLevel2RoundFeedback(result) {
   `;
 }
 
-async function finalizeLevel2Round() {
+async function finalizeLevel2Round(options = {}) {
+  if (isLevel2BusyState()) return;
   const validation = validateLevel2Quadra(ui.level2FinalInput?.value || "");
   if (!validation.ok) {
     setLevel2SessionStatus(validation.message, "var(--danger)");
     return;
   }
+  stopLevel2RevisionTimer();
   state.level2.finalQuadra = validation.quadra;
-  if (ui.level2FinalizeRoundBtn) {
-    ui.level2FinalizeRoundBtn.disabled = true;
-    ui.level2FinalizeRoundBtn.textContent = "Avaliando...";
-  }
-  setLevel2SessionStatus("Avaliando rima, autoria e coesão semântica...", "var(--muted)");
+  setLevel2RoundState(LEVEL2_ROUND_STATES.JUDGING);
+  setLevel2SessionStatus(options.auto ? "Tempo encerrado. Salvando sua resposta..." : "Avaliando rima, autoria e coesão semântica...", "var(--muted)");
   try {
     const result = await callLevel2Agent("/v2/round/finalize", {
       sessionId: state.level2.sessionId,
@@ -1801,51 +2367,103 @@ async function finalizeLevel2Round() {
       stolenWords: state.level2.stolenWords
     });
     state.level2.lastRoundResult = result;
+    state.level2.roundResults = [
+      ...(state.level2.roundResults || []).filter((item) => Number(item.roundNumber || 0) !== state.level2.currentRound),
+      { ...result, roundNumber: state.level2.currentRound }
+    ].sort((a, b) => Number(a.roundNumber || 0) - Number(b.roundNumber || 0));
     state.level2.roundClosed = true;
     if (result.roundWinner === "player") state.level2.playerWins += 1;
     if (result.roundWinner === "inanna") state.level2.inannaWins += 1;
     renderLevel2Scoreboard();
-    renderLevel2RoundFeedback(result);
-    const finished = state.level2.currentRound >= state.level2.roundCount || state.level2.playerWins >= 2 || state.level2.inannaWins >= 2;
+    const finished = shouldFinishLevel2Match();
     if (finished) {
+      renderLevel2StoredResults();
       finishLevel2Match();
-    } else if (ui.level2NextRoundBtn) {
-      ui.level2NextRoundBtn.hidden = false;
+    } else {
+      if (state.level2.currentRound === 1) {
+        renderLevel2RoundCheckpoint(result);
+        setLevel2SessionStatus("Primeira quadra registrada. A segunda vem antes do placar.", "var(--accent)");
+      } else {
+        renderLevel2StoredResults();
+        setLevel2SessionStatus("Empate em duas quadras. A próxima decide.", "var(--accent)");
+      }
+      setLevel2RoundState(LEVEL2_ROUND_STATES.ROUND_RESULT);
     }
-    setLevel2SessionStatus("Round fechado.", "var(--accent)");
+    saveLevel2SessionSnapshot();
   } catch (error) {
     console.error(error);
     setLevel2SessionStatus(error?.message || "Não consegui fechar o round.", "var(--danger)");
-    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.disabled = false;
-  } finally {
-    if (ui.level2FinalizeRoundBtn) ui.level2FinalizeRoundBtn.textContent = "OK, fechar round";
+    setLevel2RoundState(LEVEL2_ROUND_STATES.REVISING_RESPONSE);
+    startLevel2RevisionTimer(Date.now() + 30_000);
   }
 }
 
 function finishLevel2Match() {
   state.level2.matchFinished = true;
   const playerWon = state.level2.playerWins > state.level2.inannaWins;
+  const inannaWon = state.level2.inannaWins > state.level2.playerWins;
+  const title = playerWon ? "Você venceu a peleja" : inannaWon ? "Inanna venceu a peleja" : "Empate de autoria";
+  const description = playerWon
+    ? "Sua autoria humana sustentou a rima e respondeu à provocação da máquina."
+    : inannaWon
+      ? "A máquina levou esta rodada, mas deixou pistas claras para sua próxima resposta."
+      : "A peleja terminou parelha. Vale retomar a roda para buscar uma virada mais nítida.";
   if (ui.level2MatchResult) {
     ui.level2MatchResult.hidden = false;
     ui.level2MatchResult.innerHTML = `
-      <h3>${playerWon ? "Você venceu a peleja" : "Inanna venceu a peleja"}</h3>
-      <p>${playerWon
-        ? "Sua autoria humana sustentou a rima e respondeu à provocação da máquina."
-        : "A máquina levou esta rodada, mas deixou pistas claras para sua próxima resposta."}</p>
+      <h3>${title}</h3>
+      <p>${description}</p>
       <p><strong>Placar final:</strong> Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna.</p>
     `;
   }
   if (ui.level2NextRoundBtn) ui.level2NextRoundBtn.hidden = true;
+  setLevel2RoundState(LEVEL2_ROUND_STATES.MATCH_RESULT);
+  clearLevel2SessionSnapshot();
   setLevel2SessionStatus("Peleja finalizada.", playerWon ? "var(--accent)" : "var(--primary)");
+}
+
+function shouldFinishLevel2Match() {
+  if (state.level2.currentRound >= 3) return true;
+  if (state.level2.currentRound >= 2 && state.level2.playerWins !== state.level2.inannaWins) return true;
+  return false;
 }
 
 async function goToNextLevel2Round() {
   if (state.level2.matchFinished) return;
+  if (state.level2.currentRound >= 2 && state.level2.playerWins !== state.level2.inannaWins) {
+    finishLevel2Match();
+    return;
+  }
   await beginLevel2Round(state.level2.currentRound + 1);
 }
 
+async function handleLevel2PrimaryAction() {
+  if (isLevel2BusyState()) return;
+  switch (state.level2.roundState) {
+    case LEVEL2_ROUND_STATES.REVISING_RESPONSE:
+      await finalizeLevel2Round();
+      break;
+    case LEVEL2_ROUND_STATES.ROUND_RESULT:
+      await goToNextLevel2Round();
+      break;
+    case LEVEL2_ROUND_STATES.MATCH_RESULT:
+      await resetLevel2Match();
+      break;
+    case LEVEL2_ROUND_STATES.COMPOSING_INITIAL:
+    default:
+      await submitLevel2Original();
+      break;
+  }
+}
+
 async function resetLevel2Match() {
+  const hasActiveMatch = Boolean(state.level2.sessionId && !state.level2.matchFinished);
+  if (hasActiveMatch) {
+    const ok = window.confirm("Recomeçar apaga a peleja em andamento. Quer continuar?");
+    if (!ok) return;
+  }
   stopLevel2Audio();
+  clearLevel2SessionSnapshot();
   resetLevel2State(true);
   resetLevel2RoundInputs();
   if (ui.level2SetupPanel) ui.level2SetupPanel.hidden = false;
@@ -1988,6 +2606,316 @@ function assertSextilhaWorkspaceAccess() {
   throw new Error(SEXTILHA_LOCKED_NOTICE);
 }
 
+function syncDashboardProfileFormFromState(force = false) {
+  if (!state.participantId) return;
+  if (!force && state.dashboardProfileFormParticipantId === state.participantId) return;
+  syncProfileFormValuesFromState(getDashboardProfileControls());
+  state.dashboardProfileFormParticipantId = state.participantId;
+}
+
+function renderDashboardProfileSummary() {
+  if (!ui.dashboardProfileSummary) return;
+  const displayName = getPlayerDisplayName();
+  const municipioLabel = state.estadoUF && state.estadoUF !== "EX"
+    ? `${state.municipio} - ${state.estadoUF}`
+    : (state.municipio || "Município não informado");
+  const rows = [
+    ["Nome no check-in", state.name || "Participante"],
+    ["Nome de jogo", displayName],
+    ["Município", municipioLabel],
+    ["Oficina Cordel 2.0", state.oficinaCordel20 === true ? "Sim" : state.oficinaCordel20 === false ? "Não" : "Não informado"],
+    ["Chatbot de IA", state.usouChatbotIa === true ? "Já usou" : state.usouChatbotIa === false ? "Ainda não usou" : "Não informado"],
+  ];
+  ui.dashboardProfileSummary.innerHTML = rows.map(([label, value]) => `
+    <div class="player-profile-summary__row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+}
+
+function isLevel2UnlockReady(progress = ensurePlayerProgress()) {
+  if (isAdminEmail()) return true;
+  return Number(progress.perfectQuadrasCount || 0) >= 5
+    || MASTERY_CRITERIA.every((item) => !!progress.mastery?.[item.key]);
+}
+
+function renderPlayerLevel1Rewards() {
+  if (!ui.playerLevel1Rewards) return;
+  const progress = ensurePlayerProgress();
+  const masteryCount = countMasteryCriteria(progress);
+  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
+  const unlocked = Number(progress.levelUnlocked || 1) >= 2;
+  const ready = isLevel2UnlockReady(progress);
+  const checklist = MASTERY_CRITERIA.map((item) => {
+    const done = !!progress.mastery?.[item.key];
+    return `<span class="player-mark ${done ? "player-mark--done" : ""}">${done ? "✓" : "□"} ${escapeHtml(item.label)}</span>`;
+  }).join("");
+  ui.playerLevel1Rewards.innerHTML = `
+    <div class="player-reward-metrics">
+      <div><strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong><span>quadras perfeitas</span></div>
+      <div><strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong><span>marcas de autoria</span></div>
+      <div><strong>${progress.bestScore || 0}</strong><span>melhor pontuação</span></div>
+    </div>
+    <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${perfectPercent}%"></i></span>
+    <p class="workspace-meta">${escapeHtml(unlocked ? "Nível 2 liberado no seu percurso." : ready ? "Suas conquistas já permitem pedir a liberação com Inanna." : getLevel2StatusMessage(progress))}</p>
+    <div class="player-mark-list">${checklist}</div>
+  `;
+  if (ui.playerUnlockLevel2Btn) {
+    ui.playerUnlockLevel2Btn.disabled = unlocked || !ready;
+    ui.playerUnlockLevel2Btn.textContent = unlocked ? "Nível 2 liberado" : "Conversar com Inanna";
+  }
+}
+
+function sumLevel2Points(profile) {
+  const rewards = Array.isArray(profile?.rewards) ? profile.rewards : [];
+  const ledgerPoints = rewards
+    .filter((item) => item.reward_unit === "peleja_point" || item.rewardUnit === "peleja_point")
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const rounds = Array.isArray(profile?.rounds) ? profile.rounds : [];
+  const roundPoints = rounds.reduce((sum, item) => sum + Number(item.player_score || item.playerScore || 0), 0);
+  return ledgerPoints || roundPoints;
+}
+
+function renderPlayerLevel2Rewards() {
+  if (!ui.playerLevel2Rewards) return;
+  const profile = state.playerLevel2Profile || {};
+  const wallet = profile.wallet || {};
+  const rounds = Array.isArray(profile.rounds) ? profile.rounds : [];
+  const sessions = Array.isArray(profile.sessions) ? profile.sessions : [];
+  const pieces = Number(wallet.level2_pieces_count || 0);
+  const totalPieces = Number(profile.totalPieces || 30);
+  const points = sumLevel2Points(profile);
+  const wins = sessions.reduce((sum, item) => sum + Number(item.player_wins || item.playerWins || 0), 0);
+  const statusText = state.playerLevel2ProfileStatus === "loading"
+    ? "Buscando seus ganhos no Worker..."
+    : state.playerLevel2ProfileStatus === "error"
+      ? "Não consegui sincronizar os ganhos do Nível 2 agora."
+      : rounds.length
+        ? "Histórico de pelejas sincronizado."
+        : "Ainda sem pelejas registradas no Nível 2.";
+  ui.playerLevel2Rewards.innerHTML = `
+    <div class="player-reward-metrics">
+      <div><strong>${pieces}/${totalPieces}</strong><span>pedacinhos da xilogravura</span></div>
+      <div><strong>${points}</strong><span>pontos de peleja</span></div>
+      <div><strong>${wins}</strong><span>rounds vencidos</span></div>
+    </div>
+    <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${getProgressPercent(pieces, totalPieces)}%"></i></span>
+    <p class="workspace-meta">${escapeHtml(statusText)}</p>
+  `;
+  if (ui.playerGoLevel2Btn) ui.playerGoLevel2Btn.disabled = !canAccessLevel2Preview();
+}
+
+function formatRoundWinner(value) {
+  if (value === "player") return "Humano";
+  if (value === "inanna") return "Inanna";
+  return "Empate";
+}
+
+function getLevel2RoundId(round) {
+  return String(round?.round_id || round?.roundId || "").trim();
+}
+
+function getLevel2RoundById(roundId) {
+  const rounds = Array.isArray(state.playerLevel2Profile?.rounds) ? state.playerLevel2Profile.rounds : [];
+  return rounds.find((round) => getLevel2RoundId(round) === String(roundId || "").trim()) || null;
+}
+
+function buildLevel2ShareText(round) {
+  const theme = String(round?.theme || "Tema livre").trim();
+  const finalQuadra = String(round?.player_final_quadra || round?.playerFinalQuadra || "").trim();
+  const winner = formatRoundWinner(round?.round_winner || round?.roundWinner || "draw");
+  return [
+    `Peleja com Inanna - ${theme}`,
+    "",
+    finalQuadra,
+    "",
+    `Resultado: ${winner} | Humano ${Number(round?.player_score || round?.playerScore || 0)} x ${Number(round?.inanna_score || round?.inannaScore || 0)} Inanna`,
+  ].filter(Boolean).join("\n");
+}
+
+function renderPlayerLevel2Results() {
+  if (!ui.playerLevel2Results) return;
+  const rounds = Array.isArray(state.playerLevel2Profile?.rounds) ? state.playerLevel2Profile.rounds : [];
+  if (state.playerLevel2ProfileStatus === "loading") {
+    ui.playerLevel2Results.innerHTML = `<div class="workspace-empty">Sincronizando resultados das pelejas...</div>`;
+    return;
+  }
+  if (!rounds.length) {
+    ui.playerLevel2Results.innerHTML = `<div class="workspace-empty">Quando você jogar o Nível 2, cada resultado aparecerá aqui para copiar ou publicar depois.</div>`;
+    return;
+  }
+  ui.playerLevel2Results.innerHTML = rounds.map((round) => {
+    const roundId = getLevel2RoundId(round);
+    const finalQuadra = String(round.player_final_quadra || round.playerFinalQuadra || "").trim();
+    const inannaQuadra = String(round.inanna_quadra || round.inannaQuadra || "").trim();
+    const createdAt = round.created_at || round.createdAt || "";
+    return `
+      <article class="player-result-card" data-round-id="${escapeHtml(roundId)}">
+        <div class="text-card__head">
+          <div>
+            <h3 class="text-card__title">Round ${Number(round.round_number || round.roundNumber || 1)} · ${escapeHtml(round.theme || "Tema livre")}</h3>
+            <p class="text-card__meta">${escapeHtml(createdAt ? formatDateTime(createdAt) : "Data não registrada")}<br>Resultado: ${escapeHtml(formatRoundWinner(round.round_winner || round.roundWinner || "draw"))} · Humano ${Number(round.player_score || round.playerScore || 0)} x ${Number(round.inanna_score || round.inannaScore || 0)} Inanna</p>
+          </div>
+          <span class="status-badge status-concluida">${escapeHtml(formatRoundWinner(round.round_winner || round.roundWinner || "draw"))}</span>
+        </div>
+        <div class="player-result-grid">
+          <div>
+            <span class="level2-label">Sua resposta final</span>
+            <pre class="level2-quadra">${escapeHtml(finalQuadra || "Quadra indisponível.")}</pre>
+          </div>
+          <div>
+            <span class="level2-label">Inanna</span>
+            <pre class="level2-quadra">${escapeHtml(inannaQuadra || "Quadra indisponível.")}</pre>
+          </div>
+        </div>
+        <div class="text-card__actions">
+          <button class="btn btn-secondary" type="button" data-action="copy-level2-result" data-round-id="${escapeHtml(roundId)}">Copiar texto</button>
+          <button class="btn btn-primary" type="button" data-action="publish-level2-result" data-round-id="${escapeHtml(roundId)}">Publicar</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderPlayerPanel() {
+  if (!ui.userDashboardSection) return;
+  if (ui.playerDisplayNameInput) ui.playerDisplayNameInput.value = getPlayerDisplayName();
+  if (ui.dashboardProfileEditPanel) ui.dashboardProfileEditPanel.hidden = !state.dashboardProfileEditOpen;
+  if (ui.toggleDashboardProfileEditBtn) {
+    ui.toggleDashboardProfileEditBtn.textContent = state.dashboardProfileEditOpen ? "Fechar edição" : "Editar dados estatísticos";
+  }
+  if (ui.saveDashboardProfileBtn) {
+    ui.saveDashboardProfileBtn.disabled = state.dashboardProfileSaving;
+    ui.saveDashboardProfileBtn.textContent = state.dashboardProfileSaving ? "Salvando..." : "Salvar dados estatísticos";
+  }
+  syncDashboardProfileFormFromState();
+  renderDashboardProfileSummary();
+  renderPlayerLevel1Rewards();
+  renderPlayerLevel2Rewards();
+  renderPlayerLevel2Results();
+  syncSextilhaTrackAccess();
+}
+
+function renderDashboardRestrictedCaderno() {
+  if (ui.dashboardGreeting) ui.dashboardGreeting.textContent = `${getPlayerDisplayName()}, este é seu painel`;
+  if (ui.dashboardFolhetoCount) ui.dashboardFolhetoCount.textContent = "0";
+  if (ui.dashboardTextCount) ui.dashboardTextCount.textContent = "0";
+  if (ui.dashboardCompletedCount) ui.dashboardCompletedCount.textContent = "0";
+  if (ui.dashboardLastEdited) ui.dashboardLastEdited.textContent = "Caderno em preparação";
+  if (ui.dashboardTextList) {
+    ui.dashboardTextList.innerHTML = `<div class="workspace-empty">${escapeHtml(SEXTILHA_LOCKED_NOTICE)}</div>`;
+  }
+  if (ui.btnCreateFolheto) ui.btnCreateFolheto.disabled = true;
+  if (ui.btnCreateText) ui.btnCreateText.disabled = true;
+  if (ui.dashboardStatusFilter) ui.dashboardStatusFilter.disabled = true;
+}
+
+async function loadLevel2PlayerProfile() {
+  if (!INANNA_LEVEL2_AGENT_URL) {
+    state.playerLevel2Profile = { wallet: null, rewards: [], sessions: [], rounds: [], pieces: [], source: "local" };
+    state.playerLevel2ProfileStatus = "ready";
+    return state.playerLevel2Profile;
+  }
+  const playerId = getLevel2PlayerId();
+  if (!playerId) return null;
+  state.playerLevel2ProfileStatus = "loading";
+  renderPlayerPanel();
+  const url = `${INANNA_LEVEL2_AGENT_URL.replace(/\/$/, "")}/v2/player/${encodeURIComponent(playerId)}/profile`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "x-inanna-player-id": playerId,
+      "accept": "application/json",
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) throw new Error(data?.message || data?.error || "Falha ao carregar perfil do jogador.");
+  state.playerLevel2Profile = data;
+  state.playerLevel2ProfileStatus = "ready";
+  renderPlayerPanel();
+  return data;
+}
+
+async function refreshPlayerPanelData(options = {}) {
+  renderPlayerPanel();
+  try {
+    await loadLevel2PlayerProfile();
+  } catch (error) {
+    console.warn("[player-panel] nao foi possivel carregar ganhos do nivel 2", error);
+    state.playerLevel2ProfileStatus = "error";
+    if (!state.playerLevel2Profile) state.playerLevel2Profile = { wallet: null, rewards: [], sessions: [], rounds: [], pieces: [] };
+    renderPlayerPanel();
+    if (options.toast) showToast(error?.message || "Não consegui atualizar o painel agora.", "muted", { duration: 4200 });
+  }
+}
+
+function openQuadraLevelChooser() {
+  state.selectedTrack = "quadras";
+  resetSextilhaState();
+  hideGameExperience();
+  setView("quadraLevels", ui.quadraLevelsSection);
+  loadPlayerProgress();
+  syncLevel2TrackAccess();
+  loadThematicCsvBank().catch(() => {});
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function openPlayerDashboard(options = {}) {
+  state.selectedTrack = "playerPanel";
+  hideGameExperience();
+  setView("playerDashboard", ui.userDashboardSection);
+  loadPlayerProgress();
+  renderPlayerPanel();
+  refreshPlayerPanelData().catch(() => {});
+  if (canAccessSextilhaWorkspace()) {
+    await openSextilhaDashboard({ ...options, openedFromPanel: true });
+    return;
+  }
+  renderDashboardRestrictedCaderno();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function unlockLevel2FromPlayerPanel() {
+  const progress = ensurePlayerProgress();
+  if (Number(progress.levelUnlocked || 1) >= 2) {
+    showToast("O Nível 2 já está liberado no seu painel.", "success");
+    renderPlayerPanel();
+    return;
+  }
+  if (!isLevel2UnlockReady(progress)) {
+    showToast(getLevel2StatusMessage(progress), "muted", { duration: 4600 });
+    renderPlayerPanel();
+    return;
+  }
+  savePlayerProgress({ ...progress, levelUnlocked: 2 });
+  showToast("Inanna reconheceu suas marcas: Nível 2 liberado.", "success", { duration: 4600 });
+  renderPlayerPanel();
+}
+
+async function handlePlayerResultAction(event) {
+  const button = event.target.closest("button[data-action][data-round-id]");
+  if (!button) return;
+  const round = getLevel2RoundById(button.dataset.roundId);
+  if (!round) return;
+  const text = buildLevel2ShareText(round);
+  if (button.dataset.action === "publish-level2-result" && navigator.share) {
+    try {
+      await navigator.share({ title: "Peleja com Inanna", text });
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(button.dataset.action === "publish-level2-result" ? "Texto copiado para publicar." : "Texto copiado.", "success");
+  } catch (error) {
+    console.error(error);
+    showToast("Não consegui copiar automaticamente.", "muted");
+  }
+}
+
 function normalizeLooseIdentityText(value) {
   return norm(String(value || "")).replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -2040,6 +2968,7 @@ function setElementDisplay(el, shouldShow, displayValue = "") {
 function getWorkspacePanels() {
   return [
     ui.trackChooserSection,
+    ui.quadraLevelsSection,
     ui.level2PreviewSection,
     ui.userDashboardSection,
     ui.folhetoWorkspaceSection,
@@ -2926,36 +3855,80 @@ function setProfileStatus(message = "", color = "var(--muted)") {
   ui.profileStatus.style.color = color;
 }
 
-function getSelectedWorkshopValue() {
-  if (ui.profileWorkshopYes?.checked) return true;
-  if (ui.profileWorkshopNo?.checked) return false;
+function setDashboardProfileStatus(message = "", color = "var(--muted)") {
+  if (!ui.dashboardProfileStatus) return;
+  ui.dashboardProfileStatus.textContent = message;
+  ui.dashboardProfileStatus.style.color = color;
+}
+
+function getInitialProfileControls() {
+  return {
+    workshopYes: ui.profileWorkshopYes,
+    workshopNo: ui.profileWorkshopNo,
+    aiChatbotYes: ui.profileAiChatbotYes,
+    aiChatbotNo: ui.profileAiChatbotNo,
+    gender: ui.profileGender,
+    race: ui.profileRace,
+    ageRange: ui.profileAgeRange,
+    municipioInput: ui.profileMunicipioInput,
+    municipioOptions: ui.profileMunicipioOptions,
+    outsideBrazil: ui.profileOutsideBrazil,
+    saveButton: ui.saveProfileBtn,
+    setStatus: setProfileStatus,
+  };
+}
+
+function getDashboardProfileControls() {
+  return {
+    workshopYes: ui.dashboardProfileWorkshopYes,
+    workshopNo: ui.dashboardProfileWorkshopNo,
+    aiChatbotYes: ui.dashboardProfileAiChatbotYes,
+    aiChatbotNo: ui.dashboardProfileAiChatbotNo,
+    gender: ui.dashboardProfileGender,
+    race: ui.dashboardProfileRace,
+    ageRange: ui.dashboardProfileAgeRange,
+    municipioInput: ui.dashboardProfileMunicipioInput,
+    municipioOptions: ui.dashboardProfileMunicipioOptions,
+    outsideBrazil: ui.dashboardProfileOutsideBrazil,
+    saveButton: ui.saveDashboardProfileBtn,
+    setStatus: setDashboardProfileStatus,
+  };
+}
+
+function getSelectedWorkshopValue(controls = getInitialProfileControls()) {
+  if (controls.workshopYes?.checked) return true;
+  if (controls.workshopNo?.checked) return false;
   return null;
 }
 
-function getSelectedAiChatbotValue() {
-  if (ui.profileAiChatbotYes?.checked) return true;
-  if (ui.profileAiChatbotNo?.checked) return false;
+function getSelectedAiChatbotValue(controls = getInitialProfileControls()) {
+  if (controls.aiChatbotYes?.checked) return true;
+  if (controls.aiChatbotNo?.checked) return false;
   return null;
+}
+
+function syncProfileFormValuesFromState(controls) {
+  if (!controls) return;
+  if (controls.workshopYes) controls.workshopYes.checked = state.oficinaCordel20 === true;
+  if (controls.workshopNo) controls.workshopNo.checked = state.oficinaCordel20 === false;
+  if (controls.aiChatbotYes) controls.aiChatbotYes.checked = state.usouChatbotIa === true;
+  if (controls.aiChatbotNo) controls.aiChatbotNo.checked = state.usouChatbotIa === false;
+  if (controls.gender) controls.gender.value = normalizeProfileGender(state.genero);
+  if (controls.race) controls.race.value = normalizeProfileRace(state.identificacaoRacial);
+  if (controls.ageRange) controls.ageRange.value = normalizeProfileAgeRange(state.faixaEtaria) || normalizeLegacyAgeRange(state.faixaEtaria);
+  if (controls.municipioInput) {
+    const municipioLabel = state.estadoUF && state.estadoUF !== "EX"
+      ? `${state.municipio} - ${state.estadoUF}`
+      : state.municipio;
+    controls.municipioInput.value = municipioLabel.trim();
+  }
+  if (controls.outsideBrazil) controls.outsideBrazil.checked = state.pais === "FORA_BRASIL" || state.estadoUF === "EX";
 }
 
 function syncProfileFormFromState() {
   if (!state.participantId || state.profileFormParticipantId === state.participantId) return;
 
-  if (ui.profileWorkshopYes) ui.profileWorkshopYes.checked = state.oficinaCordel20 === true;
-  if (ui.profileWorkshopNo) ui.profileWorkshopNo.checked = state.oficinaCordel20 === false;
-  if (ui.profileAiChatbotYes) ui.profileAiChatbotYes.checked = state.usouChatbotIa === true;
-  if (ui.profileAiChatbotNo) ui.profileAiChatbotNo.checked = state.usouChatbotIa === false;
-  if (ui.profileGender) ui.profileGender.value = normalizeProfileGender(state.genero);
-  if (ui.profileRace) ui.profileRace.value = normalizeProfileRace(state.identificacaoRacial);
-  if (ui.profileAgeRange) ui.profileAgeRange.value = normalizeProfileAgeRange(state.faixaEtaria) || normalizeLegacyAgeRange(state.faixaEtaria);
-  if (ui.profileMunicipioInput) {
-    const municipioLabel = state.estadoUF && state.estadoUF !== "EX"
-      ? `${state.municipio} - ${state.estadoUF}`
-      : state.municipio;
-    ui.profileMunicipioInput.value = municipioLabel.trim();
-  }
-  if (ui.profileOutsideBrazil) ui.profileOutsideBrazil.checked = state.pais === "FORA_BRASIL" || state.estadoUF === "EX";
-
+  syncProfileFormValuesFromState(getInitialProfileControls());
   state.profileFormParticipantId = state.participantId;
 }
 
@@ -2977,10 +3950,12 @@ function renderProfileCompletionPanel() {
 }
 
 function renderMunicipioOptions() {
-  if (!ui.profileMunicipioOptions || !municipiosBrasil.length) return;
-  ui.profileMunicipioOptions.innerHTML = municipiosBrasil
+  if (!municipiosBrasil.length) return;
+  const optionsHtml = municipiosBrasil
     .map((item) => `<option value="${escapeHtml(item.label)}"></option>`)
     .join("");
+  if (ui.profileMunicipioOptions) ui.profileMunicipioOptions.innerHTML = optionsHtml;
+  if (ui.dashboardProfileMunicipioOptions) ui.dashboardProfileMunicipioOptions.innerHTML = optionsHtml;
 }
 
 async function loadMunicipiosBrasil() {
@@ -3041,9 +4016,9 @@ async function loadMunicipiosBrasil() {
   return municipiosBrasilPromise;
 }
 
-function parseMunicipioProfileInput() {
-  const rawMunicipio = String(ui.profileMunicipioInput?.value || "").trim();
-  const outsideBrazil = !!ui.profileOutsideBrazil?.checked;
+function parseMunicipioProfileInput(controls = getInitialProfileControls()) {
+  const rawMunicipio = String(controls.municipioInput?.value || "").trim();
+  const outsideBrazil = !!controls.outsideBrazil?.checked;
 
   if (outsideBrazil) {
     return {
@@ -3076,48 +4051,51 @@ function parseMunicipioProfileInput() {
   return { ok: !!rawMunicipio, municipio: rawMunicipio, estado: "", pais: "BR", error: rawMunicipio ? "" : "Informe seu município." };
 }
 
-async function saveParticipantProfile() {
-  if (!needsProfileCompletion()) return;
+async function saveProfileFromControls(controls, options = {}) {
+  const setStatus = controls.setStatus || setProfileStatus;
+  if (!options.allowCompleted && !needsProfileCompletion()) return;
   if (!window.InannaSupabaseBridge?.completeParticipantProfile) {
-    setProfileStatus("Atualize a ponte Supabase para salvar o perfil.", "var(--danger)");
+    setStatus("Atualize a ponte Supabase para salvar o perfil.", "var(--danger)");
     return;
   }
 
-  const oficinaCordel20 = getSelectedWorkshopValue();
-  const usouChatbotIa = getSelectedAiChatbotValue();
-  const genero = normalizeProfileGender(ui.profileGender?.value || "");
-  const identificacaoRacial = normalizeProfileRace(ui.profileRace?.value || "");
-  const faixaEtaria = normalizeProfileAgeRange(ui.profileAgeRange?.value || "");
-  const municipio = parseMunicipioProfileInput();
+  const oficinaCordel20 = getSelectedWorkshopValue(controls);
+  const usouChatbotIa = getSelectedAiChatbotValue(controls);
+  const genero = normalizeProfileGender(controls.gender?.value || "");
+  const identificacaoRacial = normalizeProfileRace(controls.race?.value || "");
+  const faixaEtaria = normalizeProfileAgeRange(controls.ageRange?.value || "");
+  const municipio = parseMunicipioProfileInput(controls);
 
   if (oficinaCordel20 === null) {
-    setProfileStatus("Marque se participa das oficinas Cordel 2.0.", "var(--primary)");
+    setStatus("Marque se participa das oficinas Cordel 2.0.", "var(--primary)");
     return;
   }
   if (usouChatbotIa === null) {
-    setProfileStatus("Marque se já usou algum chatbot de IA.", "var(--primary)");
+    setStatus("Marque se já usou algum chatbot de IA.", "var(--primary)");
     return;
   }
   if (!genero) {
-    setProfileStatus("Selecione uma opção de gênero.", "var(--primary)");
+    setStatus("Selecione uma opção de gênero.", "var(--primary)");
     return;
   }
   if (!identificacaoRacial) {
-    setProfileStatus("Selecione uma opção de identificação racial.", "var(--primary)");
+    setStatus("Selecione uma opção de identificação racial.", "var(--primary)");
     return;
   }
   if (!faixaEtaria) {
-    setProfileStatus("Selecione uma faixa etária.", "var(--primary)");
+    setStatus("Selecione uma faixa etária.", "var(--primary)");
     return;
   }
   if (!municipio.ok) {
-    setProfileStatus(municipio.error, "var(--primary)");
+    setStatus(municipio.error, "var(--primary)");
     return;
   }
 
-  state.profileSaving = true;
-  setProfileStatus("Salvando perfil...", "var(--muted)");
+  if (options.panel) state.dashboardProfileSaving = true;
+  else state.profileSaving = true;
+  setStatus("Salvando perfil...", "var(--muted)");
   renderProfileCompletionPanel();
+  renderPlayerPanel();
 
   try {
     const response = await withTimeout(
@@ -3139,18 +4117,30 @@ async function saveParticipantProfile() {
 
     if (!response?.ok) throw new Error(response?.error || "Nao foi possivel salvar o perfil.");
     applyResolvedCheckinIdentity(response);
-    setProfileStatus("");
+    setStatus(options.panel ? "Dados estatísticos atualizados." : "", options.panel ? "var(--accent)" : "var(--muted)");
     setStartHint("");
     updateWelcomeIdentityUI();
-    if (ui.btnStart) ui.btnStart.focus();
+    syncDashboardProfileFormFromState(true);
+    renderPlayerPanel();
+    if (!options.panel && ui.btnStart) ui.btnStart.focus();
   } catch (error) {
     console.error(error);
-    setProfileStatus(error?.message || "Nao foi possivel salvar o perfil.", "var(--danger)");
+    setStatus(error?.message || "Nao foi possivel salvar o perfil.", "var(--danger)");
   } finally {
-    state.profileSaving = false;
+    if (options.panel) state.dashboardProfileSaving = false;
+    else state.profileSaving = false;
     renderProfileCompletionPanel();
     updateWelcomeIdentityUI();
+    renderPlayerPanel();
   }
+}
+
+async function saveParticipantProfile() {
+  return saveProfileFromControls(getInitialProfileControls(), { allowCompleted: false, panel: false });
+}
+
+async function saveDashboardProfile() {
+  return saveProfileFromControls(getDashboardProfileControls(), { allowCompleted: true, panel: true });
 }
 
 function clearResolvedCheckinIdentity(nextEmail = "") {
@@ -3167,7 +4157,10 @@ function clearResolvedCheckinIdentity(nextEmail = "") {
   state.faixaEtaria = "";
   state.profileComplete = false;
   state.profileSaving = false;
+  state.dashboardProfileSaving = false;
+  state.dashboardProfileEditOpen = false;
   state.profileFormParticipantId = "";
+  state.dashboardProfileFormParticipantId = "";
   state.participantId = "";
   state.checkinUserId = "";
   state.checkinMatchStatus = "";
@@ -3179,6 +4172,8 @@ function clearResolvedCheckinIdentity(nextEmail = "") {
   state.supabaseSessionPromise = null;
   state.lastAiFeedback = null;
   state.aiFeedbackRequestKey = "";
+  state.playerLevel2Profile = null;
+  state.playerLevel2ProfileStatus = "idle";
 }
 
 function applyResolvedCheckinIdentity(identity) {
@@ -4331,16 +5326,32 @@ function openVectorModal(index) {
 }
 
 // ── Etapa 1 — montar grade de temas ──────────────────────────────────
+function getThemeGridItems() {
+  if (state.thematicCsvItems.length) {
+    return getRandomItems(state.thematicCsvItems, Math.min(THEMATIC_CSV_SAMPLE_SIZE, state.thematicCsvItems.length));
+  }
+  return THEMES;
+}
+
 function buildThemeGrid() {
+  if (!ui.themeGrid) return;
   ui.themeGrid.innerHTML = "";
-  THEMES.forEach(th => {
+  if (state.thematicCsvStatus === "idle") {
+    loadThematicCsvBank().then(() => {
+      if (state.view === "game" && state.phase === 1) buildThemeGrid();
+    });
+  }
+  const themes = getThemeGridItems();
+  themes.forEach(th => {
     const card = document.createElement("button");
     card.className = "theme-card";
     card.type = "button";
+    if (th.context) card.title = th.context;
     card.innerHTML = `
       <div class="theme-emoji">${th.emoji}</div>
       <div class="theme-name">${th.name}</div>
       <div class="theme-desc">${th.desc}</div>
+      ${th.source ? `<div class="theme-source">fonte</div>` : ""}
     `;
     card.addEventListener("click", () => selectTheme(th));
     ui.themeGrid.appendChild(card);
@@ -4354,6 +5365,10 @@ function selectTheme(theme) {
   resetQuadraState({ resetPoints: true, restartTimer: true });
 
   ui.verseInput.placeholder = "Ex.: No São João eu vi a fogueira";
+  if (theme.context && ui.verseHint) {
+    ui.verseHint.textContent = theme.context;
+    ui.verseHint.style.color = "var(--muted)";
+  }
   updateVerseBlankPreview();
 
   goToPhase(2);
@@ -4448,7 +5463,8 @@ function renderStep3() {
   const highlighted = escapeHtml(rawVerse).replace("___", `<span class="blank-placeholder">___</span>`);
   ui.versePreview.innerHTML = highlighted;
   const rhymeHint = pred && pred.targetRhymeWord ? ` · rima esperada com "${pred.targetRhymeWord}"` : "";
-  ui.contextDetected.textContent = `${theme.emoji} ${theme.name}${rhymeHint}`;
+  const contextHint = theme.context ? ` · ${theme.context.slice(0, 120)}${theme.context.length > 120 ? "..." : ""}` : "";
+  ui.contextDetected.textContent = `${theme.emoji} ${theme.name}${rhymeHint}${contextHint}`;
   if (ui.customInput) {
     ui.customInput.value = state.current.originalToken || "";
     ui.customInput.placeholder = state.current.originalToken
@@ -4942,7 +5958,7 @@ function applyDashboardPayload(payload) {
   }
 
   if (ui.dashboardGreeting) {
-    ui.dashboardGreeting.textContent = state.name ? `${state.name}, este é seu caderno` : "Minhas sextilhas";
+    ui.dashboardGreeting.textContent = `${getPlayerDisplayName()}, este é seu painel`;
   }
   if (ui.dashboardFolhetoCount) {
     ui.dashboardFolhetoCount.textContent = String(state.userFolhetos.length || 0);
@@ -4958,8 +5974,16 @@ function applyDashboardPayload(payload) {
   }
   if (ui.dashboardStatusFilter) {
     ui.dashboardStatusFilter.value = state.dashboardFilter || "all";
+    ui.dashboardStatusFilter.disabled = false;
+  }
+  if (ui.btnCreateFolheto) {
+    ui.btnCreateFolheto.disabled = false;
+  }
+  if (ui.btnCreateText) {
+    ui.btnCreateText.disabled = false;
   }
 
+  renderPlayerPanel();
   renderDashboardTexts();
   persistDashboardCache(buildIdentityPayload(), payload);
   if (state.view === "folhetoWorkspace") {
@@ -4978,6 +6002,7 @@ async function openSextilhaDashboard(options = {}) {
   state.activeFolheto = null;
   hideGameExperience();
   setView("sextilhaDashboard", ui.userDashboardSection);
+  renderPlayerPanel();
   const identity = buildIdentityPayload();
   const cachedPayload = settings.forceRefresh ? null : readDashboardCache(identity);
   const inMemoryPayload = state.userTexts.length && !settings.forceRefresh
@@ -5801,6 +6826,31 @@ if (ui.saveProfileBtn) {
   ui.saveProfileBtn.addEventListener("click", saveParticipantProfile);
 }
 
+if (ui.saveDashboardProfileBtn) {
+  ui.saveDashboardProfileBtn.addEventListener("click", saveDashboardProfile);
+}
+
+if (ui.toggleDashboardProfileEditBtn) {
+  ui.toggleDashboardProfileEditBtn.addEventListener("click", () => {
+    state.dashboardProfileEditOpen = !state.dashboardProfileEditOpen;
+    if (state.dashboardProfileEditOpen) {
+      syncDashboardProfileFormFromState(true);
+      loadMunicipiosBrasil();
+    }
+    renderPlayerPanel();
+  });
+}
+
+if (ui.savePlayerDisplayNameBtn) {
+  ui.savePlayerDisplayNameBtn.addEventListener("click", () => {
+    const nickname = savePlayerDisplayName(ui.playerDisplayNameInput?.value || "");
+    if (ui.playerDisplayNameStatus) {
+      ui.playerDisplayNameStatus.textContent = `Inanna vai chamar você de ${nickname}.`;
+      ui.playerDisplayNameStatus.style.color = "var(--accent)";
+    }
+  });
+}
+
 [
   ui.profileWorkshopYes,
   ui.profileWorkshopNo,
@@ -5828,12 +6878,57 @@ if (ui.saveProfileBtn) {
   });
 });
 
+[
+  ui.dashboardProfileWorkshopYes,
+  ui.dashboardProfileWorkshopNo,
+  ui.dashboardProfileAiChatbotYes,
+  ui.dashboardProfileAiChatbotNo,
+  ui.dashboardProfileGender,
+  ui.dashboardProfileRace,
+  ui.dashboardProfileAgeRange,
+  ui.dashboardProfileMunicipioInput,
+  ui.dashboardProfileOutsideBrazil
+].filter(Boolean).forEach((field) => {
+  field.addEventListener("input", () => {
+    setDashboardProfileStatus("");
+    if (field === ui.dashboardProfileMunicipioInput) loadMunicipiosBrasil();
+  });
+  field.addEventListener("change", () => {
+    setDashboardProfileStatus("");
+    if (field === ui.dashboardProfileOutsideBrazil && ui.dashboardProfileMunicipioInput) {
+      ui.dashboardProfileMunicipioInput.placeholder = ui.dashboardProfileOutsideBrazil.checked
+        ? "Digite cidade/país"
+        : "Digite para buscar cidade - UF";
+    }
+  });
+});
+
 if (ui.profileMunicipioInput) {
   ui.profileMunicipioInput.addEventListener("focus", loadMunicipiosBrasil);
 }
 
+if (ui.dashboardProfileMunicipioInput) {
+  ui.dashboardProfileMunicipioInput.addEventListener("focus", loadMunicipiosBrasil);
+}
+
 if (ui.chooseGameTrackBtn) {
-  ui.chooseGameTrackBtn.addEventListener("click", startGameTrack);
+  ui.chooseGameTrackBtn.addEventListener("click", openQuadraLevelChooser);
+}
+
+if (ui.startLevel1TrackBtn) {
+  ui.startLevel1TrackBtn.addEventListener("click", startGameTrack);
+}
+
+if (ui.quadraLevelsBackBtn) {
+  ui.quadraLevelsBackBtn.addEventListener("click", showTrackChooser);
+}
+
+if (ui.choosePlayerPanelBtn) {
+  ui.choosePlayerPanelBtn.addEventListener("click", () => {
+    openPlayerDashboard().catch((error) => {
+      showToast(error?.message || "Não foi possível abrir o painel agora.", "muted");
+    });
+  });
 }
 
 if (ui.chooseSextilhaTrackBtn) {
@@ -5859,10 +6954,37 @@ if (ui.chooseLevel2TrackBtn) {
   ui.chooseLevel2TrackBtn.addEventListener("click", openLevel2Preview);
 }
 
+if (ui.playerUnlockLevel2Btn) {
+  ui.playerUnlockLevel2Btn.addEventListener("click", unlockLevel2FromPlayerPanel);
+}
+
+if (ui.playerGoLevel1Btn) {
+  ui.playerGoLevel1Btn.addEventListener("click", startGameTrack);
+}
+
+if (ui.playerGoLevel2Btn) {
+  ui.playerGoLevel2Btn.addEventListener("click", openLevel2Preview);
+}
+
+if (ui.refreshPlayerPanelBtn) {
+  ui.refreshPlayerPanelBtn.addEventListener("click", () => {
+    refreshPlayerPanelData({ toast: true });
+  });
+}
+
+if (ui.playerLevel2Results) {
+  ui.playerLevel2Results.addEventListener("click", (event) => {
+    handlePlayerResultAction(event).catch((error) => {
+      console.error(error);
+      showToast(error?.message || "Não foi possível preparar este texto.", "muted");
+    });
+  });
+}
+
 if (ui.level2PreviewBackBtn) {
   ui.level2PreviewBackBtn.addEventListener("click", () => {
     stopLevel2Audio();
-    showTrackChooser();
+    openQuadraLevelChooser();
   });
 }
 
@@ -5880,6 +7002,24 @@ if (ui.level2FinalizeRoundBtn) {
 
 if (ui.level2NextRoundBtn) {
   ui.level2NextRoundBtn.addEventListener("click", goToNextLevel2Round);
+}
+
+if (ui.level2PrimaryActionBtn) {
+  ui.level2PrimaryActionBtn.addEventListener("click", handleLevel2PrimaryAction);
+}
+
+if (ui.level2OriginalInput) {
+  ui.level2OriginalInput.addEventListener("input", () => {
+    state.level2.originalQuadra = normalizeLevel2QuadraInput(ui.level2OriginalInput.value);
+    saveLevel2SessionSnapshot();
+  });
+}
+
+if (ui.level2FinalInput) {
+  ui.level2FinalInput.addEventListener("input", () => {
+    state.level2.finalQuadra = normalizeLevel2QuadraInput(ui.level2FinalInput.value);
+    saveLevel2SessionSnapshot();
+  });
 }
 
 if (ui.level2ResetBtn) {

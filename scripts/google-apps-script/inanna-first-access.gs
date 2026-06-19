@@ -1,6 +1,10 @@
+// VALORES PADRÃO (Fallback caso não estejam salvos no PropertiesService)
 var INANNA_USERS_SPREADSHEET_ID = "130CvfT6mwv0gzYQgmrylg4Q0T5xRI918dms8A4yzqO8";
 var INANNA_USERS_SHEET_NAME = "USERS";
+var INANNA_SUPABASE_URL = "https://ifhagjcarefdkcmjvknf.supabase.co";
+var INANNA_SUPABASE_SERVICE_ROLE_KEY = "";
 
+// NOMES DAS CHAVES (Como serão chamadas dentro do PropertiesService)
 var PROP_SPREADSHEET_ID = "INANNA_USERS_SPREADSHEET_ID";
 var PROP_SHEET_NAME = "INANNA_USERS_SHEET_NAME";
 var PROP_SUPABASE_URL = "INANNA_SUPABASE_URL";
@@ -39,6 +43,8 @@ function configurarInannaPrimeiroAcesso() {
   PropertiesService.getScriptProperties().setProperties({
     INANNA_USERS_SPREADSHEET_ID: INANNA_USERS_SPREADSHEET_ID,
     INANNA_USERS_SHEET_NAME: INANNA_USERS_SHEET_NAME,
+    INANNA_SUPABASE_URL: INANNA_SUPABASE_URL,
+    INANNA_SUPABASE_SERVICE_ROLE_KEY: INANNA_SUPABASE_SERVICE_ROLE_KEY,
   }, false);
   return healthCheck_();
 }
@@ -127,8 +133,8 @@ function healthCheck_() {
     spreadsheetId: sheet.getParent().getId(),
     sheetName: sheet.getName(),
     lastRow: sheet.getLastRow(),
-    hasSupabaseUrl: !!getRequiredProperty_(PROP_SUPABASE_URL, false),
-    hasServiceRoleKey: !!getRequiredProperty_(PROP_SUPABASE_SERVICE_ROLE_KEY, false),
+    hasSupabaseUrl: !!getRequiredProperty_(PROP_SUPABASE_URL, false, INANNA_SUPABASE_URL),
+    hasServiceRoleKey: !!getRequiredProperty_(PROP_SUPABASE_SERVICE_ROLE_KEY, false, INANNA_SUPABASE_SERVICE_ROLE_KEY),
     tokenRequired: !!getRequiredProperty_(PROP_LOOKUP_TOKEN, false),
   };
 }
@@ -200,8 +206,19 @@ function buildParticipantFromUser_(record) {
       "perfil",
       "categoria",
     ]) || "Cadastro laboratorio Cordel 2.0",
+    municipio: first_(record, ["municipio", "cidade", "city"]),
+    estado: normalizeUF_(first_(record, ["estado", "uf", "state"])),
     pais: "BR",
     origem: first_(record, ["origem", "fonte", "source", "source_page"]) || "google-sheets-users",
+    teacher_group: first_(record, [
+      "oficinas_cordel",
+      "oficina",
+      "turma",
+      "coorte",
+      "cohort",
+      "grupo",
+      "teacher_group",
+    ]),
     checkin_user_id: first_(record, [
       "user_id",
       "checkin_user_id",
@@ -212,18 +229,6 @@ function buildParticipantFromUser_(record) {
     ]) || email,
     origem_importacao: "google-sheets-users",
   };
-
-  setTextIfKnown_(participant, "municipio", first_(record, ["municipio", "cidade", "city"]));
-  setTextIfKnown_(participant, "estado", normalizeUF_(first_(record, ["estado", "uf", "state"])));
-  setTextIfKnown_(participant, "teacher_group", first_(record, [
-    "oficinas_cordel",
-    "oficina",
-    "turma",
-    "coorte",
-    "cohort",
-    "grupo",
-    "teacher_group",
-  ]));
 
   setIfKnown_(participant, "oficina_cordel20", parseBoolean_(first_(record, [
     "estou_nas_oficinas_cordel_2_0",
@@ -260,9 +265,9 @@ function buildParticipantFromUser_(record) {
 function upsertParticipants_(participants) {
   if (!participants.length) return [];
 
-  var supabaseUrl = cleanUrl_(getRequiredProperty_(PROP_SUPABASE_URL, true));
-  var serviceRoleKey = getRequiredProperty_(PROP_SUPABASE_SERVICE_ROLE_KEY, true);
-  var selectColumns = [
+  var supabaseUrl = cleanUrl_(getRequiredProperty_(PROP_SUPABASE_URL, true, INANNA_SUPABASE_URL));
+  var serviceRoleKey = getRequiredProperty_(PROP_SUPABASE_SERVICE_ROLE_KEY, true, INANNA_SUPABASE_SERVICE_ROLE_KEY);
+  var url = supabaseUrl + "/rest/v1/participantes?on_conflict=email&select=" + encodeURIComponent([
     "id",
     "nome",
     "email",
@@ -279,37 +284,27 @@ function upsertParticipants_(participants) {
     "identificacao_racial",
     "faixa_etaria",
     "perfil_completo",
-  ].join(",");
-  var inserted = [];
-  var batchSize = 100;
+  ].join(","));
 
-  for (var index = 0; index < participants.length; index += batchSize) {
-    var batch = participants.slice(index, index + batchSize);
-    var url = supabaseUrl + "/rest/v1/participantes?on_conflict=email&select=" + encodeURIComponent(selectColumns);
-    var response = UrlFetchApp.fetch(url, {
-      method: "post",
-      contentType: "application/json",
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: "Bearer " + serviceRoleKey,
-        Prefer: "resolution=merge-duplicates,return=representation",
-      },
-      payload: JSON.stringify(batch),
-      muteHttpExceptions: true,
-    });
+  var response = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: "Bearer " + serviceRoleKey,
+      Prefer: "resolution=merge-duplicates,return=representation",
+    },
+    payload: JSON.stringify(participants),
+    muteHttpExceptions: true,
+  });
 
-    var status = response.getResponseCode();
-    var body = response.getContentText();
-    if (status < 200 || status >= 300) {
-      throw new Error("Supabase " + status + ": " + body);
-    }
-
-    if (body) {
-      inserted = inserted.concat(JSON.parse(body));
-    }
+  var status = response.getResponseCode();
+  var body = response.getContentText();
+  if (status < 200 || status >= 300) {
+    throw new Error("Supabase " + status + ": " + body);
   }
 
-  return inserted;
+  return body ? JSON.parse(body) : [];
 }
 
 function toPublicParticipant_(participant, rowNumber) {
@@ -370,11 +365,6 @@ function first_(record, aliases) {
 function setIfKnown_(target, key, value) {
   if (value === null || typeof value === "undefined" || value === "") return;
   target[key] = value;
-}
-
-function setTextIfKnown_(target, key, value) {
-  var text = String(value || "").trim();
-  if (text) target[key] = text;
 }
 
 function parseBoolean_(value) {
@@ -448,8 +438,8 @@ function cleanUrl_(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
-function getRequiredProperty_(key, required) {
-  var value = String(PropertiesService.getScriptProperties().getProperty(key) || "").trim();
+function getRequiredProperty_(key, required, defaultValue) {
+  var value = String(PropertiesService.getScriptProperties().getProperty(key) || defaultValue || "").trim();
   if (required && !value) throw new Error("Propriedade obrigatoria ausente: " + key);
   return value;
 }
