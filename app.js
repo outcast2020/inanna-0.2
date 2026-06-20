@@ -8,6 +8,10 @@
 //  O ciclo se repete até completar 4 versos (quadra).
 // =====================================================================
 
+// Initialize Vercel Web Analytics
+import { inject } from '@vercel/analytics';
+inject();
+
 const $ = (id) => document.getElementById(id);
 
 // ── UI refs ──────────────────────────────────────────────────────────
