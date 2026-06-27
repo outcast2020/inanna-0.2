@@ -1,5 +1,7 @@
 // VALORES PADRÃO (Fallback caso não estejam salvos no PropertiesService)
-var INANNA_USERS_SPREADSHEET_ID = "130CvfT6mwv0gzYQgmrylg4Q0T5xRI918dms8A4yzqO8";
+// Nao commitar o ID real: preencha no editor do Apps Script (copia privada) ou
+// defina a Script Property INANNA_USERS_SPREADSHEET_ID. Vazio = usa a planilha vinculada.
+var INANNA_USERS_SPREADSHEET_ID = "";
 var INANNA_USERS_SHEET_NAME = "USERS";
 var INANNA_SUPABASE_URL = "https://ifhagjcarefdkcmjvknf.supabase.co";
 var INANNA_SUPABASE_SERVICE_ROLE_KEY = "";
@@ -21,18 +23,25 @@ function doGet(e) {
     if (!isAuthorized_(params)) {
       payload = { ok: false, status: "error", error: "unauthorized" };
     } else if (action === "first_access_lookup") {
-      payload = lookupAndSyncFirstAccess_(params.email);
+      var emailKey = normalizeEmail_(params.email);
+      // Per-email trava enumeracao; global e backstop generoso contra flood (token e publico).
+      if (!enforceRateLimit_("email_" + emailKey, 5, 60) || !enforceRateLimit_("global", 600, 60)) {
+        payload = { ok: false, status: "error", error: "rate_limited" };
+      } else {
+        payload = lookupAndSyncFirstAccess_(params.email);
+      }
     } else if (action === "health") {
       payload = healthCheck_();
     } else {
       payload = { ok: false, status: "error", error: "unknown_action" };
     }
   } catch (error) {
+    // Nao vaze detalhe interno (URL/chaves do Supabase podem aparecer na mensagem).
+    Logger.log("first_access_lookup_error: " + (error && error.stack ? error.stack : error));
     payload = {
       ok: false,
       status: "error",
       error: "first_access_lookup_error",
-      message: String(error && error.message ? error.message : error),
     };
   }
 
@@ -40,12 +49,14 @@ function doGet(e) {
 }
 
 function configurarInannaPrimeiroAcesso() {
-  PropertiesService.getScriptProperties().setProperties({
-    INANNA_USERS_SPREADSHEET_ID: INANNA_USERS_SPREADSHEET_ID,
-    INANNA_USERS_SHEET_NAME: INANNA_USERS_SHEET_NAME,
-    INANNA_SUPABASE_URL: INANNA_SUPABASE_URL,
-    INANNA_SUPABASE_SERVICE_ROLE_KEY: INANNA_SUPABASE_SERVICE_ROLE_KEY,
-  }, false);
+  var props = PropertiesService.getScriptProperties();
+  var toSet = {};
+  // Grava apenas valores nao-vazios — nao sobrescreve com "" o que ja foi definido na UI.
+  if (INANNA_USERS_SPREADSHEET_ID) toSet.INANNA_USERS_SPREADSHEET_ID = INANNA_USERS_SPREADSHEET_ID;
+  if (INANNA_USERS_SHEET_NAME) toSet.INANNA_USERS_SHEET_NAME = INANNA_USERS_SHEET_NAME;
+  if (INANNA_SUPABASE_URL) toSet.INANNA_SUPABASE_URL = INANNA_SUPABASE_URL;
+  if (INANNA_SUPABASE_SERVICE_ROLE_KEY) toSet.INANNA_SUPABASE_SERVICE_ROLE_KEY = INANNA_SUPABASE_SERVICE_ROLE_KEY;
+  if (Object.keys(toSet).length) props.setProperties(toSet, false);
   return healthCheck_();
 }
 
@@ -127,12 +138,12 @@ function lookupAndSyncFirstAccess_(emailInput) {
 
 function healthCheck_() {
   var sheet = getUsersSheet_();
+  // Nao retornar spreadsheetId/sheetName: evita expor o ID da planilha privada USERS.
   return {
     ok: true,
     status: "ok",
-    spreadsheetId: sheet.getParent().getId(),
-    sheetName: sheet.getName(),
     lastRow: sheet.getLastRow(),
+    hasSpreadsheet: !!sheet.getParent().getId(),
     hasSupabaseUrl: !!getRequiredProperty_(PROP_SUPABASE_URL, false, INANNA_SUPABASE_URL),
     hasServiceRoleKey: !!getRequiredProperty_(PROP_SUPABASE_SERVICE_ROLE_KEY, false, INANNA_SUPABASE_SERVICE_ROLE_KEY),
     tokenRequired: !!getRequiredProperty_(PROP_LOOKUP_TOKEN, false),
@@ -446,8 +457,34 @@ function getRequiredProperty_(key, required, defaultValue) {
 
 function isAuthorized_(params) {
   var expected = getRequiredProperty_(PROP_LOOKUP_TOKEN, false);
-  if (!expected) return true;
-  return String(params.token || params.access_token || "").trim() === expected;
+  // Fail-closed: sem token configurado em Script Properties, o endpoint nega tudo.
+  // (Versao anterior retornava true aqui — endpoint publico aberto. Ver README.)
+  if (!expected) return false;
+  var provided = String(params.token || params.access_token || "").trim();
+  return constantTimeEquals_(provided, expected);
+}
+
+// Comparacao em tempo (quase) constante para reduzir vazamento por timing.
+function constantTimeEquals_(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+// Throttle best-effort via CacheService (Apps Script nao oferece contador atomico
+// nem IP do cliente; o limite por e-mail trava enumeracao com o token publico).
+function enforceRateLimit_(bucketKey, maxHits, windowSeconds) {
+  var cache = CacheService.getScriptCache();
+  var key = "rl_" + bucketKey;
+  var current = Number(cache.get(key) || 0);
+  if (current >= maxHits) return false;
+  cache.put(key, String(current + 1), windowSeconds);
+  return true;
 }
 
 function sanitizeCallback_(callback) {

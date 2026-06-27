@@ -277,14 +277,16 @@ O script exige `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em ambiente local ou
 Use `scripts/google-apps-script/inanna-first-access.gs` no Apps Script vinculado a planilha principal do laboratorio. Configure as propriedades do script:
 
 ```text
-INANNA_SUPABASE_URL=https://ifhagjcarefdkcmjvknf.supabase.co
+INANNA_SUPABASE_URL=<url-do-projeto-supabase>
 INANNA_SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-INANNA_USERS_SPREADSHEET_ID=130CvfT6mwv0gzYQgmrylg4Q0T5xRI918dms8A4yzqO8
+INANNA_USERS_SPREADSHEET_ID=<id-da-planilha-USERS>
 INANNA_USERS_SHEET_NAME=USERS
-INANNA_FIRST_ACCESS_LOOKUP_TOKEN=<opcional>
+INANNA_FIRST_ACCESS_LOOKUP_TOKEN=<obrigatorio>
 ```
 
-Depois execute `configurarInannaPrimeiroAcesso`, teste `testarPrimeiroAcessoCeleste`, implante como Web App executando como o proprietario e com acesso "Qualquer pessoa", e cadastre a URL `/exec` na Vercel como `VITE_INANNA_FIRST_ACCESS_LOOKUP_URL`. Se o token opcional foi definido no Apps Script, cadastre o mesmo valor em `VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN`.
+> **Segurança:** o endpoint agora é *fail-closed* — sem `INANNA_FIRST_ACCESS_LOOKUP_TOKEN` configurado, toda requisição é negada (`unauthorized`). O token também tem rate limit por e-mail. Não publique o ID da planilha `USERS` nem a service role no repositório.
+
+Defina o `INANNA_USERS_SPREADSHEET_ID` direto em Script Properties (não no código). Depois execute `configurarInannaPrimeiroAcesso`, teste `testarPrimeiroAcessoCeleste`, implante como Web App executando como o proprietario e com acesso "Qualquer pessoa", e cadastre a URL `/exec` na Vercel como `VITE_INANNA_FIRST_ACCESS_LOOKUP_URL`. Cadastre o **mesmo** valor do token em `VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN` (obrigatório, senão o primeiro acesso para de funcionar).
 
 ## Deploy Vercel
 

@@ -11,6 +11,9 @@ not-commit-*.txt
 not-commit-CLOUDFLARE_API_TOKEN*
 inanna-level2-agent/not-commit-*.txt
 
+# Apps Script: URL /exec implantada (vai para o frontend via env, nao para o repo)
+scripts/google-apps-script/webApp.txt
+
 # Vercel / build output
 node_modules/
 .vercel/
