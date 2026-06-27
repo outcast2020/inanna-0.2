@@ -1187,8 +1187,65 @@ function createDefaultPlayerProgress() {
     schemesUsed: emptySchemesUsed(),
     totalChallengeQuadras: 0,
     bestScore: 0,
+    scoreHistory: [],
     lastUpdatedAt: new Date().toISOString()
   };
+}
+
+const SCORE_HISTORY_LIMIT = 20;
+
+// Normaliza um registro de sessão para o histórico longitudinal (medir trajetória,
+// não só acerto — analise-inanna.md §55-60). Guarda total + dimensões qualitativas.
+function buildScoreHistoryEntry(scoreBreakdown) {
+  const rhyme = scoreBreakdown.rhyme || {};
+  return {
+    total: Number(scoreBreakdown.total || 0),
+    rima: Number(rhyme.pairScoreTotal || 0) + Number(rhyme.schemeBonus || 0),
+    forma: Number(scoreBreakdown.structure?.points || 0),
+    criatividade: Number(scoreBreakdown.creativity?.bonus || 0)
+      + Number(scoreBreakdown.originality?.bonus || 0)
+      + Number(scoreBreakdown.independence?.bonus || 0),
+    at: new Date().toISOString()
+  };
+}
+
+// Mede a curva de evolução (média móvel) em vez de só limiares absolutos.
+function computeProgressTrajectory(progress) {
+  const history = Array.isArray(progress?.scoreHistory) ? progress.scoreHistory : [];
+  if (history.length < 3) return null;
+  const latest = history[history.length - 1];
+  const recentPrev = history.slice(0, -1).slice(-5);
+  if (!recentPrev.length) return null;
+  const avg = (arr, key) => arr.reduce((s, e) => s + Number(e[key] || 0), 0) / arr.length;
+  const delta = Number(latest.total || 0) - avg(recentPrev, "total");
+  let bestDim = null;
+  let bestGain = -Infinity;
+  ["rima", "forma", "criatividade"].forEach((d) => {
+    const gain = Number(latest[d] || 0) - avg(recentPrev, d);
+    if (gain > bestGain) { bestGain = gain; bestDim = d; }
+  });
+  const trend = delta >= 1 ? "subindo" : delta <= -1 ? "ajustando" : "estavel";
+  return { trend, delta, bestDim, bestGain, latest: Number(latest.total || 0), count: history.length };
+}
+
+// Recorde pessoal / "você está melhorando" — enquadramento longitudinal (§57, §60).
+function renderTrajectoryHTML(progressUpdate) {
+  const progress = progressUpdate?.progress;
+  const traj = computeProgressTrajectory(progress);
+  if (!progress || !traj) return "";
+  const dimLabel = traj.bestGain > 0 && traj.bestDim ? traj.bestDim : "";
+  const isRecord = traj.latest >= Number(progress.bestScore || 0) && Number(progress.totalChallengeQuadras || 0) > 1;
+  let msg;
+  if (isRecord) {
+    msg = `🏆 Recorde pessoal! ${traj.latest} pontos — superou sua melhor marca.`;
+  } else if (traj.trend === "subindo") {
+    msg = `📈 Você está melhorando${dimLabel ? " em " + dimLabel : ""} — ${Math.round(traj.delta)} acima da sua média recente.`;
+  } else if (traj.trend === "ajustando") {
+    msg = "🎯 Essa ficou abaixo da sua média — siga tentando, sua curva sobe com o tempo.";
+  } else {
+    msg = `📊 Mantendo o nível${dimLabel ? ", com ganho em " + dimLabel : ""}.`;
+  }
+  return `<p class="verse-hint" style="margin-top:6px;">${msg}</p>`;
 }
 
 function hydratePlayerProgress(rawProgress = {}) {
@@ -1213,6 +1270,9 @@ function hydratePlayerProgress(rawProgress = {}) {
     },
     totalChallengeQuadras: Math.max(0, Number(rawProgress.totalChallengeQuadras || 0) || 0),
     bestScore: Math.max(0, Number(rawProgress.bestScore || 0) || 0),
+    scoreHistory: Array.isArray(rawProgress.scoreHistory)
+      ? rawProgress.scoreHistory.filter((entry) => entry && typeof entry === "object").slice(-SCORE_HISTORY_LIMIT)
+      : [],
     lastUpdatedAt: rawProgress.lastUpdatedAt || fallback.lastUpdatedAt
   };
   if (isAdminEmail()) {
@@ -1340,6 +1400,9 @@ function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
     progress.uniquePerfectQuadraHashes.push(quadraHash);
   }
   progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length;
+
+  // Trajetória longitudinal: registra a sessão antes de derivar a tendência.
+  progress.scoreHistory = [...(progress.scoreHistory || []), buildScoreHistoryEntry(scoreBreakdown)].slice(-SCORE_HISTORY_LIMIT);
 
   const unlockByPerfectQuadras = progress.perfectQuadrasCount >= 5;
   const unlockByMastery = Object.values(progress.mastery).every(Boolean);
@@ -5902,7 +5965,8 @@ function finishPoem() {
     ui.poemSection.appendChild(feedbackEl);
   }
   feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge)
-    + (state.modeChallenge ? renderMasteryProgressHTML(progressUpdate) : "");
+    + (state.modeChallenge ? renderMasteryProgressHTML(progressUpdate) : "")
+    + (state.modeChallenge ? renderTrajectoryHTML(progressUpdate) : "");
 
   ui.poemSection.classList.add("visible");
   updateRoundStatus();
