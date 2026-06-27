@@ -365,9 +365,35 @@
     if (!participantId) throw new Error("Participante nao identificado para enviar a quadra.");
     if (!row.verso) throw new Error("Quadra vazia.");
 
-    const { error } = await scopedClient({ participantId }).from("quadras").insert(row);
+    // select("id") de volta para permitir mint do folheto (best-effort: se a RLS
+    // não devolver a linha, quadraId fica vazio e o mint é apenas pulado).
+    const { data, error } = await scopedClient({ participantId })
+      .from("quadras").insert(row).select("id").maybeSingle();
     if (error) throw error;
-    return { status: "success" };
+    return { status: "success", quadraId: data?.id || "" };
+  }
+
+  // Acervo de folhetos (NFT-simulação centralizada). Mint idempotente via RPC que
+  // lê a pontuação JÁ gravada na quadra (anti-cheat). Ver migration 010.
+  async function mintFolheto(payload = {}) {
+    const participantId = normalizeUuid(payload.participantId);
+    const quadraId = normalizeUuid(payload.quadraId);
+    if (!participantId || !quadraId) return { ok: false, error: "mint_invalid_args" };
+    const { data, error } = await getBaseClient()
+      .rpc("mintar_folheto_de_quadra", { p_quadra_id: quadraId, p_participante_id: participantId })
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return { ok: false, error: "mint_not_created" };
+    return { ok: true, folheto: data };
+  }
+
+  async function listFolhetos(payload = {}) {
+    const participantId = normalizeUuid(payload.participantId);
+    if (!participantId) return { ok: false, folhetos: [] };
+    const { data, error } = await getBaseClient()
+      .rpc("listar_acervo_folhetos", { p_participante_id: participantId });
+    if (error) throw error;
+    return { ok: true, folhetos: Array.isArray(data) ? data : [] };
   }
 
   function mapViewerReactions(rows) {
@@ -737,6 +763,8 @@
     lookupParticipantByEmail,
     completeParticipantProfile,
     submitQuadra,
+    mintFolheto,
+    listFolhetos,
     loadPlacar,
     reactPlacar,
     getUserDashboard,

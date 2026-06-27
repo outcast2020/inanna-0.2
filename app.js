@@ -431,6 +431,9 @@ const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONF
 // só muda quando habilitado explicitamente. Convidados jogam local, sem persistir.
 const INANNA_GUEST_MODE_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.guestModeEnabled);
 const GUEST_FREE_QUADRAS = 2;
+// Acervo de folhetos (NFT-simulação centralizada). Default OFF — registra/mostra o
+// colecionável só quando habilitado (analise-inanna.md §84-109; migration 010).
+const INANNA_NFT_MINTING_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.nftMintingEnabled);
 const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
 const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
 const INANNA_ADMIN_EMAILS = new Set([
@@ -3913,6 +3916,107 @@ function maybePromptGuestRegister() {
     "primary",
     { duration: 8000 }
   );
+}
+
+// ── Acervo de folhetos (NFT-simulação) ────────────────────────────────
+function escapeSvgText(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const FOLHETO_RARITY_STYLE = {
+  dourada: { accent: "#f2c14e", label: "✦ Dourada", border: "#f2c14e" },
+  rara: { accent: "#cfd8e3", label: "◆ Rara", border: "#cfd8e3" },
+  comum: { accent: "#9a8c7a", label: "• Comum", border: "#6b5d4d" }
+};
+
+// Folheto colecionável como SVG (xilogravura simbólica + quadra). Barato e portável;
+// o card é a "carta" do acervo, raridade ligada à qualidade (analise §101-103).
+function buildFolhetoSVG(folheto = {}, autor = "") {
+  const meta = folheto.metadata_json || {};
+  const rar = FOLHETO_RARITY_STYLE[folheto.raridade] || FOLHETO_RARITY_STYLE.comum;
+  const titulo = folheto.titulo || meta.name || "Folheto de Cordel";
+  const versos = String(meta.description || "").split(/\r?\n/).filter(Boolean).slice(0, 6);
+  const hashShort = String(folheto.content_hash || "").slice(0, 10);
+  const data = folheto.minted_at ? new Date(folheto.minted_at).toLocaleDateString("pt-BR") : "";
+  const verseLines = versos.map((v, i) => {
+    const line = v.length > 38 ? v.slice(0, 37) + "…" : v;
+    return `<text x="30" y="${182 + i * 30}" fill="#f4ecdf" font-size="16" font-family="Georgia, serif">${escapeSvgText(line)}</text>`;
+  }).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 520" width="360" height="520" role="img" aria-label="Folheto ${escapeSvgText(titulo)}">
+  <rect x="6" y="6" width="348" height="508" rx="14" fill="#1c160f" stroke="${rar.border}" stroke-width="3"/>
+  <rect x="16" y="16" width="328" height="488" rx="10" fill="none" stroke="${rar.accent}" stroke-width="1" opacity="0.5"/>
+  <text x="30" y="50" fill="${rar.accent}" font-size="13" font-family="Georgia, serif" letter-spacing="2">CORDEL 2.0 · INANNA</text>
+  <text x="30" y="84" fill="#f4ecdf" font-size="22" font-family="Georgia, serif" font-weight="bold">${escapeSvgText(titulo.slice(0, 26))}</text>
+  <line x1="30" y1="100" x2="330" y2="100" stroke="${rar.accent}" stroke-width="1" opacity="0.6"/>
+  <text x="30" y="132" fill="${rar.accent}" font-size="13" font-family="Georgia, serif">${escapeSvgText(rar.label)} · ${Number(folheto.pontos || 0)} pts · ${escapeSvgText(folheto.esquema_rima || "—")}</text>
+  ${verseLines}
+  <line x1="30" y1="430" x2="330" y2="430" stroke="${rar.accent}" stroke-width="1" opacity="0.4"/>
+  <text x="30" y="458" fill="#f4ecdf" font-size="15" font-family="Georgia, serif">— ${escapeSvgText((autor || "Poeta Cordelista").slice(0, 24))}</text>
+  <text x="30" y="482" fill="#9a8c7a" font-size="11" font-family="monospace">${escapeSvgText(hashShort)} · ${escapeSvgText(data)}</text>
+</svg>`;
+}
+
+function showFolhetoOverlay(innerHtml, headline) {
+  let overlay = document.getElementById("folhetoOverlay");
+  if (overlay) overlay.remove();
+  overlay = document.createElement("div");
+  overlay.id = "folhetoOverlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(0,0,0,0.78);padding:20px;overflow:auto;";
+  overlay.innerHTML =
+    `<h3 style="color:#f4ecdf;font-family:Georgia,serif;margin:0;text-align:center;">${escapeSvgText(headline || "Meu acervo de folhetos")}</h3>`
+    + `<div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:100%;">${innerHtml}</div>`
+    + `<button type="button" class="btn btn-secondary" id="folhetoOverlayClose">Fechar</button>`;
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  const closeBtn = document.getElementById("folhetoOverlayClose");
+  if (closeBtn) closeBtn.addEventListener("click", () => overlay.remove());
+}
+
+function showFolhetoCard(folheto) {
+  const autor = getPlayerDisplayName ? getPlayerDisplayName() : state.name;
+  showFolhetoOverlay(buildFolhetoSVG(folheto, autor), "🎉 Folheto mintado para seu acervo!");
+}
+
+async function maybeMintFolheto(quadraId) {
+  if (!INANNA_NFT_MINTING_ENABLED) return;
+  if (!quadraId || !state.participantId || state.isGuest) return;
+  try {
+    const res = await window.InannaSupabaseBridge?.mintFolheto?.({ quadraId, participantId: state.participantId });
+    if (res?.ok && res.folheto) showFolhetoCard(res.folheto);
+  } catch (err) {
+    console.debug("mint de folheto falhou (nao bloqueia)", err);
+  }
+}
+
+async function openAcervoFolhetos() {
+  if (!state.participantId) {
+    showToast("Faça o check-in para ver seu acervo de folhetos.", "muted", { duration: 4000 });
+    return;
+  }
+  try {
+    const res = await window.InannaSupabaseBridge?.listFolhetos?.({ participantId: state.participantId });
+    const folhetos = res?.folhetos || [];
+    if (!folhetos.length) {
+      showToast("Seu acervo está vazio — feche uma quadra para ganhar seu primeiro folheto.", "muted", { duration: 5000 });
+      return;
+    }
+    const autor = getPlayerDisplayName ? getPlayerDisplayName() : state.name;
+    const cards = folhetos.map((f) => buildFolhetoSVG(f, autor)).join("");
+    showFolhetoOverlay(cards, `Meu acervo · ${folhetos.length} folheto(s)`);
+  } catch (err) {
+    console.debug("acervo indisponivel", err);
+    showToast("Não consegui abrir o acervo agora.", "muted", { duration: 4000 });
+  }
+}
+
+// Ponto de entrada do acervo (botão "Meu acervo" pode chamar isto). Exposto p/
+// permitir um gatilho de UI sem acoplar a um DOM específico ainda.
+if (typeof window !== "undefined") {
+  window.inannaAbrirAcervo = openAcervoFolhetos;
 }
 
 function setProfileStatus(message = "", color = "var(--muted)") {
@@ -7552,11 +7656,12 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
 
   try {
     assertSupabaseBackendConfigured();
-    await window.InannaSupabaseBridge.submitQuadra(payload);
+    const submitResult = await window.InannaSupabaseBridge.submitQuadra(payload);
     ui.submitResponse.style.color = "var(--accent)";
     ui.submitResponse.textContent = "✅ Quadra enviada para o Supabase!";
     ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
     await loadPlacar();
+    await maybeMintFolheto(submitResult?.quadraId);
   } catch (err) {
     console.error(err);
     ui.submitResponse.style.color = "var(--danger)";
