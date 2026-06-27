@@ -11,8 +11,10 @@ not-commit-*.txt
 not-commit-CLOUDFLARE_API_TOKEN*
 inanna-level2-agent/not-commit-*.txt
 
-# Apps Script: URL /exec implantada (vai para o frontend via env, nao para o repo)
+# Apps Script: mantido só no editor do Apps Script (evita vazar ID da planilha
+# USERS e service role). URL /exec vai para o frontend via env, nao para o repo.
 scripts/google-apps-script/webApp.txt
+scripts/google-apps-script/*.gs
 
 # Vercel / build output
 node_modules/

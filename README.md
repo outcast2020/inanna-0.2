@@ -33,7 +33,7 @@ Inanna e um app educativo de quadras em cordel com explicacao pedagogica de prev
 - `supabase/migrations/006_player_progress.sql` prepara a persistencia Supabase da Trilha de Maestria da Quadra com RLS fechado por padrao.
 - `supabase/migrations/007_inanna_level2_peleja.sql` cria as tabelas do Nivel 2: jogadores, sessoes, rounds, votos e lexico local futuro.
 - `scripts/import-legacy-quadras.mjs` importa check-in e quadras historicas do Google Sheets de forma idempotente.
-- `scripts/google-apps-script/inanna-first-access.gs` e o codigo para colar no Apps Script da planilha principal do laboratorio; ele sincroniza a aba `USERS` para `public.participantes` no primeiro acesso sem expor a planilha por link publico.
+- O Web App de primeiro acesso (Apps Script da planilha principal) sincroniza a aba `USERS_checkin` para `public.participantes` sem expor a planilha por link publico. **Por seguranca, o codigo desse Apps Script e mantido apenas no editor do Apps Script — nao e versionado neste repo** (evita vazar o ID da planilha e a service role).
 - `supabase/functions/inanna-public-config` fornece configuracao publica em runtime para o navegador quando a build da Vercel nao substitui `VITE_*`.
 - `.env.example` lista apenas variaveis publicas `VITE_*` para frontend.
 - IA das sextilhas e envio por e-mail ficam desligados nesta fase (`VITE_INANNA_AI_ENABLED=false`, `VITE_INANNA_SOCIAL_EMAIL_ENABLED=false`).
@@ -274,7 +274,7 @@ O script exige `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em ambiente local ou
 
 ## Primeiro acesso pela planilha USERS
 
-Use `scripts/google-apps-script/inanna-first-access.gs` no Apps Script vinculado a planilha principal do laboratorio. Configure as propriedades do script:
+O codigo do Apps Script de primeiro acesso e mantido **somente no editor do Apps Script** (nao versionado neste repo, por seguranca). No projeto do Apps Script vinculado a planilha principal, configure as propriedades do script:
 
 ```text
 INANNA_SUPABASE_URL=<url-do-projeto-supabase>
