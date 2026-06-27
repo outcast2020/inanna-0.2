@@ -4077,14 +4077,8 @@ async function saveProfileFromControls(controls, options = {}) {
     setStatus("Marque se já usou algum chatbot de IA.", "var(--primary)");
     return;
   }
-  if (!genero) {
-    setStatus("Selecione uma opção de gênero.", "var(--primary)");
-    return;
-  }
-  if (!identificacaoRacial) {
-    setStatus("Selecione uma opção de identificação racial.", "var(--primary)");
-    return;
-  }
+  // Sensíveis (gênero, identificação racial) são OPCIONAIS — nunca bloqueiam o
+  // perfil (LGPD; plano-coleta-unificada.md §73). Núcleo = faixa + município.
   if (!faixaEtaria) {
     setStatus("Selecione uma faixa etária.", "var(--primary)");
     return;

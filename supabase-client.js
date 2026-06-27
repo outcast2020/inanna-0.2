@@ -291,6 +291,10 @@
         p_municipio: String(payload.municipio || "").trim(),
         p_estado: String(payload.estado || "").trim(),
         p_pais: String(payload.pais || "BR").trim(),
+        // Contrato de perfil compartilhado v1 (perfil_versao=1). Iza/Arara reusam
+        // a mesma RPC mudando só p_coletado_via.
+        p_coletado_via: String(payload.coletadoVia || "inanna").trim(),
+        p_consent_perfil_versao: String(payload.consentPerfilVersao || "perfil_v1").trim(),
       })
       .maybeSingle();
 
