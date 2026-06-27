@@ -640,14 +640,23 @@ Retorne somente JSON válido com exatamente este formato:
 Cada item de "verses" deve ser um verso único, sem quebra de linha interna. Preserve oralidade popular, sem humilhar a pessoa jogadora.`;
 }
 
-async function runWorkersAi(env: Env, prompt: string, model?: string): Promise<string> {
+async function runWorkersAi(
+	env: Env,
+	prompt: string,
+	model?: string,
+	options: { temperature?: number; seed?: number } = {},
+): Promise<string> {
 	const selected = model || env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL;
-	const result = await env.AI.run(selected, {
+	const input: Record<string, unknown> = {
 		messages: [
 			{ role: "system", content: "Responda em português brasileiro. Se o usuário pedir JSON, retorne somente JSON válido." },
 			{ role: "user", content: prompt },
 		],
-	});
+	};
+	// Determinismo só quando pedido (julgamento). Geração mantém criatividade.
+	if (typeof options.temperature === "number") input.temperature = options.temperature;
+	if (typeof options.seed === "number") input.seed = options.seed;
+	const result = await env.AI.run(selected, input);
 	return extractTextFromAi(result);
 }
 
@@ -875,7 +884,12 @@ async function evaluateRubric(env: Env, input: {
 }): Promise<AiRubric> {
 	const prompt = buildJudgePrompt(input);
 	try {
-		const text = await runWorkersAi(env, prompt, env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL);
+		// Rubrica determinística: mesma quadra -> mesma nota (analise-inanna.md §63-64),
+		// pré-requisito para medir PROGRESSÃO sem ruído. temperatura 0 + seed fixa.
+		const text = await runWorkersAi(env, prompt, env.DEFAULT_JUDGE_MODEL || FALLBACK_MODEL, {
+			temperature: 0,
+			seed: 42,
+		});
 		const parsed = extractJsonObject(text);
 		if (parsed) return normalizeAiRubric(parsed);
 	} catch (error) {

@@ -26,6 +26,7 @@ const ui = {
 
   // app script globals
   btnStart: $("btnStart"),
+  btnGuestStart: $("btnGuestStart"),
   playerName: $("playerName"),
   playerEmail: $("playerEmail"),
   playerType: $("playerType"),
@@ -426,6 +427,13 @@ const INANNA_LEVEL2_AUDIO_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONF
 const INANNA_LEVEL2_SOCIAL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2SocialEnabled);
 const INANNA_TURNSTILE_SITE_KEY = readStringConfigValue(window.INANNA_APP_CONFIG?.turnstileSiteKey);
 const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
+// Modo "experimentar sem cadastro" (analise-inanna.md §11). Default OFF: produção
+// só muda quando habilitado explicitamente. Convidados jogam local, sem persistir.
+const INANNA_GUEST_MODE_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.guestModeEnabled);
+const GUEST_FREE_QUADRAS = 2;
+// Acervo de folhetos (NFT-simulação centralizada). Default OFF — registra/mostra o
+// colecionável só quando habilitado (analise-inanna.md §84-109; migration 010).
+const INANNA_NFT_MINTING_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.nftMintingEnabled);
 const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
 const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
 const INANNA_ADMIN_EMAILS = new Set([
@@ -1182,8 +1190,65 @@ function createDefaultPlayerProgress() {
     schemesUsed: emptySchemesUsed(),
     totalChallengeQuadras: 0,
     bestScore: 0,
+    scoreHistory: [],
     lastUpdatedAt: new Date().toISOString()
   };
+}
+
+const SCORE_HISTORY_LIMIT = 20;
+
+// Normaliza um registro de sessão para o histórico longitudinal (medir trajetória,
+// não só acerto — analise-inanna.md §55-60). Guarda total + dimensões qualitativas.
+function buildScoreHistoryEntry(scoreBreakdown) {
+  const rhyme = scoreBreakdown.rhyme || {};
+  return {
+    total: Number(scoreBreakdown.total || 0),
+    rima: Number(rhyme.pairScoreTotal || 0) + Number(rhyme.schemeBonus || 0),
+    forma: Number(scoreBreakdown.structure?.points || 0),
+    criatividade: Number(scoreBreakdown.creativity?.bonus || 0)
+      + Number(scoreBreakdown.originality?.bonus || 0)
+      + Number(scoreBreakdown.independence?.bonus || 0),
+    at: new Date().toISOString()
+  };
+}
+
+// Mede a curva de evolução (média móvel) em vez de só limiares absolutos.
+function computeProgressTrajectory(progress) {
+  const history = Array.isArray(progress?.scoreHistory) ? progress.scoreHistory : [];
+  if (history.length < 3) return null;
+  const latest = history[history.length - 1];
+  const recentPrev = history.slice(0, -1).slice(-5);
+  if (!recentPrev.length) return null;
+  const avg = (arr, key) => arr.reduce((s, e) => s + Number(e[key] || 0), 0) / arr.length;
+  const delta = Number(latest.total || 0) - avg(recentPrev, "total");
+  let bestDim = null;
+  let bestGain = -Infinity;
+  ["rima", "forma", "criatividade"].forEach((d) => {
+    const gain = Number(latest[d] || 0) - avg(recentPrev, d);
+    if (gain > bestGain) { bestGain = gain; bestDim = d; }
+  });
+  const trend = delta >= 1 ? "subindo" : delta <= -1 ? "ajustando" : "estavel";
+  return { trend, delta, bestDim, bestGain, latest: Number(latest.total || 0), count: history.length };
+}
+
+// Recorde pessoal / "você está melhorando" — enquadramento longitudinal (§57, §60).
+function renderTrajectoryHTML(progressUpdate) {
+  const progress = progressUpdate?.progress;
+  const traj = computeProgressTrajectory(progress);
+  if (!progress || !traj) return "";
+  const dimLabel = traj.bestGain > 0 && traj.bestDim ? traj.bestDim : "";
+  const isRecord = traj.latest >= Number(progress.bestScore || 0) && Number(progress.totalChallengeQuadras || 0) > 1;
+  let msg;
+  if (isRecord) {
+    msg = `🏆 Recorde pessoal! ${traj.latest} pontos — superou sua melhor marca.`;
+  } else if (traj.trend === "subindo") {
+    msg = `📈 Você está melhorando${dimLabel ? " em " + dimLabel : ""} — ${Math.round(traj.delta)} acima da sua média recente.`;
+  } else if (traj.trend === "ajustando") {
+    msg = "🎯 Essa ficou abaixo da sua média — siga tentando, sua curva sobe com o tempo.";
+  } else {
+    msg = `📊 Mantendo o nível${dimLabel ? ", com ganho em " + dimLabel : ""}.`;
+  }
+  return `<p class="verse-hint" style="margin-top:6px;">${msg}</p>`;
 }
 
 function hydratePlayerProgress(rawProgress = {}) {
@@ -1208,6 +1273,9 @@ function hydratePlayerProgress(rawProgress = {}) {
     },
     totalChallengeQuadras: Math.max(0, Number(rawProgress.totalChallengeQuadras || 0) || 0),
     bestScore: Math.max(0, Number(rawProgress.bestScore || 0) || 0),
+    scoreHistory: Array.isArray(rawProgress.scoreHistory)
+      ? rawProgress.scoreHistory.filter((entry) => entry && typeof entry === "object").slice(-SCORE_HISTORY_LIMIT)
+      : [],
     lastUpdatedAt: rawProgress.lastUpdatedAt || fallback.lastUpdatedAt
   };
   if (isAdminEmail()) {
@@ -1335,6 +1403,9 @@ function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
     progress.uniquePerfectQuadraHashes.push(quadraHash);
   }
   progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length;
+
+  // Trajetória longitudinal: registra a sessão antes de derivar a tendência.
+  progress.scoreHistory = [...(progress.scoreHistory || []), buildScoreHistoryEntry(scoreBreakdown)].slice(-SCORE_HISTORY_LIMIT);
 
   const unlockByPerfectQuadras = progress.perfectQuadrasCount >= 5;
   const unlockByMastery = Object.values(progress.mastery).every(Boolean);
@@ -3792,6 +3863,162 @@ function needsProfileCompletion() {
   return state.checkinLookupStatus === "matched" && !state.profileComplete;
 }
 
+// Convite diferido e opcional ao perfil — depois da 1ª quadra fechada, nunca antes
+// do primeiro verso (analise-inanna.md §12; plano-coleta-unificada.md §4, §62).
+// Mostra no máximo uma vez por sessão e nunca bloqueia a experiência.
+function maybePromptDeferredProfile() {
+  if (state.deferredProfilePrompted) return;
+  if (!needsProfileCompletion()) return;
+  state.deferredProfilePrompted = true;
+  showToast(
+    "Boa! Respondendo um perfil rapidinho você entra no placar — e é uma vez só para todos os apps do Laboratório.",
+    "primary",
+    { duration: 6000 }
+  );
+}
+
+// Modo experimentar: jogar sem check-in. Identidade fica anônima ("visitante"),
+// nada é persistido no Supabase; após GUEST_FREE_QUADRAS sugere o cadastro.
+function startGuestSession() {
+  if (!INANNA_GUEST_MODE_ENABLED) return;
+  state.isGuest = true;
+  state.guestQuadraCount = 0;
+  state.deferredProfilePrompted = true; // não pedir perfil a quem nem se cadastrou
+  state.name = "Visitante";
+  state.email = "";
+  state.participantId = "";
+  state.checkinUserId = "";
+  state.checkinLookupStatus = "idle";
+  state.profileComplete = false;
+  state.playerData = {
+    nome: "Visitante",
+    email: "",
+    tipoAcesso: "Experimentar sem cadastro",
+    participantId: "",
+    checkinUserId: "",
+    guest: true
+  };
+  setStartHint("");
+  showTrackChooser();
+  showToast(
+    "Modo experimentar: jogue à vontade. Para salvar e entrar no placar, faça o check-in com seu e-mail depois.",
+    "muted",
+    { duration: 5000 }
+  );
+}
+
+function maybePromptGuestRegister() {
+  if (!state.isGuest) return;
+  state.guestQuadraCount = (state.guestQuadraCount || 0) + 1;
+  if (state.guestQuadraCount < GUEST_FREE_QUADRAS) return;
+  showToast(
+    "Curtiu? Faça o check-in com seu e-mail para salvar suas quadras, entrar no placar e desbloquear os próximos níveis.",
+    "primary",
+    { duration: 8000 }
+  );
+}
+
+// ── Acervo de folhetos (NFT-simulação) ────────────────────────────────
+function escapeSvgText(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const FOLHETO_RARITY_STYLE = {
+  dourada: { accent: "#f2c14e", label: "✦ Dourada", border: "#f2c14e" },
+  rara: { accent: "#cfd8e3", label: "◆ Rara", border: "#cfd8e3" },
+  comum: { accent: "#9a8c7a", label: "• Comum", border: "#6b5d4d" }
+};
+
+// Folheto colecionável como SVG (xilogravura simbólica + quadra). Barato e portável;
+// o card é a "carta" do acervo, raridade ligada à qualidade (analise §101-103).
+function buildFolhetoSVG(folheto = {}, autor = "") {
+  const meta = folheto.metadata_json || {};
+  const rar = FOLHETO_RARITY_STYLE[folheto.raridade] || FOLHETO_RARITY_STYLE.comum;
+  const titulo = folheto.titulo || meta.name || "Folheto de Cordel";
+  const versos = String(meta.description || "").split(/\r?\n/).filter(Boolean).slice(0, 6);
+  const hashShort = String(folheto.content_hash || "").slice(0, 10);
+  const data = folheto.minted_at ? new Date(folheto.minted_at).toLocaleDateString("pt-BR") : "";
+  const verseLines = versos.map((v, i) => {
+    const line = v.length > 38 ? v.slice(0, 37) + "…" : v;
+    return `<text x="30" y="${182 + i * 30}" fill="#f4ecdf" font-size="16" font-family="Georgia, serif">${escapeSvgText(line)}</text>`;
+  }).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 520" width="360" height="520" role="img" aria-label="Folheto ${escapeSvgText(titulo)}">
+  <rect x="6" y="6" width="348" height="508" rx="14" fill="#1c160f" stroke="${rar.border}" stroke-width="3"/>
+  <rect x="16" y="16" width="328" height="488" rx="10" fill="none" stroke="${rar.accent}" stroke-width="1" opacity="0.5"/>
+  <text x="30" y="50" fill="${rar.accent}" font-size="13" font-family="Georgia, serif" letter-spacing="2">CORDEL 2.0 · INANNA</text>
+  <text x="30" y="84" fill="#f4ecdf" font-size="22" font-family="Georgia, serif" font-weight="bold">${escapeSvgText(titulo.slice(0, 26))}</text>
+  <line x1="30" y1="100" x2="330" y2="100" stroke="${rar.accent}" stroke-width="1" opacity="0.6"/>
+  <text x="30" y="132" fill="${rar.accent}" font-size="13" font-family="Georgia, serif">${escapeSvgText(rar.label)} · ${Number(folheto.pontos || 0)} pts · ${escapeSvgText(folheto.esquema_rima || "—")}</text>
+  ${verseLines}
+  <line x1="30" y1="430" x2="330" y2="430" stroke="${rar.accent}" stroke-width="1" opacity="0.4"/>
+  <text x="30" y="458" fill="#f4ecdf" font-size="15" font-family="Georgia, serif">— ${escapeSvgText((autor || "Poeta Cordelista").slice(0, 24))}</text>
+  <text x="30" y="482" fill="#9a8c7a" font-size="11" font-family="monospace">${escapeSvgText(hashShort)} · ${escapeSvgText(data)}</text>
+</svg>`;
+}
+
+function showFolhetoOverlay(innerHtml, headline) {
+  let overlay = document.getElementById("folhetoOverlay");
+  if (overlay) overlay.remove();
+  overlay = document.createElement("div");
+  overlay.id = "folhetoOverlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(0,0,0,0.78);padding:20px;overflow:auto;";
+  overlay.innerHTML =
+    `<h3 style="color:#f4ecdf;font-family:Georgia,serif;margin:0;text-align:center;">${escapeSvgText(headline || "Meu acervo de folhetos")}</h3>`
+    + `<div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:100%;">${innerHtml}</div>`
+    + `<button type="button" class="btn btn-secondary" id="folhetoOverlayClose">Fechar</button>`;
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  const closeBtn = document.getElementById("folhetoOverlayClose");
+  if (closeBtn) closeBtn.addEventListener("click", () => overlay.remove());
+}
+
+function showFolhetoCard(folheto) {
+  const autor = getPlayerDisplayName ? getPlayerDisplayName() : state.name;
+  showFolhetoOverlay(buildFolhetoSVG(folheto, autor), "🎉 Folheto mintado para seu acervo!");
+}
+
+async function maybeMintFolheto(quadraId) {
+  if (!INANNA_NFT_MINTING_ENABLED) return;
+  if (!quadraId || !state.participantId || state.isGuest) return;
+  try {
+    const res = await window.InannaSupabaseBridge?.mintFolheto?.({ quadraId, participantId: state.participantId });
+    if (res?.ok && res.folheto) showFolhetoCard(res.folheto);
+  } catch (err) {
+    console.debug("mint de folheto falhou (nao bloqueia)", err);
+  }
+}
+
+async function openAcervoFolhetos() {
+  if (!state.participantId) {
+    showToast("Faça o check-in para ver seu acervo de folhetos.", "muted", { duration: 4000 });
+    return;
+  }
+  try {
+    const res = await window.InannaSupabaseBridge?.listFolhetos?.({ participantId: state.participantId });
+    const folhetos = res?.folhetos || [];
+    if (!folhetos.length) {
+      showToast("Seu acervo está vazio — feche uma quadra para ganhar seu primeiro folheto.", "muted", { duration: 5000 });
+      return;
+    }
+    const autor = getPlayerDisplayName ? getPlayerDisplayName() : state.name;
+    const cards = folhetos.map((f) => buildFolhetoSVG(f, autor)).join("");
+    showFolhetoOverlay(cards, `Meu acervo · ${folhetos.length} folheto(s)`);
+  } catch (err) {
+    console.debug("acervo indisponivel", err);
+    showToast("Não consegui abrir o acervo agora.", "muted", { duration: 4000 });
+  }
+}
+
+// Ponto de entrada do acervo (botão "Meu acervo" pode chamar isto). Exposto p/
+// permitir um gatilho de UI sem acoplar a um DOM específico ainda.
+if (typeof window !== "undefined") {
+  window.inannaAbrirAcervo = openAcervoFolhetos;
+}
+
 function setProfileStatus(message = "", color = "var(--muted)") {
   if (!ui.profileStatus) return;
   ui.profileStatus.textContent = message;
@@ -4017,14 +4244,8 @@ async function saveProfileFromControls(controls, options = {}) {
     setStatus("Marque se já usou algum chatbot de IA.", "var(--primary)");
     return;
   }
-  if (!genero) {
-    setStatus("Selecione uma opção de gênero.", "var(--primary)");
-    return;
-  }
-  if (!identificacaoRacial) {
-    setStatus("Selecione uma opção de identificação racial.", "var(--primary)");
-    return;
-  }
+  // Sensíveis (gênero, identificação racial) são OPCIONAIS — nunca bloqueiam o
+  // perfil (LGPD; plano-coleta-unificada.md §73). Núcleo = faixa + município.
   if (!faixaEtaria) {
     setStatus("Selecione uma faixa etária.", "var(--primary)");
     return;
@@ -4229,12 +4450,12 @@ function updateWelcomeIdentityUI() {
   }
 
   if (ui.btnStart) {
+    // Perfil NÃO bloqueia o início (diferido/opcional). Basta o check-in casado.
     ui.btnStart.disabled = !(
       state.checkinLookupStatus === "matched"
       && state.name
       && state.participantId
       && state.checkinUserId
-      && !needsProfileCompletion()
       && !state.profileSaving
     );
   }
@@ -4450,11 +4671,9 @@ function handleStartJourney() {
     return;
   }
 
-  if (needsProfileCompletion()) {
-    setStartHint("Complete o perfil rápido antes de começar.", "var(--primary)");
-    updateWelcomeIdentityUI();
-    return;
-  }
+  // Perfil é DIFERIDO e OPCIONAL: não bloqueia o início (analise-inanna.md §12,
+  // plano-coleta-unificada.md §4). Se incompleto, convidamos após a 1ª quadra.
+  state.deferProfilePrompt = needsProfileCompletion();
 
   setStartHint("");
   state.playerData = {
@@ -5834,6 +6053,9 @@ function finishPoem() {
     state.points = scoreBreakdown.total;
     ui.points.textContent = String(state.points);
     progressUpdate = updatePlayerProgressAfterChallengeQuadra(scoreBreakdown);
+    // Valor primeiro, perfil depois: convida ao perfil após a quadra fechada.
+    maybePromptDeferredProfile();
+    maybePromptGuestRegister();
   } else {
     state.points = 0;
     ui.points.textContent = "0";
@@ -5847,7 +6069,8 @@ function finishPoem() {
     ui.poemSection.appendChild(feedbackEl);
   }
   feedbackEl.innerHTML = rhymeFeedbackHTML(scoreBreakdown, state.modeChallenge)
-    + (state.modeChallenge ? renderMasteryProgressHTML(progressUpdate) : "");
+    + (state.modeChallenge ? renderMasteryProgressHTML(progressUpdate) : "")
+    + (state.modeChallenge ? renderTrajectoryHTML(progressUpdate) : "");
 
   ui.poemSection.classList.add("visible");
   updateRoundStatus();
@@ -6736,6 +6959,16 @@ if (ui.btnStart) {
   ui.btnStart.addEventListener("click", handleStartJourney);
 }
 
+// Modo experimentar: só aparece quando habilitado por config (default OFF).
+if (ui.btnGuestStart) {
+  if (INANNA_GUEST_MODE_ENABLED) {
+    ui.btnGuestStart.hidden = false;
+    ui.btnGuestStart.addEventListener("click", startGuestSession);
+  } else {
+    ui.btnGuestStart.hidden = true;
+  }
+}
+
 if (ui.verifyCheckinBtn) {
   ui.verifyCheckinBtn.addEventListener("click", verifyCheckinEmail);
 }
@@ -7358,6 +7591,15 @@ async function handlePlacarReactionClick(button) {
 
 ui.btnSubmitPoem.addEventListener("click", async () => {
   if (!state.playerData) return;
+  // Convidado não persiste no placar (sem identidade): convida ao check-in.
+  if (state.isGuest) {
+    showToast(
+      "Faça o check-in com seu e-mail para enviar ao placar e salvar esta quadra.",
+      "primary",
+      { duration: 5000 }
+    );
+    return;
+  }
   const textoQuada = ui.quadra.textContent.trim();
   if (!textoQuada) return;
 
@@ -7414,11 +7656,12 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
 
   try {
     assertSupabaseBackendConfigured();
-    await window.InannaSupabaseBridge.submitQuadra(payload);
+    const submitResult = await window.InannaSupabaseBridge.submitQuadra(payload);
     ui.submitResponse.style.color = "var(--accent)";
     ui.submitResponse.textContent = "✅ Quadra enviada para o Supabase!";
     ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
     await loadPlacar();
+    await maybeMintFolheto(submitResult?.quadraId);
   } catch (err) {
     console.error(err);
     ui.submitResponse.style.color = "var(--danger)";
