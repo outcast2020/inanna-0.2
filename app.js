@@ -26,6 +26,7 @@ const ui = {
 
   // app script globals
   btnStart: $("btnStart"),
+  btnGuestStart: $("btnGuestStart"),
   playerName: $("playerName"),
   playerEmail: $("playerEmail"),
   playerType: $("playerType"),
@@ -426,6 +427,10 @@ const INANNA_LEVEL2_AUDIO_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONF
 const INANNA_LEVEL2_SOCIAL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.level2SocialEnabled);
 const INANNA_TURNSTILE_SITE_KEY = readStringConfigValue(window.INANNA_APP_CONFIG?.turnstileSiteKey);
 const INANNA_SOCIAL_EMAIL_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.socialEmailEnabled);
+// Modo "experimentar sem cadastro" (analise-inanna.md §11). Default OFF: produção
+// só muda quando habilitado explicitamente. Convidados jogam local, sem persistir.
+const INANNA_GUEST_MODE_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.guestModeEnabled);
+const GUEST_FREE_QUADRAS = 2;
 const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
 const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
 const INANNA_ADMIN_EMAILS = new Set([
@@ -3792,6 +3797,61 @@ function needsProfileCompletion() {
   return state.checkinLookupStatus === "matched" && !state.profileComplete;
 }
 
+// Convite diferido e opcional ao perfil — depois da 1ª quadra fechada, nunca antes
+// do primeiro verso (analise-inanna.md §12; plano-coleta-unificada.md §4, §62).
+// Mostra no máximo uma vez por sessão e nunca bloqueia a experiência.
+function maybePromptDeferredProfile() {
+  if (state.deferredProfilePrompted) return;
+  if (!needsProfileCompletion()) return;
+  state.deferredProfilePrompted = true;
+  showToast(
+    "Boa! Respondendo um perfil rapidinho você entra no placar — e é uma vez só para todos os apps do Laboratório.",
+    "primary",
+    { duration: 6000 }
+  );
+}
+
+// Modo experimentar: jogar sem check-in. Identidade fica anônima ("visitante"),
+// nada é persistido no Supabase; após GUEST_FREE_QUADRAS sugere o cadastro.
+function startGuestSession() {
+  if (!INANNA_GUEST_MODE_ENABLED) return;
+  state.isGuest = true;
+  state.guestQuadraCount = 0;
+  state.deferredProfilePrompted = true; // não pedir perfil a quem nem se cadastrou
+  state.name = "Visitante";
+  state.email = "";
+  state.participantId = "";
+  state.checkinUserId = "";
+  state.checkinLookupStatus = "idle";
+  state.profileComplete = false;
+  state.playerData = {
+    nome: "Visitante",
+    email: "",
+    tipoAcesso: "Experimentar sem cadastro",
+    participantId: "",
+    checkinUserId: "",
+    guest: true
+  };
+  setStartHint("");
+  showTrackChooser();
+  showToast(
+    "Modo experimentar: jogue à vontade. Para salvar e entrar no placar, faça o check-in com seu e-mail depois.",
+    "muted",
+    { duration: 5000 }
+  );
+}
+
+function maybePromptGuestRegister() {
+  if (!state.isGuest) return;
+  state.guestQuadraCount = (state.guestQuadraCount || 0) + 1;
+  if (state.guestQuadraCount < GUEST_FREE_QUADRAS) return;
+  showToast(
+    "Curtiu? Faça o check-in com seu e-mail para salvar suas quadras, entrar no placar e desbloquear os próximos níveis.",
+    "primary",
+    { duration: 8000 }
+  );
+}
+
 function setProfileStatus(message = "", color = "var(--muted)") {
   if (!ui.profileStatus) return;
   ui.profileStatus.textContent = message;
@@ -4229,12 +4289,12 @@ function updateWelcomeIdentityUI() {
   }
 
   if (ui.btnStart) {
+    // Perfil NÃO bloqueia o início (diferido/opcional). Basta o check-in casado.
     ui.btnStart.disabled = !(
       state.checkinLookupStatus === "matched"
       && state.name
       && state.participantId
       && state.checkinUserId
-      && !needsProfileCompletion()
       && !state.profileSaving
     );
   }
@@ -4450,11 +4510,9 @@ function handleStartJourney() {
     return;
   }
 
-  if (needsProfileCompletion()) {
-    setStartHint("Complete o perfil rápido antes de começar.", "var(--primary)");
-    updateWelcomeIdentityUI();
-    return;
-  }
+  // Perfil é DIFERIDO e OPCIONAL: não bloqueia o início (analise-inanna.md §12,
+  // plano-coleta-unificada.md §4). Se incompleto, convidamos após a 1ª quadra.
+  state.deferProfilePrompt = needsProfileCompletion();
 
   setStartHint("");
   state.playerData = {
@@ -5834,6 +5892,9 @@ function finishPoem() {
     state.points = scoreBreakdown.total;
     ui.points.textContent = String(state.points);
     progressUpdate = updatePlayerProgressAfterChallengeQuadra(scoreBreakdown);
+    // Valor primeiro, perfil depois: convida ao perfil após a quadra fechada.
+    maybePromptDeferredProfile();
+    maybePromptGuestRegister();
   } else {
     state.points = 0;
     ui.points.textContent = "0";
@@ -6736,6 +6797,16 @@ if (ui.btnStart) {
   ui.btnStart.addEventListener("click", handleStartJourney);
 }
 
+// Modo experimentar: só aparece quando habilitado por config (default OFF).
+if (ui.btnGuestStart) {
+  if (INANNA_GUEST_MODE_ENABLED) {
+    ui.btnGuestStart.hidden = false;
+    ui.btnGuestStart.addEventListener("click", startGuestSession);
+  } else {
+    ui.btnGuestStart.hidden = true;
+  }
+}
+
 if (ui.verifyCheckinBtn) {
   ui.verifyCheckinBtn.addEventListener("click", verifyCheckinEmail);
 }
@@ -7358,6 +7429,15 @@ async function handlePlacarReactionClick(button) {
 
 ui.btnSubmitPoem.addEventListener("click", async () => {
   if (!state.playerData) return;
+  // Convidado não persiste no placar (sem identidade): convida ao check-in.
+  if (state.isGuest) {
+    showToast(
+      "Faça o check-in com seu e-mail para enviar ao placar e salvar esta quadra.",
+      "primary",
+      { duration: 5000 }
+    );
+    return;
+  }
   const textoQuada = ui.quadra.textContent.trim();
   if (!textoQuada) return;
 

@@ -159,6 +159,7 @@
               style="width: 100%; justify-content: center;">Verificar e-mail</button>
             <div id="welcomeIdentity" class="start-identity" aria-live="polite"></div>
             <div id="profileCompletionPanel" class="profile-panel" hidden>
+              <p class="verse-hint form-hint" style="margin: 0 0 4px;">Perfil opcional — você pode preencher agora ou depois da primeira quadra. Respondendo aqui, vale para todos os apps do Laboratório (uma vez só).</p>
               <div class="profile-row">
                 <span class="field-label">Estou nas oficinas Cordel 2.0</span>
                 <div class="segmented-choice" role="radiogroup" aria-label="Participa das oficinas Cordel 2.0">
@@ -215,6 +216,8 @@
             </div>
             <button id="btnStart" class="btn btn-primary" style="width: 100%; justify-content: center;" disabled>🚀
               Começar jornada</button>
+            <button id="btnGuestStart" class="btn btn-secondary" type="button" hidden
+              style="width: 100%; justify-content: center;">✨ Experimentar sem cadastro</button>
             <a class="btn btn-secondary landing-lab-return" href="https://www.cordel2pontozero.com/laboratorio">
               Retornar ao laboratório
             </a>
@@ -1089,7 +1092,8 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
         turnstileSiteKey: pickConfig("%VITE_INANNA_TURNSTILE_SITE_KEY%", existingConfig.turnstileSiteKey),
         socialEmailEnabled: pickConfig("%VITE_INANNA_SOCIAL_EMAIL_ENABLED%", existingConfig.socialEmailEnabled),
         firstAccessLookupUrl: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_URL%", existingConfig.firstAccessLookupUrl),
-        firstAccessLookupToken: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN%", existingConfig.firstAccessLookupToken)
+        firstAccessLookupToken: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN%", existingConfig.firstAccessLookupToken),
+        guestModeEnabled: pickConfig("%VITE_INANNA_GUEST_MODE_ENABLED%", withDefault(existingConfig.guestModeEnabled, "false"))
       };
     }
   </script>
