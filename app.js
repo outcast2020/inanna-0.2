@@ -2377,9 +2377,21 @@ async function finalizeLevel2Round(options = {}) {
       stolenWords: state.level2.stolenWords
     });
     state.level2.lastRoundResult = result;
+    // Guarda a troca inteira do round (quadras das duas vozes + tema/esquema)
+    // para montar a imagem social da peleja completa, independente do que o
+    // agente devolve no `result`.
+    const roundSnapshot = {
+      ...result,
+      roundNumber: state.level2.currentRound,
+      theme: result.theme || state.level2.theme,
+      rhymeScheme: result.rhymeScheme || state.level2.rhymeScheme,
+      playerOriginalQuadra: result.playerOriginalQuadra || state.level2.originalQuadra,
+      playerFinalQuadra: result.playerFinalQuadra || state.level2.finalQuadra,
+      inannaQuadra: result.inannaQuadra || state.level2.inannaQuadra,
+    };
     state.level2.roundResults = [
       ...(state.level2.roundResults || []).filter((item) => Number(item.roundNumber || 0) !== state.level2.currentRound),
-      { ...result, roundNumber: state.level2.currentRound }
+      roundSnapshot
     ].sort((a, b) => Number(a.roundNumber || 0) - Number(b.roundNumber || 0));
     state.level2.roundClosed = true;
     if (result.roundWinner === "player") state.level2.playerWins += 1;
@@ -2408,6 +2420,201 @@ async function finalizeLevel2Round(options = {}) {
   }
 }
 
+// ── Imagem social da peleja completa (compõe sobre template-poesia.png) ──
+// Render 100% no cliente (Canvas 2D → PNG). Sem envio externo: a pessoa baixa.
+let pelejaTemplateImagePromise = null;
+function loadPelejaTemplateImage() {
+  if (pelejaTemplateImagePromise) return pelejaTemplateImagePromise;
+  pelejaTemplateImagePromise = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => { pelejaTemplateImagePromise = null; reject(new Error("Não consegui carregar o template da imagem.")); };
+    img.src = "template-poesia.png";
+  });
+  return pelejaTemplateImagePromise;
+}
+
+function getPelejaPlayerName() {
+  return String(state.level2.nickname || state.name || "Você").trim() || "Você";
+}
+
+function wrapCanvasLine(ctx, text, maxWidth) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let current = words[0];
+  for (let i = 1; i < words.length; i += 1) {
+    const candidate = `${current} ${words[i]}`;
+    if (ctx.measureText(candidate).width <= maxWidth) current = candidate;
+    else { lines.push(current); current = words[i]; }
+  }
+  lines.push(current);
+  return lines;
+}
+
+// Lista ordenada das linhas (com estilo) da troca inteira do duelo.
+function buildPelejaLineItems() {
+  const items = [];
+  const playerName = getPelejaPlayerName();
+  const rounds = (state.level2.roundResults || []).filter(Boolean).slice()
+    .sort((a, b) => Number(a.roundNumber || 0) - Number(b.roundNumber || 0));
+  rounds.forEach((r) => {
+    const winner = r.roundWinner === "player" ? playerName : r.roundWinner === "inanna" ? "Inanna" : "Empate";
+    const header = `Round ${r.roundNumber}${r.theme ? ` · ${r.theme}` : ""}`;
+    items.push({ text: header, kind: "header", gapBefore: 26 });
+    items.push({ text: `${playerName}:`, kind: "label", color: "#1f6f4f", gapBefore: 12 });
+    String(r.playerFinalQuadra || "").split("\n").map((s) => s.trim()).filter(Boolean)
+      .forEach((v) => items.push({ text: v, kind: "verse" }));
+    items.push({ text: "Inanna:", kind: "label", color: "#9a3b2e", gapBefore: 10 });
+    String(r.inannaQuadra || "").split("\n").map((s) => s.trim()).filter(Boolean)
+      .forEach((v) => items.push({ text: v, kind: "verse" }));
+    items.push({ text: `🏆 ${winner}`, kind: "winner", gapBefore: 6 });
+  });
+  return items;
+}
+
+async function buildPelejaSocialCanvas() {
+  const tpl = await loadPelejaTemplateImage();
+  const W = 1122;
+  const H = 1402;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(tpl, 0, 0, W, H);
+  ctx.textBaseline = "top";
+
+  const family = "'Outfit', 'Segoe UI', system-ui, sans-serif";
+  const ink = "#23150e";
+  const cream = { x: 196, w: 742 };           // área creme livre dos selos
+  const cx = cream.x + cream.w / 2;
+  const top = 300;
+  const bottom = 1208;
+
+  const weightOf = (kind) => (kind === "header" ? "800" : kind === "verse" ? "400" : "700");
+
+  // Cabeçalho centralizado (abaixo dos selos CORDEL 2.0 / Inanna).
+  ctx.textAlign = "center";
+  ctx.fillStyle = ink;
+  ctx.font = `800 38px ${family}`;
+  ctx.fillText("Peleja com Inanna", cx, top);
+  ctx.font = `600 25px ${family}`;
+  ctx.fillText(getPelejaPlayerName(), cx, top + 50);
+  ctx.font = `700 22px ${family}`;
+  ctx.fillStyle = "#7a1f17";
+  ctx.fillText(`Humano ${state.level2.playerWins} × ${state.level2.inannaWins} Inanna`, cx, top + 86);
+
+  const bodyTop = top + 132;
+  const bodyBottom = bottom - 56;             // reserva para a assinatura
+  const availH = bodyBottom - bodyTop;
+  const base = { header: 22, label: 18, verse: 20, winner: 18, lh: 1.34 };
+
+  // Word-wrap em tamanho base; depois escala o bloco inteiro para caber.
+  const wrapped = [];
+  buildPelejaLineItems().forEach((it) => {
+    const size = base[it.kind] || base.verse;
+    ctx.font = `${weightOf(it.kind)} ${size}px ${family}`;
+    const maxW = cream.w - (it.kind === "verse" ? 36 : 0);
+    wrapCanvasLine(ctx, it.text, maxW).forEach((ln, idx) => {
+      wrapped.push({ text: ln, kind: it.kind, color: it.color, size, gapBefore: idx === 0 ? (it.gapBefore || 0) : 0 });
+    });
+  });
+  const naturalH = wrapped.reduce((sum, w) => sum + (w.gapBefore || 0) + w.size * base.lh, 0);
+  const scale = Math.min(1, availH / Math.max(1, naturalH));
+
+  // Centraliza o bloco vertical e horizontalmente no creme (cara de pôster).
+  let y = bodyTop + Math.max(0, (availH - naturalH * scale) / 2);
+  ctx.textAlign = "center";
+  wrapped.forEach((w) => {
+    const size = w.size * scale;
+    y += (w.gapBefore || 0) * scale;
+    ctx.font = `${weightOf(w.kind)} ${size}px ${family}`;
+    if (w.kind === "header") ctx.fillStyle = "#7a1f17";
+    else if (w.kind === "winner") ctx.fillStyle = "#8a6d1a";
+    else if (w.kind === "label") ctx.fillStyle = w.color || ink;
+    else ctx.fillStyle = ink;
+    ctx.fillText(w.text, cx, y);
+    y += size * base.lh;
+  });
+
+  // Assinatura: patinha da Inanna + rede do projeto (a CORDEL2PONTOZERO.COM já
+  // está no rodapé do template).
+  ctx.textAlign = "center";
+  ctx.fillStyle = ink;
+  ctx.font = `700 22px ${family}`;
+  ctx.fillText("🐾 Inanna  ·  @cordel2pontozero", cx, bottom - 30);
+
+  return canvas;
+}
+
+async function downloadPelejaSocialImage(btn) {
+  const prev = btn ? btn.textContent : "";
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = "Gerando imagem..."; }
+    const canvas = await buildPelejaSocialCanvas();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("Falha ao gerar a imagem.");
+    const url = URL.createObjectURL(blob);
+    const slug = getPelejaPlayerName().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "jogador";
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `peleja-inanna-${slug}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (error) {
+    console.error(error);
+    showToast(error?.message || "Não consegui gerar a imagem da peleja.", "error", { duration: 3500 });
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = prev || "⬇️ Baixar imagem (PNG)"; }
+  }
+}
+
+function renderPelejaSocialSectionHTML() {
+  const playedRounds = (state.level2.roundResults || []).filter(Boolean).length;
+  const fragCount = Math.max(3, Math.min(9, playedRounds * 3 || 3));
+  const frags = Array.from({ length: fragCount }, (_, i) => `
+    <div title="Fragmento de xilogravura (provisório)" style="width:64px;height:64px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:repeating-linear-gradient(45deg,rgba(122,31,23,0.18),rgba(122,31,23,0.18) 6px,rgba(122,31,23,0.30) 6px,rgba(122,31,23,0.30) 12px);border:1px solid rgba(122,31,23,0.4);color:var(--text);">
+      <span style="font-size:20px;">🪵</span><small style="font-size:9px;opacity:.8;">peça ${i + 1}</small>
+    </div>`).join("");
+  return `
+    <div class="peleja-social" style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.12);padding-top:16px;">
+      <h4 style="margin:0 0 8px;">📜 Sua peleja completa</h4>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">A troca inteira do duelo, pronta para postar — com seu nome e a patinha da Inanna.</p>
+      <div id="pelejaSocialPreview" style="min-height:160px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border-radius:12px;padding:12px;color:var(--muted);font-size:13px;">Montando a imagem da peleja…</div>
+      <button id="pelejaSocialDownloadBtn" class="btn btn-primary" type="button" style="margin-top:12px;width:100%;justify-content:center;">⬇️ Baixar imagem (PNG)</button>
+      <div style="margin-top:20px;">
+        <h4 style="margin:0 0 6px;">🧩 Fragmentos de xilogravura coletados</h4>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Imagens provisórias — o projeto gráfico dos colecionáveis ainda está em construção.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">${frags}</div>
+      </div>
+    </div>`;
+}
+
+function wirePelejaSocialSection() {
+  const btn = document.getElementById("pelejaSocialDownloadBtn");
+  if (btn) btn.addEventListener("click", () => downloadPelejaSocialImage(btn));
+  const preview = document.getElementById("pelejaSocialPreview");
+  if (!preview) return;
+  buildPelejaSocialCanvas().then((canvas) => {
+    const img = new Image();
+    img.alt = "Imagem da peleja completa de Inanna";
+    img.style.maxWidth = "100%";
+    img.style.height = "auto";
+    img.style.borderRadius = "10px";
+    img.style.boxShadow = "0 6px 24px rgba(0,0,0,0.35)";
+    img.src = canvas.toDataURL("image/png");
+    preview.innerHTML = "";
+    preview.appendChild(img);
+  }).catch((error) => {
+    console.error(error);
+    preview.textContent = "Não consegui montar a prévia da imagem agora — o botão de baixar ainda tenta gerar.";
+  });
+}
+
 function finishLevel2Match() {
   state.level2.matchFinished = true;
   renderLevel2Scoreboard();
@@ -2425,7 +2632,9 @@ function finishLevel2Match() {
       <h3>${title}</h3>
       <p>${description}</p>
       <p><strong>Placar final:</strong> Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna.</p>
+      ${renderPelejaSocialSectionHTML()}
     `;
+    wirePelejaSocialSection();
   }
   if (ui.level2NextRoundBtn) ui.level2NextRoundBtn.hidden = true;
   setLevel2RoundState(LEVEL2_ROUND_STATES.MATCH_RESULT);
