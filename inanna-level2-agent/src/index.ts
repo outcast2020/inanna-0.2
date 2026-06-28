@@ -310,7 +310,25 @@ function parseLevel2ThematicCsv(text: string): Level2ThematicChallenge[] {
 		}, {});
 		const context = cleanText(raw.contexto || raw.o_que_acontenceu || raw.o_que_aconteceu, 1400);
 		const theme = cleanText(raw.tematica || raw.tema, 180);
-		const source = cleanText(raw.fonte || raw.source, 500);
+		// Fonte editor-friendly: veiculo + data + titulo + url, com status. Enquanto
+		// "fonte a definir", a fonte fica vazia (nao mostra placeholder ao jogador).
+		// Retrocompativel com a coluna antiga `fonte`/`source`.
+		const fonteStatus = cleanText(raw.fonte_status, 40).toLowerCase();
+		const fonteUrl = cleanText(raw.fonte_url || raw.fonte || raw.source, 500);
+		const fonteVeiculo = cleanText(raw.fonte_veiculo, 120);
+		const fonteData = cleanText(raw.fonte_data, 40);
+		const fonteTitulo = cleanText(raw.fonte_titulo, 240);
+		const aDefinir = fonteStatus.includes("definir");
+		const hasStructured = "fonte_status" in raw || "fonte_url" in raw || "fonte_veiculo" in raw;
+		let source = "";
+		if (!hasStructured) {
+			// CSV antigo (so coluna `fonte`): usa direto.
+			source = cleanText(raw.fonte || raw.source, 500);
+		} else if (!aDefinir) {
+			const head = [fonteVeiculo, fonteData].filter(Boolean).join(", ");
+			source = [fonteTitulo, head ? `(${head})` : "", fonteUrl].filter(Boolean).join(" ").trim();
+			if (!source) source = fonteUrl;
+		}
 		return theme && context ? { theme, context, source } : null;
 	}).filter((item): item is Level2ThematicChallenge => !!item);
 }
