@@ -434,6 +434,10 @@ const GUEST_FREE_QUADRAS = 2;
 // Acervo de folhetos (NFT-simulação centralizada). Default OFF — registra/mostra o
 // colecionável só quando habilitado (analise-inanna.md §84-109; migration 010).
 const INANNA_NFT_MINTING_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.nftMintingEnabled);
+// [DEFER] Caderno de sextilhas (criar folheto / nova sextilha). Default OFF:
+// as opções ficam ocultas no painel até a fase do caderno rodar. Reativar é
+// trivial — basta VITE_INANNA_CADERNO_ENABLED=true (nenhum código removido).
+const INANNA_CADERNO_ENABLED = readBooleanConfigFlag(window.INANNA_APP_CONFIG?.cadernoEnabled);
 const INANNA_FIRST_ACCESS_LOOKUP_URL = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupUrl);
 const INANNA_FIRST_ACCESS_LOOKUP_TOKEN = readStringConfigValue(window.INANNA_APP_CONFIG?.firstAccessLookupToken);
 const INANNA_ADMIN_EMAILS = new Set([
@@ -2614,8 +2618,11 @@ function syncSextilhaTrackAccess(options = {}) {
 function setCadernoDashboardVisible(visible) {
   const shouldShow = !!visible;
   if (ui.dashboardCadernoArea) ui.dashboardCadernoArea.hidden = !shouldShow;
-  if (ui.btnCreateFolheto) ui.btnCreateFolheto.hidden = !shouldShow;
-  if (ui.btnCreateText) ui.btnCreateText.hidden = !shouldShow;
+  // [DEFER] item #6: "Criar folheto" e "Nova sextilha" ficam ocultas por flag
+  // (INANNA_CADERNO_ENABLED) até a fase do caderno rodar. Reativar = trivial.
+  const allowCreate = shouldShow && INANNA_CADERNO_ENABLED;
+  if (ui.btnCreateFolheto) ui.btnCreateFolheto.hidden = !allowCreate;
+  if (ui.btnCreateText) ui.btnCreateText.hidden = !allowCreate;
 }
 
 function assertSextilhaWorkspaceAccess() {

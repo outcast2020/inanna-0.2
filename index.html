@@ -1094,7 +1094,8 @@ Rei - Homem = [0.8, 0, 0, 0.7, 0]
         socialEmailEnabled: pickConfig("%VITE_INANNA_SOCIAL_EMAIL_ENABLED%", existingConfig.socialEmailEnabled),
         firstAccessLookupUrl: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_URL%", existingConfig.firstAccessLookupUrl),
         firstAccessLookupToken: pickConfig("%VITE_INANNA_FIRST_ACCESS_LOOKUP_TOKEN%", existingConfig.firstAccessLookupToken),
-        guestModeEnabled: pickConfig("%VITE_INANNA_GUEST_MODE_ENABLED%", withDefault(existingConfig.guestModeEnabled, "false"))
+        guestModeEnabled: pickConfig("%VITE_INANNA_GUEST_MODE_ENABLED%", withDefault(existingConfig.guestModeEnabled, "false")),
+        cadernoEnabled: pickConfig("%VITE_INANNA_CADERNO_ENABLED%", withDefault(existingConfig.cadernoEnabled, "false"))
       };
     }
   </script>
