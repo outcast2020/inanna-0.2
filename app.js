@@ -370,6 +370,10 @@ const PLACAR_REACTION_VIEWER_STORAGE_KEY = "inanna_placar_reaction_viewer_v1";
 const PLAYER_PROGRESS_STORAGE_KEY = "inanna_player_progress_v1";
 const MUNICIPIOS_BR_API_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios";
 const MUNICIPIOS_BR_CACHE_KEY = "inanna_municipios_br_v1";
+// "Hub" local do perfil por e-mail: guarda o NÚCLEO já respondido (município/UF,
+// faixa, oficina, chatbot) para LER ANTES DE PERGUNTAR. Não guarda dados
+// sensíveis (gênero/raça) — esses ficam só no servidor, opcionais (LGPD).
+const PROFILE_HUB_STORAGE_KEY = "inanna_profile_hub_v1";
 const PLACAR_REACTIONS = [
   { key: "thumb", emoji: "👍", label: "Polegar para cima" },
   { key: "heart", emoji: "❤️", label: "Coração" },
@@ -3464,6 +3468,97 @@ function persistDashboardCache(identity = buildIdentityPayload(), payload = {}, 
   }
 }
 
+// ── Hub local do perfil ───────────────────────────────────────────────
+// "Lê o hub antes de perguntar": guarda por e-mail o núcleo já respondido, para
+// que o usuário recorrente não redigite a cidade (nem os outros campos núcleo)
+// mesmo quando o servidor devolve esses campos vazios. Só núcleo, sem sensíveis.
+function profileHubEmailKey(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function readProfileHubStore() {
+  if (!window.localStorage) return {};
+  try {
+    const raw = window.localStorage.getItem(PROFILE_HUB_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function readProfileHub(email) {
+  const key = profileHubEmailKey(email);
+  if (!key) return null;
+  const entry = readProfileHubStore()[key];
+  return entry && typeof entry === "object" ? entry : null;
+}
+
+// Mescla os campos NÚCLEO não-vazios do estado atual no hub do e-mail. Nunca
+// apaga um valor já guardado com vazio (merge aditivo) — assim a cidade
+// persiste localmente mesmo que o servidor a perca.
+function captureProfileHubFromState() {
+  const key = profileHubEmailKey(state.email);
+  if (!key || !window.localStorage) return;
+  const store = readProfileHubStore();
+  const current = store[key] && typeof store[key] === "object" ? store[key] : {};
+  const next = { ...current };
+  const municipio = String(state.municipio || "").trim();
+  const estadoUF = String(state.estadoUF || "").trim();
+  const pais = String(state.pais || "").trim();
+  const faixa = String(state.faixaEtaria || "").trim();
+  if (municipio) next.municipio = municipio;
+  if (estadoUF) next.estadoUF = estadoUF;
+  if (pais) next.pais = pais;
+  if (faixa) next.faixaEtaria = faixa;
+  if (state.oficinaCordel20 === true || state.oficinaCordel20 === false) next.oficinaCordel20 = state.oficinaCordel20;
+  if (state.usouChatbotIa === true || state.usouChatbotIa === false) next.usouChatbotIa = state.usouChatbotIa;
+  // Só grava se algo mudou, para não bater no storage à toa.
+  const changed = JSON.stringify(next) !== JSON.stringify(current);
+  if (!changed) return;
+  store[key] = next;
+  try {
+    window.localStorage.setItem(PROFILE_HUB_STORAGE_KEY, JSON.stringify(store));
+  } catch (_) {
+    // Storage indisponível não deve quebrar o login.
+  }
+}
+
+// Preenche campos vazios do estado com o que o hub já tem (servidor tem
+// prioridade; o hub só cobre o que veio vazio). Retorna true se hidratou cidade.
+function hydrateProfileFromHub() {
+  const hub = readProfileHub(state.email);
+  if (!hub) return false;
+  let hydratedCity = false;
+  if (!String(state.municipio || "").trim() && String(hub.municipio || "").trim()) {
+    state.municipio = String(hub.municipio).trim();
+    if (!String(state.estadoUF || "").trim() && hub.estadoUF) state.estadoUF = String(hub.estadoUF).trim();
+    if (hub.pais) state.pais = String(hub.pais).trim() || state.pais;
+    hydratedCity = true;
+  }
+  if ((state.oficinaCordel20 === null || state.oficinaCordel20 === undefined) && typeof hub.oficinaCordel20 === "boolean") {
+    state.oficinaCordel20 = hub.oficinaCordel20;
+  }
+  if ((state.usouChatbotIa === null || state.usouChatbotIa === undefined) && typeof hub.usouChatbotIa === "boolean") {
+    state.usouChatbotIa = hub.usouChatbotIa;
+  }
+  if (!String(state.faixaEtaria || "").trim() && String(hub.faixaEtaria || "").trim()) {
+    state.faixaEtaria = String(hub.faixaEtaria).trim();
+  }
+  return hydratedCity;
+}
+
+// Núcleo do perfil completo (mesma régua do servidor em 009: sensíveis fora).
+function hasProfileNucleoInState() {
+  return (
+    (state.oficinaCordel20 === true || state.oficinaCordel20 === false) &&
+    (state.usouChatbotIa === true || state.usouChatbotIa === false) &&
+    !!String(state.faixaEtaria || "").trim() &&
+    !!String(state.municipio || "").trim()
+  );
+}
+
 function withTimeout(promise, timeoutMs, errorMessage) {
   if (!timeoutMs || timeoutMs <= 0) return promise;
 
@@ -4200,6 +4295,22 @@ function parseMunicipioProfileInput(controls = getInitialProfileControls()) {
     };
   }
 
+  // Cidade já conhecida (do cadastro/hub): aceita sem reexigir a lista do IBGE,
+  // para o usuário recorrente não precisar reselecionar o município que já deu.
+  const knownMunicipio = String(state.municipio || "").trim();
+  const knownUF = String(state.estadoUF || "").trim();
+  if (knownMunicipio) {
+    const rawCity = rawMunicipio.replace(/\s+-\s+[a-z]{2}$/i, "").trim();
+    if (rawCity.toLowerCase() === knownMunicipio.toLowerCase()) {
+      if (state.pais === "FORA_BRASIL" || knownUF === "EX") {
+        return { ok: true, municipio: knownMunicipio, estado: "EX", pais: "FORA_BRASIL", error: "" };
+      }
+      if (/^[A-Z]{2}$/.test(knownUF)) {
+        return { ok: true, municipio: knownMunicipio, estado: knownUF, pais: "BR", error: "" };
+      }
+    }
+  }
+
   const exact = municipiosBrasil.find((item) => item.label.toLowerCase() === rawMunicipio.toLowerCase());
   if (exact) return { ok: true, municipio: exact.municipio, estado: exact.estado, pais: "BR", error: "" };
 
@@ -4254,6 +4365,17 @@ async function saveProfileFromControls(controls, options = {}) {
     setStatus(municipio.error, "var(--primary)");
     return;
   }
+
+  // Grava no hub local o que a pessoa acabou de responder, ANTES do servidor.
+  // Assim, mesmo que o município não persista em participantes, o próximo login
+  // lê o hub e não repergunta a cidade.
+  state.municipio = municipio.municipio;
+  state.estadoUF = municipio.estado;
+  state.pais = municipio.pais;
+  if (faixaEtaria) state.faixaEtaria = faixaEtaria;
+  state.oficinaCordel20 = oficinaCordel20;
+  state.usouChatbotIa = usouChatbotIa;
+  captureProfileHubFromState();
 
   if (options.panel) state.dashboardProfileSaving = true;
   else state.profileSaving = true;
@@ -4352,7 +4474,12 @@ function applyResolvedCheckinIdentity(identity) {
   state.genero = normalizeProfileGender(identity?.genero || "");
   state.identificacaoRacial = normalizeProfileRace(identity?.identificacaoRacial || identity?.identificacao_racial || "");
   state.faixaEtaria = normalizeProfileAgeRange(identity?.faixaEtaria || identity?.faixa_etaria || "") || normalizeLegacyAgeRange(identity?.faixaEtaria || identity?.faixa_etaria || "");
-  state.profileComplete = !!(identity?.profileComplete ?? identity?.perfil_completo);
+  const serverProfileComplete = !!(identity?.profileComplete ?? identity?.perfil_completo);
+  // Lê o hub local ANTES de perguntar: preenche cidade/núcleo que o servidor
+  // devolveu vazio (a cidade não está persistindo em participantes). Se o núcleo
+  // ficar completo localmente, não há por que reperguntar a cidade no login.
+  hydrateProfileFromHub();
+  state.profileComplete = serverProfileComplete || hasProfileNucleoInState();
   state.participantId = String(identity?.participantId || "").trim();
   state.checkinUserId = String(identity?.checkinUserId || "").trim();
   state.checkinMatchStatus = String(identity?.status || "matched").trim() || "matched";
@@ -4360,6 +4487,8 @@ function applyResolvedCheckinIdentity(identity) {
   state.teacherGroup = String(identity?.teacherGroup || "").trim();
   state.checkinLookupStatus = "matched";
   state.checkinLookupMessage = "";
+  // Guarda no hub o que já sabemos (cidade/núcleo) para os próximos logins.
+  captureProfileHubFromState();
   loadPlayerProgress();
   syncLevel2TrackAccess();
   recordIdentityDebugSnapshot("checkin_lookup_matched", {
@@ -7657,6 +7786,8 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
   try {
     assertSupabaseBackendConfigured();
     const submitResult = await window.InannaSupabaseBridge.submitQuadra(payload);
+    // A quadra carrega o município: registra no hub para não reperguntar depois.
+    captureProfileHubFromState();
     ui.submitResponse.style.color = "var(--accent)";
     ui.submitResponse.textContent = "✅ Quadra enviada para o Supabase!";
     ui.btnSubmitPoem.textContent = "🚀 Quadra Enviada";
