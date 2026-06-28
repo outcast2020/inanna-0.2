@@ -5955,55 +5955,107 @@ function calculateChallengeScore(lines, expectedScheme) {
   };
 }
 
-// Gera HTML do feedback de rima e pontuação
+// Rotula o tipo de rima a partir da pontuação bruta do par — vira aula:
+// só a vogal final coincide = toante (imperfeita); 2+ letras finais = consoante.
+function rhymePairLabel(score) {
+  if (score === -2) return { tag: "🔁 palavra repetida", color: "#ef4444" };
+  if (score <= -1) return { tag: "❌ não rima", color: "#ef4444" };
+  if (score === 1) return { tag: "👍 toante (imperfeita)", color: "#eab308" };
+  if (score === 2) return { tag: "✨ consoante", color: "#22c55e" };
+  return { tag: "🔥 consoante rica", color: "#22c55e" }; // score >= 3
+}
+
+// Gera o HTML do placar de rima/pontuação.
+// Princípio: o detalhamento tem que FECHAR a conta. Os pares de rima são
+// sub-itens aninhados sob a categoria "Rima" (e somam no subtotal dela), nunca
+// parcelas extras. As três categorias — Rima, Forma e Autoria — particionam
+// exatamente a fórmula do total, e a conta aparece somando até o total final.
 function rhymeFeedbackHTML(result, challengeMode) {
   var r = result.rhyme;
-  function icon(s) { return s === -2 ? "🔁 −2" : s >= 3 ? "🔥 +3" : s === 2 ? "✨ +2" : s === 1 ? "👍 +1" : "❌ −1"; }
   function signed(value) { return (value >= 0 ? "+" : "") + value; }
   var colors = { AABB: "#f97316", ABAB: "#a855f7", ABBA: "#06b6d4" };
   var color = colors[r.scheme] || "var(--primary)";
-  var pairsIdx = { AABB: [[0, 1], [2, 3]], ABAB: [[0, 2], [1, 3]], ABBA: [[0, 3], [1, 2]] }[r.scheme];
-  var totalColor = result.total >= 10 ? "#22c55e" : result.total >= 5 ? "#f97316" : "#ef4444";
 
-  var pairLines = pairsIdx.map(function (pair, k) {
-    return '<div style="margin:4px 0;font-size:13px;">' +
-      '<span style="color:var(--muted);">&ldquo;' + r.words[pair[0]] + '&rdquo; ↔ &ldquo;' + r.words[pair[1]] + '&rdquo;</span>' +
-      '<strong style="margin-left:8px;">' + icon(r.pairScores[k]) + '</strong></div>';
+  // Subtotais que particionam a fórmula do total em calculateChallengeScore:
+  //   total = max(0, structure.points + pairScoreTotal + schemeBonus
+  //                  + independence.bonus + originality.bonus)
+  var rimaSubtotal = r.pairScoreTotal + r.schemeBonus;          // pares (−penalidade) + bônus
+  var formaSubtotal = result.structure.points;
+  var autoriaSubtotal = result.independence.bonus + result.originality.bonus;
+  var rawTotal = rimaSubtotal + formaSubtotal + autoriaSubtotal;
+  var total = Math.max(0, rawTotal);
+  var totalColor = total >= 10 ? "#22c55e" : total >= 5 ? "#f97316" : "#ef4444";
+
+  var sub = "margin:4px 0 4px 16px;font-size:13px;color:var(--muted);";
+  var catHead = "display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;";
+  var hint = "display:block;margin:3px 0 0 28px;font-size:11px;color:var(--muted);font-style:italic;line-height:1.4;";
+
+  // ── RIMA: pares aninhados (com tipo de rima) → penalidade → bônus → subtotal ─
+  var pairLines = (r.pairs || []).map(function (pair, k) {
+    var s = r.pairScores[k];
+    var lbl = rhymePairLabel(s);
+    return '<div style="' + sub + '">' +
+      '<span style="color:var(--text);">&ldquo;' + (r.words[pair[0]] || "—") + '&rdquo; ↔ &ldquo;' + (r.words[pair[1]] || "—") + '&rdquo;</span>' +
+      ' — <span style="color:' + lbl.color + ';">' + lbl.tag + '</span>' +
+      ' <strong style="color:var(--text);">' + signed(s) + '</strong></div>';
   }).join("");
 
+  var penaltyLine = r.repeatedEndingPenalty > 0
+    ? '<div style="' + sub + 'color:#ef4444;">🔁 Penalidade por palavra final repetida: <strong>−' + r.repeatedEndingPenalty + '</strong>' +
+      (r.repeatedEndingWords && r.repeatedEndingWords.length ? ' (' + r.repeatedEndingWords.join(", ") + ')' : '') + '</div>'
+    : '';
+
+  var schemeBonusLine = r.schemeBonus > 0
+    ? '<div style="' + sub + 'color:#22c55e;">✅ Bônus de esquema forte: <strong>+' + r.schemeBonus + '</strong> (os dois pares rimam com 2+ letras finais)</div>'
+    : '<div style="' + sub + '">Bônus de esquema forte: <strong>+0</strong>' +
+      '<span style="' + hint + '">Como ganhar: faça os <em>dois</em> pares rimarem em consoante (2+ letras finais) e sem repetir palavra no fim → +3.</span></div>';
+
+  var rimaBlock =
+    '<div style="' + catHead + 'color:' + color + ';"><span>🎶 Rima</span><span>' + signed(rimaSubtotal) + '</span></div>' +
+    pairLines + penaltyLine + schemeBonusLine;
+
+  // ── FORMA ──
+  var formaBlock =
+    '<div style="' + catHead + 'color:var(--text);"><span>📐 Forma</span><span>' + signed(formaSubtotal) + '</span></div>' +
+    (result.structure.points > 0
+      ? '<div style="' + sub + '">Forma clara: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' de 4 versos bem fechados)</div>'
+      : '<div style="' + sub + '">Forma clara: <strong>+0</strong> (' + result.structure.goodLines + ' de 4 versos bem fechados)' +
+        '<span style="' + hint + '">Como ganhar: os 4 versos precisam ter de 3 a 8 palavras, terminar em palavra forte (não em “de/que/na…”) e sem palavras grudadas → +1.</span></div>');
+
+  // ── AUTORIA: independência + originalidade ──
+  var indLine = result.independence.bonus > 0
+    ? '<div style="' + sub + 'color:#06b6d4;">✍️ Independência autoral: <strong>+' + result.independence.bonus + '</strong> (palavra sua, fora das sugestões, dentro de par que rima)</div>'
+    : '<div style="' + sub + '">Independência autoral: <strong>+0</strong>' +
+      '<span style="' + hint + '">Como ganhar: feche um par que rima usando sua <em>própria</em> palavra (recusando a sugestão da Inanna) → +1 cada, até +2.</span></div>';
+  var origLine = result.originality.bonus > 0
+    ? '<div style="' + sub + 'color:#38bdf8;">💎 Originalidade lexical: <strong>+' + result.originality.bonus + '</strong> (rima surpresa fora do banco local)</div>'
+    : '<div style="' + sub + '">Originalidade lexical: <strong>+0</strong>' +
+      '<span style="' + hint + '">Como ganhar: termine um par que rima com uma palavra rara, fora do banco de rimas → +1 cada, até +2.</span></div>';
+  var autoriaBlock =
+    '<div style="' + catHead + 'color:var(--text);"><span>🪶 Autoria</span><span>' + signed(autoriaSubtotal) + '</span></div>' +
+    indLine + origLine;
+
+  // ── A conta fechando: as categorias somam exatamente o total ──
+  var clampNote = rawTotal < 0 ? ' <span style="color:var(--muted);font-weight:600;">(piso 0)</span>' : '';
+  var tally =
+    '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.18);font-size:13px;color:var(--muted);">' +
+    'Rima ' + signed(rimaSubtotal) + ' &nbsp;+&nbsp; Forma ' + signed(formaSubtotal) + ' &nbsp;+&nbsp; Autoria ' + signed(autoriaSubtotal) +
+    ' &nbsp;=&nbsp; <strong style="color:var(--text);">' + signed(rawTotal) + '</strong>' + clampNote + '</div>';
+
   var expectedLine = r.expectedScheme
-    ? '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Esquema sorteado no desafio: <strong style="color:' + color + ';">' + r.expectedScheme + '</strong>' + (r.bestDetectedScheme && r.bestDetectedScheme !== r.expectedScheme ? ' · melhor encaixe livre seria ' + r.bestDetectedScheme : '') + '</div>'
+    ? '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Esquema sorteado: <strong style="color:' + color + ';">' + r.expectedScheme + '</strong>' + (r.bestDetectedScheme && r.bestDetectedScheme !== r.expectedScheme ? ' · melhor encaixe livre seria ' + r.bestDetectedScheme : '') + '</div>'
     : '';
-  var structureLine = '<div style="margin-top:10px;font-size:13px;color:var(--muted);">Forma clara: <strong style="color:var(--text);">+' + result.structure.points + '</strong> (' + result.structure.goodLines + ' versos bem fechados de 4)</div>';
-  var schemeLine = r.strongScheme
-    ? '<div style="margin-top:8px;font-size:13px;color:#22c55e;">✅ Bônus de rima forte: <strong>+3</strong> (os dois pares do esquema sorteado rimam com pelo menos 2 letras finais)</div>'
-    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Bônus de esquema forte: <strong>+0</strong></div>';
-  var independenceLine = result.independence.bonus > 0
-    ? '<div style="margin-top:8px;font-size:13px;color:#06b6d4;">✍️ Independência autoral: <strong>+' + result.independence.bonus + '</strong> (palavra própria fora das sugestões e dentro de par rimado)</div>'
-    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Independência autoral: <strong>+0</strong></div>';
-  var originalityLine = result.originality.bonus > 0
-    ? '<div style="margin-top:8px;font-size:13px;color:#38bdf8;">💎 Originalidade lexical: <strong>+' + result.originality.bonus + '</strong> (rima surpresa fora do banco local)</div>'
-    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Originalidade lexical: <strong>+0</strong></div>';
-  var repeatedWords = r.repeatedEndingWords && r.repeatedEndingWords.length
-    ? ' (' + r.repeatedEndingWords.join(", ") + ')'
-    : '';
-  var repetitionLine = r.repeatedEndingPenalty > 0
-    ? '<div style="margin-top:8px;font-size:13px;color:#ef4444;">🔁 Penalidade por palavra final repetida: <strong>-' + r.repeatedEndingPenalty + '</strong>' + repeatedWords + '</div>'
-    : '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Penalidade por palavra final repetida: <strong>0</strong></div>';
   var scoreTitle = challengeMode ? 'Pontuação do Desafio' : 'No Modo Desafio, esta quadra valeria';
 
   return '<div style="margin-top:18px;padding:14px 18px;background:rgba(255,255,255,0.05);border-radius:12px;border-left:4px solid ' + color + ';">' +
-    '<div style="font-weight:800;font-size:15px;margin-bottom:8px;">🎶 Esquema de Rima: <span style="color:' + color + ';">' + r.label + '</span></div>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + r.desc + '</div>' +
+    '<div style="font-weight:800;font-size:15px;margin-bottom:4px;">🎶 Esquema de Rima: <span style="color:' + color + ';">' + r.label + '</span></div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">' + r.desc + '</div>' +
     expectedLine +
-    pairLines +
-    structureLine +
-    '<div style="margin-top:8px;font-size:13px;color:var(--muted);">Rima final ajustada: <strong style="color:var(--text);">' + signed(r.pairScoreTotal) + '</strong></div>' +
-    schemeLine +
-    independenceLine +
-    originalityLine +
-    repetitionLine +
-    '<div style="margin-top:12px;font-size:16px;font-weight:900;color:' + totalColor + ';">' + scoreTitle + ': +' + result.total + '</div>' +
+    rimaBlock +
+    formaBlock +
+    autoriaBlock +
+    tally +
+    '<div style="margin-top:10px;font-size:16px;font-weight:900;color:' + totalColor + ';">' + scoreTitle + ': +' + total + '</div>' +
     '</div>';
 }
 
