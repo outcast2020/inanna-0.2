@@ -70,6 +70,47 @@
     return UUID_RE.test(text) ? text : "";
   }
 
+  // Erros transitorios merecem retry; erros logicos (RLS, validacao) nao.
+  function isTransientError(error) {
+    if (!error) return false;
+    const code = String(error.code || "").trim();
+    if (code) {
+      // 08xxx: connection exception; 53300: too many connections;
+      // 57014: query canceled; 5xxxx genericos de infra. Nada de RLS/constraint.
+      return /^08/.test(code) || ["53300", "57014", "XX000"].includes(code);
+    }
+    // Erros de rede do fetch nao trazem code do PostgREST.
+    const msg = String(error.message || "").toLowerCase();
+    return (
+      msg.includes("failed to fetch") ||
+      msg.includes("load failed") ||
+      msg.includes("network") ||
+      msg.includes("timeout") ||
+      msg.includes("fetch failed") ||
+      msg.includes("connection")
+    );
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Reexecuta `fn` em falhas transitorias (rede/infra), com backoff linear.
+  // Falhas logicas (ex.: RLS, constraint) sobem na primeira ocorrencia.
+  async function withRetry(fn, { attempts = 3, baseDelayMs = 600 } = {}) {
+    let lastError = null;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (i === attempts - 1 || !isTransientError(error)) throw error;
+        await delay(baseDelayMs * (i + 1));
+      }
+    }
+    throw lastError;
+  }
+
   function serializeProfileRace(value) {
     const text = String(value || "").trim().toLowerCase();
     return text === "preto" ? "negro" : text;
@@ -365,12 +406,40 @@
     if (!participantId) throw new Error("Participante nao identificado para enviar a quadra.");
     if (!row.verso) throw new Error("Quadra vazia.");
 
-    // select("id") de volta para permitir mint do folheto (best-effort: se a RLS
-    // não devolver a linha, quadraId fica vazio e o mint é apenas pulado).
-    const { data, error } = await scopedClient({ participantId })
-      .from("quadras").insert(row).select("id").maybeSingle();
-    if (error) throw error;
-    return { status: "success", quadraId: data?.id || "" };
+    const client = scopedClient({ participantId });
+
+    // Caminho principal: insere devolvendo o id (precisa de SELECT na coluna id,
+    // habilitado pela migration 011). Esse id permite o mint do folheto.
+    const insertReturningId = async () => {
+      const { data, error } = await client
+        .from("quadras").insert(row).select("id").maybeSingle();
+      if (error) throw error;
+      return { status: "success", quadraId: data?.id || "" };
+    };
+
+    // Fallback resiliente: se o ambiente ainda nao tiver a migration 011, o
+    // RETURNING falha com 42501 e a INSTRUCAO INTEIRA sofre rollback (a quadra
+    // NAO foi gravada). Reenviamos em modo "return=minimal", que so exige o
+    // privilegio INSERT — assim nenhuma quadra fechada se perde silenciosamente.
+    // Custo: ficamos sem o id, entao o mint do folheto e apenas pulado.
+    const insertMinimal = async () => {
+      const { error } = await client.from("quadras").insert(row);
+      if (error) throw error;
+      return { status: "success", quadraId: "" };
+    };
+
+    return withRetry(async () => {
+      try {
+        return await insertReturningId();
+      } catch (error) {
+        const denied =
+          error &&
+          (String(error.code || "") === "42501" ||
+            /permission denied/i.test(String(error.message || "")));
+        if (denied) return await insertMinimal();
+        throw error;
+      }
+    });
   }
 
   // Acervo de folhetos (NFT-simulação centralizada). Mint idempotente via RPC que
