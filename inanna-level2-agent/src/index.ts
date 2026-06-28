@@ -686,6 +686,24 @@ async function generateWithMaritaca(env: Env, prompt: string): Promise<string> {
 	return extractTextFromAi(data);
 }
 
+// Calibra a dificuldade da Inanna à zona de desenvolvimento proximal: um degrau
+// acima do que o jogador demonstrou (esquema, qualidade de rima, criatividade),
+// nunca esmagando nem bajulando. Determinístico (deriva do score mecânico).
+function assessDemonstratedLevel(playerQuadra: string, scheme: string, roundNumber: number): { band: string; guidance: string } {
+	const m = mechanicalScore(playerQuadra, scheme, { isFinal: false });
+	// A rima pesa mais (esquema + qualidade), com um empurrão da criatividade.
+	const craft = m.rhyme + Math.min(6, m.creativity * 0.3);
+	let tier = craft >= 16 ? 2 : craft >= 8 ? 1 : 0;
+	if (roundNumber >= 3 && tier < 2) tier += 1; // a peleja escala nos rounds finais
+	const bands = ["iniciante", "intermediário", "avançado"];
+	const guidance = [
+		"Desafie com gentileza, um degrau acima: faça UMA rima clara e mostre, pelo próprio exemplo, como fechar os dois pares do esquema. Convide a pessoa a subir, sem esmagar.",
+		"Suba a régua: traga rima mais rica (consoante, 2+ letras finais) e uma imagem inesperada; provoque a pessoa a fechar o esquema com palavra própria (independência autoral).",
+		"De igual para igual: rima rica, métrica apertada e um trocadilho afiado. Provoque com respeito e sem bajular — a pessoa aguenta (e merece) um bom desafio.",
+	];
+	return { band: bands[tier], guidance: guidance[tier] };
+}
+
 function buildInannaPrompt(input: {
 	playerQuadra: string;
 	theme: string;
@@ -693,6 +711,7 @@ function buildInannaPrompt(input: {
 	rhymeScheme: string;
 	stolenWords: string[];
 	roundNumber: number;
+	challenge: { band: string; guidance: string };
 }): string {
 	return `Gere a resposta da Inanna para uma peleja de quadras.
 
@@ -705,9 +724,14 @@ Palavras/imagens roubadas do jogador: ${input.stolenWords.join(", ") || "nenhuma
 Quadra do jogador:
 ${input.playerQuadra}
 
+Calibragem do desafio (zona de desenvolvimento proximal):
+- Nível demonstrado pelo jogador até aqui: ${input.challenge.band}.
+- Desafie UM DEGRAU ACIMA desse nível: ${input.challenge.guidance}
+- Nunca esmague (dureza desproporcional) nem bajule (elogio vazio/conivência): as duas tiram a chance de aprender.
+
 Regras:
 - Responda sempre em uma quadra com exatamente 4 versos.
-- A quadra deve dialogar com a quadra do jogador e tentar superá-la.
+- A quadra deve dialogar com a quadra do jogador e desafiá-la na medida da calibragem acima.
 - Use pelo menos 2 palavras/imagens roubadas quando existirem.
 - Inanna deve adotar a persona de uma repentista espirituosa, rápida e acolhedora.
 - Suas provocações devem focar no desafio poético (por exemplo, pedir rima mais rica ou brincar com a métrica do jogador), e nunca no nível de conhecimento formal do usuário.
@@ -732,13 +756,17 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 	const stolenWords = stealWords(playerQuadra);
 	const theme = cleanText(payload.theme, 120) || randomFrom(THEMES);
 	const themeContext = cleanText(payload.themeContext, 1400);
+	const rhymeScheme = cleanText(payload.rhymeScheme, 8) || "AABB";
+	const roundNumber = Number(payload.roundNumber || 1);
+	const challenge = assessDemonstratedLevel(playerQuadra, rhymeScheme, roundNumber);
 	const prompt = buildInannaPrompt({
 		playerQuadra,
 		theme,
 		themeContext,
-		rhymeScheme: cleanText(payload.rhymeScheme, 8) || "AABB",
+		rhymeScheme,
 		stolenWords,
-		roundNumber: Number(payload.roundNumber || 1),
+		roundNumber,
+		challenge,
 	});
 
 	let provider = GENERATION_PROVIDER;
@@ -869,8 +897,8 @@ Retorne somente JSON valido:
     "languageIsUnderstandable": true,
     "keepsHumanVoice": true
   },
-  "short_explanation": "frase curta, formativa e instigante",
-  "feedback": "frase curta e formativa"
+  "short_explanation": "Na voz da Inanna (gata cordelista que torce pela pessoa e provoca): nomeie UMA coisa boa concreta do verso, citando a palavra/rima/imagem específica que a pessoa usou, e UM próximo passo concreto e acionável para a próxima quadra (ex.: fechar o 2º par em rima consoante, trocar a palavra final repetida). Nada de elogio vazio ('muito bem!') nem dureza.",
+  "feedback": "a mesma devolutiva curta em 1-2 frases: 1 acerto concreto + 1 próximo passo, sempre na voz da Inanna"
 }`;
 }
 
@@ -913,7 +941,7 @@ async function evaluateRubric(env: Env, input: {
 			languageIsUnderstandable: mechanical.rubrics.hasReadableLanguage,
 			keepsHumanVoice: true,
 		},
-		feedback: "Avaliação concluída em modo rápido, mantendo rima, forma e autoria avaliadas localmente.",
+		feedback: "Avaliei no modo rápido desta vez: tua forma segura a quadra. Na próxima, fecha bem os dois pares do esquema e ousa uma imagem mais tua pra ganhar autoria.",
 	};
 }
 
