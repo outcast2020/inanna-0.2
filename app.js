@@ -7664,10 +7664,15 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
     await maybeMintFolheto(submitResult?.quadraId);
   } catch (err) {
     console.error(err);
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
     ui.submitResponse.style.color = "var(--danger)";
-    ui.submitResponse.textContent = "❌ Falha ao enviar, verifique o console.";
+    // Mensagem honesta: a quadra continua aqui na tela (rascunho preservado),
+    // entao a pessoa pode reenviar sem reescrever nada.
+    ui.submitResponse.textContent = offline
+      ? "❌ Sem conexão agora. Sua quadra está salva aqui — toque em Tentar Novamente quando a internet voltar."
+      : "❌ Não consegui enviar agora. Sua quadra está salva aqui — toque em Tentar Novamente.";
     ui.btnSubmitPoem.disabled = false;
-    ui.btnSubmitPoem.textContent = "🚀 Tentar Novamente";
+    ui.btnSubmitPoem.textContent = "🔁 Tentar Novamente";
   }
 });
 
