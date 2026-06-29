@@ -2132,8 +2132,13 @@ async function beginLevel2Round(roundNumber) {
   state.level2.finalQuadra = "";
   state.level2.inannaQuadra = "";
   state.level2.stolenWords = [];
-  state.level2.themeContext = "";
-  state.level2.themeSource = "";
+  // Peleja de TEMA ÚNICO: o tema é fixado na rodada 1 e mantido nas rodadas 2 e
+  // 3 (vira um diálogo/duelo contínuo). Só zera ao começar a peleja.
+  if (roundNumber === 1) {
+    state.level2.theme = "";
+    state.level2.themeContext = "";
+    state.level2.themeSource = "";
+  }
   state.level2.revisionExpiresAt = 0;
   state.level2.lastRoundResult = null;
   resetLevel2RoundInputs();
@@ -2143,9 +2148,13 @@ async function beginLevel2Round(roundNumber) {
   });
   const fallback = LEVEL2_LOCAL_CHALLENGES[(roundNumber - 1) % LEVEL2_LOCAL_CHALLENGES.length];
   const challenge = result.challenge || {};
-  state.level2.theme = challenge.theme || fallback.theme;
-  state.level2.themeContext = challenge.context || "";
-  state.level2.themeSource = challenge.source || "";
+  // Tema fixado na rodada 1 (ou se ainda não houver tema); mantido nas demais.
+  if (roundNumber === 1 || !state.level2.theme) {
+    state.level2.theme = challenge.theme || fallback.theme;
+    state.level2.themeContext = challenge.context || "";
+    state.level2.themeSource = challenge.source || "";
+  }
+  // Esquema de rima sorteado a CADA rodada (variedade dentro do mesmo tema).
   state.level2.rhymeScheme = challenge.rhymeScheme || fallback.rhymeScheme;
   renderLevel2Scoreboard();
   setLevel2RoundState(LEVEL2_ROUND_STATES.COMPOSING_INITIAL);
@@ -2165,6 +2174,22 @@ function renderLevel2InannaResponse(result) {
     </div>
     <p class="verse-hint">Geração: ${escapeHtml(result.generationProvider || inanna.provider || "agente")}</p>
   `;
+}
+
+// Memória curta da peleja: só a rodada IMEDIATAMENTE anterior (mesmo tema), para
+// a Inanna manter o fio do duelo. A continuidade é temática/de imagem — o worker
+// é instruído a NÃO repetir rimas (repetição de rima é penalizada).
+function getLevel2PreviousRoundExchange() {
+  const prevNumber = Number(state.level2.currentRound || 1) - 1;
+  if (prevNumber < 1) return null;
+  const prev = (state.level2.roundResults || []).find(
+    (item) => Number(item.roundNumber || 0) === prevNumber
+  );
+  if (!prev) return null;
+  const playerQuadra = String(prev.playerFinalQuadra || prev.playerOriginalQuadra || "").trim();
+  const inannaQuadra = String(prev.inannaQuadra || "").trim();
+  if (!playerQuadra && !inannaQuadra) return null;
+  return { roundNumber: prevNumber, playerQuadra, inannaQuadra };
 }
 
 async function submitLevel2Original() {
@@ -2188,7 +2213,8 @@ async function submitLevel2Original() {
       themeSource: state.level2.themeSource,
       rhymeScheme: state.level2.rhymeScheme,
       playerQuadra: state.level2.originalQuadra,
-      playerOriginalQuadra: state.level2.originalQuadra
+      playerOriginalQuadra: state.level2.originalQuadra,
+      previousRound: getLevel2PreviousRoundExchange()
     });
     state.level2.inannaQuadra = result.inanna?.quadra || "";
     state.level2.stolenWords = result.inanna?.stolenWords || [];

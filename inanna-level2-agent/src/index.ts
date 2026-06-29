@@ -56,6 +56,11 @@ type RoundPayload = {
 	playerFinalQuadra?: string;
 	inannaQuadra?: string;
 	stolenWords?: string[];
+	previousRound?: {
+		roundNumber?: number;
+		playerQuadra?: string;
+		inannaQuadra?: string;
+	};
 };
 
 type VotePayload = {
@@ -730,8 +735,11 @@ function buildInannaPrompt(input: {
 	stolenWords: string[];
 	roundNumber: number;
 	challenge: { band: string; guidance: string };
+	previousExchange?: string;
 }): string {
 	return `Gere a resposta da Inanna para uma peleja de quadras.
+
+Esta é uma PELEJA DE TEMA ÚNICO: as 3 rodadas tratam do MESMO tema, formando um diálogo/duelo contínuo entre o jogador e a Inanna.
 
 Tema do round: ${input.theme}
 Contexto cultural do tema: ${input.themeContext || "(sem contexto adicional)"}
@@ -741,7 +749,12 @@ Palavras/imagens roubadas do jogador: ${input.stolenWords.join(", ") || "nenhuma
 
 Quadra do jogador:
 ${input.playerQuadra}
-
+${input.previousExchange ? `
+Rodada ANTERIOR desta mesma peleja (mesmo tema):
+${input.previousExchange}
+- Mantenha o FIO do duelo: responda à quadra ATUAL retomando ou superando uma imagem/ideia da rodada anterior.
+- Traga RIMAS NOVAS: NÃO repita as palavras finais nem as rimas já usadas (repetir rima é penalizado; a criatividade premia o inédito). A continuidade é no tema e na imagem, nunca em repetir o som da rima.
+` : ""}
 Calibragem do desafio (zona de desenvolvimento proximal):
 - Nível demonstrado pelo jogador até aqui: ${input.challenge.band}.
 - Desafie UM DEGRAU ACIMA desse nível: ${input.challenge.guidance}
@@ -777,6 +790,11 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 	const rhymeScheme = cleanText(payload.rhymeScheme, 8) || "AABB";
 	const roundNumber = Number(payload.roundNumber || 1);
 	const challenge = assessDemonstratedLevel(playerQuadra, rhymeScheme, roundNumber);
+	// Memória da rodada anterior (mesmo tema) para a Inanna manter o fio do duelo.
+	const prev = payload.previousRound;
+	const previousExchange = prev && (prev.playerQuadra || prev.inannaQuadra)
+		? `Jogador (rodada ${Number(prev.roundNumber || 0)}):\n${cleanText(prev.playerQuadra, 600)}\nInanna (rodada ${Number(prev.roundNumber || 0)}):\n${cleanText(prev.inannaQuadra, 600)}`
+		: "";
 	const prompt = buildInannaPrompt({
 		playerQuadra,
 		theme,
@@ -785,6 +803,7 @@ async function generateInannaResponse(env: Env, payload: RoundPayload): Promise<
 		stolenWords,
 		roundNumber,
 		challenge,
+		previousExchange,
 	});
 
 	let provider = GENERATION_PROVIDER;
