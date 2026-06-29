@@ -31,6 +31,7 @@ Deno.serve((request) => {
   const level2SocialEnabled = Deno.env.get("INANNA_LEVEL2_SOCIAL_ENABLED") || "false";
   const adminEmails = Deno.env.get("INANNA_ADMIN_EMAILS") || "";
   const guestModeEnabled = Deno.env.get("INANNA_GUEST_MODE_ENABLED") || "false";
+  const cadernoEnabled = Deno.env.get("INANNA_CADERNO_ENABLED") || "false";
 
   const body = `{
   const existingConfig = window.INANNA_APP_CONFIG || {};
@@ -53,7 +54,8 @@ Deno.serve((request) => {
     level2SocialEnabled: keep("level2SocialEnabled", ${jsString(level2SocialEnabled)}),
     adminEmails: keep("adminEmails", ${jsString(adminEmails)}),
     socialEmailEnabled: keep("socialEmailEnabled", "false"),
-    guestModeEnabled: keep("guestModeEnabled", ${jsString(guestModeEnabled)})
+    guestModeEnabled: keep("guestModeEnabled", ${jsString(guestModeEnabled)}),
+    cadernoEnabled: keep("cadernoEnabled", ${jsString(cadernoEnabled)})
   };
 }`;
 
