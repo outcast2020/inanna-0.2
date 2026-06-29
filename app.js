@@ -2439,6 +2439,60 @@ function getPelejaPlayerName() {
   return String(state.level2.nickname || state.name || "Você").trim() || "Você";
 }
 
+// Peleja da sessão atual (fim de duelo): lê de state.level2.
+function livePelejaData() {
+  return {
+    playerName: getPelejaPlayerName(),
+    playerWins: Number(state.level2.playerWins || 0),
+    inannaWins: Number(state.level2.inannaWins || 0),
+    rounds: (state.level2.roundResults || []).filter(Boolean).map((r) => ({
+      roundNumber: r.roundNumber,
+      theme: r.theme,
+      playerFinalQuadra: r.playerFinalQuadra,
+      inannaQuadra: r.inannaQuadra,
+      roundWinner: r.roundWinner,
+    })),
+  };
+}
+
+// Peleja a partir do perfil carregado no painel (a sessão mais recente).
+function profilePelejaData() {
+  const profile = state.playerLevel2Profile || {};
+  const rounds = Array.isArray(profile.rounds) ? profile.rounds.filter(Boolean) : [];
+  if (!rounds.length) return null;
+  // Agrupa pela sessão mais recente (rounds vêm ordenados por created_at desc).
+  const latestSessionId = rounds[0].session_id || rounds[0].sessionId || "";
+  const sessionRounds = latestSessionId
+    ? rounds.filter((r) => (r.session_id || r.sessionId || "") === latestSessionId)
+    : rounds;
+  const sessions = Array.isArray(profile.sessions) ? profile.sessions : [];
+  const session = sessions.find((s) => (s.session_id || s.sessionId || "") === latestSessionId) || {};
+  const playerName = String(session.nickname || getPlayerDisplayName() || "Você").trim() || "Você";
+  const winsFrom = (key, fallbackWinner) => {
+    const v = Number(session[key]);
+    if (Number.isFinite(v) && v > 0) return v;
+    return sessionRounds.filter((r) => (r.round_winner || r.roundWinner) === fallbackWinner).length;
+  };
+  return {
+    playerName,
+    playerWins: winsFrom("player_wins", "player"),
+    inannaWins: winsFrom("inanna_wins", "inanna"),
+    rounds: sessionRounds
+      .map((r) => ({
+        roundNumber: Number(r.round_number || r.roundNumber || 0),
+        theme: r.theme || "",
+        playerFinalQuadra: r.player_final_quadra || r.playerFinalQuadra || "",
+        inannaQuadra: r.inanna_quadra || r.inannaQuadra || "",
+        roundWinner: r.round_winner || r.roundWinner || "draw",
+      }))
+      .sort((a, b) => a.roundNumber - b.roundNumber),
+  };
+}
+
+function pelejaHasContent(peleja) {
+  return !!(peleja && Array.isArray(peleja.rounds) && peleja.rounds.some((r) => String(r.playerFinalQuadra || "").trim()));
+}
+
 function wrapCanvasLine(ctx, text, maxWidth) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   if (!words.length) return [""];
@@ -2454,10 +2508,10 @@ function wrapCanvasLine(ctx, text, maxWidth) {
 }
 
 // Lista ordenada das linhas (com estilo) da troca inteira do duelo.
-function buildPelejaLineItems() {
+function buildPelejaLineItems(peleja) {
   const items = [];
-  const playerName = getPelejaPlayerName();
-  const rounds = (state.level2.roundResults || []).filter(Boolean).slice()
+  const playerName = peleja.playerName || "Você";
+  const rounds = (peleja.rounds || []).filter(Boolean).slice()
     .sort((a, b) => Number(a.roundNumber || 0) - Number(b.roundNumber || 0));
   rounds.forEach((r) => {
     const winner = r.roundWinner === "player" ? playerName : r.roundWinner === "inanna" ? "Inanna" : "Empate";
@@ -2474,7 +2528,7 @@ function buildPelejaLineItems() {
   return items;
 }
 
-async function buildPelejaSocialCanvas() {
+async function buildPelejaSocialCanvas(peleja) {
   const tpl = await loadPelejaTemplateImage();
   const W = 1122;
   const H = 1402;
@@ -2500,10 +2554,10 @@ async function buildPelejaSocialCanvas() {
   ctx.font = `800 38px ${family}`;
   ctx.fillText("Peleja com Inanna", cx, top);
   ctx.font = `600 25px ${family}`;
-  ctx.fillText(getPelejaPlayerName(), cx, top + 50);
+  ctx.fillText(peleja.playerName || "Você", cx, top + 50);
   ctx.font = `700 22px ${family}`;
   ctx.fillStyle = "#7a1f17";
-  ctx.fillText(`Humano ${state.level2.playerWins} × ${state.level2.inannaWins} Inanna`, cx, top + 86);
+  ctx.fillText(`Humano ${Number(peleja.playerWins || 0)} × ${Number(peleja.inannaWins || 0)} Inanna`, cx, top + 86);
 
   const bodyTop = top + 132;
   const bodyBottom = bottom - 56;             // reserva para a assinatura
@@ -2512,7 +2566,7 @@ async function buildPelejaSocialCanvas() {
 
   // Word-wrap em tamanho base; depois escala o bloco inteiro para caber.
   const wrapped = [];
-  buildPelejaLineItems().forEach((it) => {
+  buildPelejaLineItems(peleja).forEach((it) => {
     const size = base[it.kind] || base.verse;
     ctx.font = `${weightOf(it.kind)} ${size}px ${family}`;
     const maxW = cream.w - (it.kind === "verse" ? 36 : 0);
@@ -2548,19 +2602,22 @@ async function buildPelejaSocialCanvas() {
   return canvas;
 }
 
-async function downloadPelejaSocialImage(btn) {
+function pelejaSlug(name) {
+  return String(name || "jogador").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "jogador";
+}
+
+async function downloadPelejaSocialImage(btn, peleja) {
   const prev = btn ? btn.textContent : "";
   try {
     if (btn) { btn.disabled = true; btn.textContent = "Gerando imagem..."; }
-    const canvas = await buildPelejaSocialCanvas();
+    const canvas = await buildPelejaSocialCanvas(peleja);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("Falha ao gerar a imagem.");
     const url = URL.createObjectURL(blob);
-    const slug = getPelejaPlayerName().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "jogador";
     const link = document.createElement("a");
     link.href = url;
-    link.download = `peleja-inanna-${slug}.png`;
+    link.download = `peleja-inanna-${pelejaSlug(peleja.playerName)}.png`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -2573,33 +2630,40 @@ async function downloadPelejaSocialImage(btn) {
   }
 }
 
-function renderPelejaSocialSectionHTML() {
-  const playedRounds = (state.level2.roundResults || []).filter(Boolean).length;
-  const fragCount = Math.max(3, Math.min(9, playedRounds * 3 || 3));
-  const frags = Array.from({ length: fragCount }, (_, i) => `
-    <div title="Fragmento de xilogravura (provisório)" style="width:64px;height:64px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:repeating-linear-gradient(45deg,rgba(122,31,23,0.18),rgba(122,31,23,0.18) 6px,rgba(122,31,23,0.30) 6px,rgba(122,31,23,0.30) 12px);border:1px solid rgba(122,31,23,0.4);color:var(--text);">
-      <span style="font-size:20px;">🪵</span><small style="font-size:9px;opacity:.8;">peça ${i + 1}</small>
-    </div>`).join("");
-  return `
-    <div class="peleja-social" style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.12);padding-top:16px;">
-      <h4 style="margin:0 0 8px;">📜 Sua peleja completa</h4>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">A troca inteira do duelo, pronta para postar — com seu nome e a patinha da Inanna.</p>
-      <div id="pelejaSocialPreview" style="min-height:160px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border-radius:12px;padding:12px;color:var(--muted);font-size:13px;">Montando a imagem da peleja…</div>
-      <button id="pelejaSocialDownloadBtn" class="btn btn-primary" type="button" style="margin-top:12px;width:100%;justify-content:center;">⬇️ Baixar imagem (PNG)</button>
+function renderPelejaSocialSectionHTML(peleja, opts = {}) {
+  const idp = opts.idPrefix || "pelejaSocial";
+  const showFragments = opts.showFragments !== false;
+  let fragHtml = "";
+  if (showFragments) {
+    const fragCount = Math.max(3, Math.min(9, (peleja.rounds || []).length * 3 || 3));
+    const frags = Array.from({ length: fragCount }, (_, i) => `
+      <div title="Fragmento de xilogravura (provisório)" style="width:64px;height:64px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:repeating-linear-gradient(45deg,rgba(122,31,23,0.18),rgba(122,31,23,0.18) 6px,rgba(122,31,23,0.30) 6px,rgba(122,31,23,0.30) 12px);border:1px solid rgba(122,31,23,0.4);color:var(--text);">
+        <span style="font-size:20px;">🪵</span><small style="font-size:9px;opacity:.8;">peça ${i + 1}</small>
+      </div>`).join("");
+    fragHtml = `
       <div style="margin-top:20px;">
         <h4 style="margin:0 0 6px;">🧩 Fragmentos de xilogravura coletados</h4>
         <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Imagens provisórias — o projeto gráfico dos colecionáveis ainda está em construção.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">${frags}</div>
-      </div>
+      </div>`;
+  }
+  return `
+    <div class="peleja-social" style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.12);padding-top:16px;">
+      <h4 style="margin:0 0 8px;">📜 ${opts.title || "Sua peleja completa"}</h4>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">A troca inteira do duelo, pronta para postar — com seu nome e a patinha da Inanna.</p>
+      <div id="${idp}Preview" style="min-height:160px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border-radius:12px;padding:12px;color:var(--muted);font-size:13px;">Montando a imagem da peleja…</div>
+      <button id="${idp}DownloadBtn" class="btn btn-primary" type="button" style="margin-top:12px;width:100%;justify-content:center;">⬇️ Baixar imagem (PNG)</button>
+      ${fragHtml}
     </div>`;
 }
 
-function wirePelejaSocialSection() {
-  const btn = document.getElementById("pelejaSocialDownloadBtn");
-  if (btn) btn.addEventListener("click", () => downloadPelejaSocialImage(btn));
-  const preview = document.getElementById("pelejaSocialPreview");
+function wirePelejaSocialSection(peleja, opts = {}) {
+  const idp = opts.idPrefix || "pelejaSocial";
+  const btn = document.getElementById(`${idp}DownloadBtn`);
+  if (btn) btn.addEventListener("click", () => downloadPelejaSocialImage(btn, peleja));
+  const preview = document.getElementById(`${idp}Preview`);
   if (!preview) return;
-  buildPelejaSocialCanvas().then((canvas) => {
+  buildPelejaSocialCanvas(peleja).then((canvas) => {
     const img = new Image();
     img.alt = "Imagem da peleja completa de Inanna";
     img.style.maxWidth = "100%";
@@ -2627,14 +2691,15 @@ function finishLevel2Match() {
       ? "A máquina levou esta rodada, mas deixou pistas claras para sua próxima resposta."
       : "A peleja terminou parelha. Vale retomar a roda para buscar uma virada mais nítida.";
   if (ui.level2MatchResult) {
+    const peleja = livePelejaData();
     ui.level2MatchResult.hidden = false;
     ui.level2MatchResult.innerHTML = `
       <h3>${title}</h3>
       <p>${description}</p>
       <p><strong>Placar final:</strong> Humano ${state.level2.playerWins} x ${state.level2.inannaWins} Inanna.</p>
-      ${renderPelejaSocialSectionHTML()}
+      ${renderPelejaSocialSectionHTML(peleja)}
     `;
-    wirePelejaSocialSection();
+    wirePelejaSocialSection(peleja);
   }
   if (ui.level2NextRoundBtn) ui.level2NextRoundBtn.hidden = true;
   setLevel2RoundState(LEVEL2_ROUND_STATES.MATCH_RESULT);
@@ -2972,7 +3037,16 @@ function renderPlayerLevel2Results() {
     ui.playerLevel2Results.innerHTML = `<div class="workspace-empty">Quando você jogar o Nível 2, cada resultado aparecerá aqui para copiar ou publicar depois.</div>`;
     return;
   }
-  ui.playerLevel2Results.innerHTML = rounds.map((round) => {
+  // Imagem social da peleja completa (sessão mais recente), pronta para redes.
+  const panelPeleja = profilePelejaData();
+  const socialHtml = pelejaHasContent(panelPeleja)
+    ? renderPelejaSocialSectionHTML(panelPeleja, {
+        idPrefix: "pelejaPanelSocial",
+        showFragments: false,
+        title: "Imagem da sua peleja para redes",
+      })
+    : "";
+  ui.playerLevel2Results.innerHTML = socialHtml + rounds.map((round) => {
     const roundId = getLevel2RoundId(round);
     const finalQuadra = String(round.player_final_quadra || round.playerFinalQuadra || "").trim();
     const inannaQuadra = String(round.inanna_quadra || round.inannaQuadra || "").trim();
@@ -3003,6 +3077,7 @@ function renderPlayerLevel2Results() {
       </article>
     `;
   }).join("");
+  if (socialHtml) wirePelejaSocialSection(panelPeleja, { idPrefix: "pelejaPanelSocial" });
 }
 
 function renderPlayerPanel() {
