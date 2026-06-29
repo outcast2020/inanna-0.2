@@ -19,6 +19,7 @@ const passthroughFiles = [
   "cordel-logo-card.png",
   "CORDEL 2.0 SEM FUNDO.png",
   "inanna_footer_embed_snippet.html",
+  "template-poesia.png",
 ];
 
 function copyRuntimeStaticFiles() {
