@@ -385,8 +385,13 @@ const DEFAULT_ADMIN_EMAILS = [
   "celestefarias@ymail.com"
 ];
 const SEXTILHA_LOCKED_NOTICE = "ainda estamos trabalhando e sonhando este espaço";
-const LEVEL2_LOCKED_NOTICE = "Domine a rima humana no Nível 1 para liberar o Nível 2.";
+const LEVEL2_LOCKED_NOTICE = "Faça uma quadra perfeita, complete as marcas de autoria ou insista 20 vezes para liberar o Nível 2.";
 const CHALLENGE_MAX_SCORE = 14;
+// Três vias independentes para o Nível 2 (excelência, percurso ou perseverança):
+// basta UMA delas. A perseverança existe para que ninguém fique preso no Nível 1
+// só por não alcançar a nota máxima — quem continua tentando também avança.
+const LEVEL2_PERFECT_QUADRAS_REQUIRED = 1;
+const LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED = 20;
 const MASTERY_CRITERIA = [
   { key: "formaMax", label: "Forma da quadra" },
   { key: "rimaFinalMax", label: "Rima final forte" },
@@ -1154,25 +1159,31 @@ function getProgressPlayerId() {
 
 function getStoredPlayerDisplayName() {
   try {
-    return String(window.localStorage?.getItem(PLAYER_DISPLAY_NAME_STORAGE_KEY) || "").trim();
+    const primary = String(window.localStorage?.getItem(PLAYER_DISPLAY_NAME_STORAGE_KEY) || "").trim();
+    if (primary) return primary;
+    // O apelido da peleja vale como nome de jogo: saveLevel2Nickname grava só
+    // esta chave, então sem ler as duas o apelido do Nível 2 nunca chegaria aqui.
+    return String(window.localStorage?.getItem(LEVEL2_NICKNAME_STORAGE_KEY) || "").trim();
   } catch (_) {
     return "";
   }
 }
 
+// Nome público do jogador. NUNCA pode cair no nome civil do check-in: tudo que
+// sai deste helper é exibido para outras pessoas (placar, peleja, folheto).
+// Sem apelido escolhido, o certo é um pseudônimo neutro — não o nome real.
+const PLAYER_DISPLAY_NAME_FALLBACK = "Cordelista anônimo";
+
 function getPlayerDisplayName() {
   return String(
     getStoredPlayerDisplayName()
     || state.playerProgress?.nickname
-    || state.name
-    || state.playerData?.nome
-    || state.playerData?.name
-    || "Participante"
-  ).trim();
+    || PLAYER_DISPLAY_NAME_FALLBACK
+  ).trim() || PLAYER_DISPLAY_NAME_FALLBACK;
 }
 
 function savePlayerDisplayName(value) {
-  const nickname = String(value || "").trim().slice(0, 40) || "Participante";
+  const nickname = String(value || "").trim().slice(0, 40) || PLAYER_DISPLAY_NAME_FALLBACK;
   try {
     window.localStorage?.setItem(PLAYER_DISPLAY_NAME_STORAGE_KEY, nickname);
     window.localStorage?.setItem(LEVEL2_NICKNAME_STORAGE_KEY, nickname);
@@ -1197,6 +1208,11 @@ function createDefaultPlayerProgress() {
     mastery: emptyMasteryState(),
     schemesUsed: emptySchemesUsed(),
     totalChallengeQuadras: 0,
+    // Perseverança: quadras DISTINTAS e válidas. Separado de totalChallengeQuadras,
+    // que também conta reenvio da mesma quadra e quadra de pontuação zero — base
+    // frágil para um desbloqueio.
+    persistenceQuadraHashes: [],
+    persistenceBaseline: 0,
     bestScore: 0,
     scoreHistory: [],
     lastUpdatedAt: new Date().toISOString()
@@ -1265,7 +1281,9 @@ function hydratePlayerProgress(rawProgress = {}) {
     ...fallback,
     ...rawProgress,
     playerId: getProgressPlayerId(),
-    nickname: getStoredPlayerDisplayName() || state.name || rawProgress.nickname || fallback.nickname,
+    // Sem "|| state.name": semear o apelido com o nome do check-in era o que
+    // fazia o nome civil vazar para o placar mesmo depois de trocar a origem.
+    nickname: getStoredPlayerDisplayName() || rawProgress.nickname || fallback.nickname,
     levelUnlocked: Math.max(1, Math.min(3, Number(rawProgress.levelUnlocked || fallback.levelUnlocked) || 1)),
     perfectQuadrasCount: Math.max(0, Number(rawProgress.perfectQuadrasCount || 0) || 0),
     uniquePerfectQuadraHashes: Array.isArray(rawProgress.uniquePerfectQuadraHashes)
@@ -1280,30 +1298,50 @@ function hydratePlayerProgress(rawProgress = {}) {
       ...(rawProgress.schemesUsed || {})
     },
     totalChallengeQuadras: Math.max(0, Number(rawProgress.totalChallengeQuadras || 0) || 0),
+    persistenceQuadraHashes: Array.isArray(rawProgress.persistenceQuadraHashes)
+      ? rawProgress.persistenceQuadraHashes.filter(Boolean).slice(0, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED)
+      : [],
+    // Crédito retroativo, congelado na primeira hidratação depois desta versão:
+    // quem já jogava não recomeça a perseverança do zero.
+    persistenceBaseline: Object.prototype.hasOwnProperty.call(rawProgress, "persistenceBaseline")
+      ? Math.max(0, Number(rawProgress.persistenceBaseline || 0) || 0)
+      : Math.max(0, Number(rawProgress.totalChallengeQuadras || 0) || 0),
     bestScore: Math.max(0, Number(rawProgress.bestScore || 0) || 0),
     scoreHistory: Array.isArray(rawProgress.scoreHistory)
       ? rawProgress.scoreHistory.filter((entry) => entry && typeof entry === "object").slice(-SCORE_HISTORY_LIMIT)
       : [],
     lastUpdatedAt: rawProgress.lastUpdatedAt || fallback.lastUpdatedAt
   };
+  progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length || progress.perfectQuadrasCount;
+  // Aplica a regra sobre o progresso já guardado: quem cumpriu qualquer uma das
+  // três vias antes desta versão entra no Nível 2 ao abrir o app, sem precisar
+  // jogar outra quadra só para o desbloqueio ser recalculado.
+  if (evaluateLevel2Unlock(progress).unlocked) {
+    progress.levelUnlocked = Math.max(progress.levelUnlocked, 2);
+  }
   if (isAdminEmail()) {
     progress.levelUnlocked = 3;
   }
-  progress.perfectQuadrasCount = progress.uniquePerfectQuadraHashes.length || progress.perfectQuadrasCount;
   return progress;
 }
 
-function readStoredPlayerProgress() {
+function readRawProgressStore() {
   try {
     const raw = window.localStorage?.getItem(PLAYER_PROGRESS_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const playerId = getProgressPlayerId();
-    if (parsed?.playerId === playerId) return parsed;
-    if (parsed?.players?.[playerId]) return parsed.players[playerId];
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch (error) {
     console.debug("Nao foi possivel ler progresso local.", error);
+    return null;
   }
+}
+
+function readStoredPlayerProgress(playerId = getProgressPlayerId()) {
+  const parsed = readRawProgressStore();
+  if (!parsed) return null;
+  if (parsed.players?.[playerId]) return parsed.players[playerId];
+  if (parsed.playerId === playerId) return parsed;
   return null;
 }
 
@@ -1312,7 +1350,17 @@ function savePlayerProgress(progress) {
   next.lastUpdatedAt = new Date().toISOString();
   state.playerProgress = next;
   try {
-    window.localStorage?.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify(next));
+    // Mapa por jogador: em máquina compartilhada (oficina, sala de aula), o
+    // segundo jogador não apaga mais o progresso do primeiro. O registro plano
+    // continua no topo por compatibilidade com o formato antigo.
+    const store = readRawProgressStore() || {};
+    const players = { ...(store.players || {}) };
+    if (store.playerId && store.playerId !== next.playerId && !players[store.playerId]) {
+      const { players: _ignored, ...legacyFlat } = store;
+      players[store.playerId] = legacyFlat;
+    }
+    players[next.playerId] = next;
+    window.localStorage?.setItem(PLAYER_PROGRESS_STORAGE_KEY, JSON.stringify({ ...next, players }));
   } catch (error) {
     console.debug("Nao foi possivel salvar progresso local.", error);
   }
@@ -1320,8 +1368,22 @@ function savePlayerProgress(progress) {
   return next;
 }
 
+// Convidado que faz check-in é a MESMA pessoa: sem isto, o playerId muda de
+// "visitante" para o participantId e a perseverança recomeça do zero justo em
+// quem mais jogou antes de se identificar.
+function adoptGuestProgressIfAny(playerId) {
+  if (!playerId || playerId === "visitante") return null;
+  const guest = readStoredPlayerProgress("visitante");
+  if (!guest) return null;
+  const alreadyPlayed = Number(guest.totalChallengeQuadras || 0) > 0
+    || (Array.isArray(guest.persistenceQuadraHashes) && guest.persistenceQuadraHashes.length > 0);
+  return alreadyPlayed ? { ...guest, playerId } : null;
+}
+
 function loadPlayerProgress() {
-  state.playerProgress = hydratePlayerProgress(readStoredPlayerProgress() || {});
+  const playerId = getProgressPlayerId();
+  const stored = readStoredPlayerProgress(playerId) || adoptGuestProgressIfAny(playerId);
+  state.playerProgress = hydratePlayerProgress(stored || {});
   return state.playerProgress;
 }
 
@@ -1332,8 +1394,31 @@ function ensurePlayerProgress() {
   return state.playerProgress;
 }
 
-function countMasteryCriteria(progress = ensurePlayerProgress()) {
-  return MASTERY_CRITERIA.filter((item) => !!progress.mastery?.[item.key]).length;
+// Fonte única da regra do Nível 2. Três portas independentes — excelência,
+// percurso e perseverança —, para que o avanço não dependa de um único talento.
+function evaluateLevel2Unlock(progress) {
+  const perfect = Math.max(0, Number(progress?.perfectQuadrasCount || 0) || 0);
+  // Conta quadras distintas e válidas, não submissões: reenviar o mesmo texto
+  // não é perseverança. `persistenceBaseline` credita, uma única vez, o que a
+  // pessoa já tinha jogado antes desta versão — sem deixar o contador antigo
+  // (que soma duplicatas e quadras de pontuação zero) reger a regra daqui pra frente.
+  const distinct = Array.isArray(progress?.persistenceQuadraHashes)
+    ? progress.persistenceQuadraHashes.length
+    : 0;
+  const attempts = Math.max(0, Number(progress?.persistenceBaseline || 0) || 0) + distinct;
+  const masteryDone = MASTERY_CRITERIA.filter((item) => !!progress?.mastery?.[item.key]).length;
+  const byPerfect = perfect >= LEVEL2_PERFECT_QUADRAS_REQUIRED;
+  const byMastery = masteryDone >= MASTERY_CRITERIA.length;
+  const byPersistence = attempts >= LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED;
+  return {
+    perfect,
+    attempts,
+    masteryDone,
+    byPerfect,
+    byMastery,
+    byPersistence,
+    unlocked: byPerfect || byMastery || byPersistence
+  };
 }
 
 function getProgressPercent(value, total) {
@@ -1397,6 +1482,14 @@ function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
   const duplicatePerfect = isPerfect && quadraHash && progress.uniquePerfectQuadraHashes.includes(quadraHash);
 
   progress.totalChallengeQuadras += 1;
+  // Perseverança só conta quadra que valeu alguma coisa e que ainda não foi
+  // contada — e para de crescer ao atingir a meta, para não inchar o localStorage.
+  const countsForPersistence = !!quadraHash
+    && Number(scoreBreakdown.total || 0) > 0
+    && !progress.persistenceQuadraHashes.includes(quadraHash);
+  if (countsForPersistence && progress.persistenceQuadraHashes.length < LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED) {
+    progress.persistenceQuadraHashes.push(quadraHash);
+  }
   progress.bestScore = Math.max(progress.bestScore, Number(scoreBreakdown.total || 0));
   if (scheme && flags.esquemaForteMax && flags.semFalhaDeRima) {
     progress.schemesUsed[scheme] = Number(progress.schemesUsed[scheme] || 0) + 1;
@@ -1415,9 +1508,8 @@ function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
   // Trajetória longitudinal: registra a sessão antes de derivar a tendência.
   progress.scoreHistory = [...(progress.scoreHistory || []), buildScoreHistoryEntry(scoreBreakdown)].slice(-SCORE_HISTORY_LIMIT);
 
-  const unlockByPerfectQuadras = progress.perfectQuadrasCount >= 5;
-  const unlockByMastery = Object.values(progress.mastery).every(Boolean);
-  if (unlockByPerfectQuadras || unlockByMastery) {
+  const unlock = evaluateLevel2Unlock(progress);
+  if (unlock.unlocked) {
     progress.levelUnlocked = Math.max(progress.levelUnlocked, 2);
   }
 
@@ -1429,17 +1521,30 @@ function updatePlayerProgressAfterChallengeQuadra(scoreBreakdown) {
     isPerfect,
     duplicatePerfect,
     justUnlocked: before.levelUnlocked < 2 && saved.levelUnlocked >= 2,
-    unlockByPerfectQuadras,
-    unlockByMastery
+    unlock,
+    unlockByPerfectQuadras: unlock.byPerfect,
+    unlockByMastery: unlock.byMastery,
+    unlockByPersistence: unlock.byPersistence
   };
 }
 
 function getPerfectQuadrasMessage(progress) {
-  const count = Number(progress?.perfectQuadrasCount || 0);
-  if (count >= 5) return "Nível 2 desbloqueado pela excelência.";
-  if (count >= 3) return "Você já domina boa parte da rima.";
-  if (count >= 1) return "Primeira quadra perfeita registrada.";
+  const unlock = evaluateLevel2Unlock(progress);
+  if (unlock.byPerfect) return "Quadra de pontuação máxima registrada: Nível 2 liberado pela excelência.";
+  if (unlock.byMastery) return "Todas as marcas de autoria preenchidas: Nível 2 liberado pelo percurso.";
+  if (unlock.byPersistence) return "Vinte quadras no caderno: Nível 2 liberado pela perseverança.";
+  const faltamTentativas = LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED - unlock.attempts;
+  if (unlock.masteryDone >= MASTERY_CRITERIA.length - 2) return "Falta pouco: quase todas as marcas de autoria.";
+  if (faltamTentativas <= 5) return `Perseverança conta: faltam ${faltamTentativas} quadras para liberar o Nível 2.`;
   return "Comece sua jornada de maestria.";
+}
+
+// Frase curta com a via mais próxima — só as três regras reais, sem meta oculta.
+function getLevel2MissingMessage(progress) {
+  const unlock = evaluateLevel2Unlock(progress);
+  const faltamMarcas = MASTERY_CRITERIA.length - unlock.masteryDone;
+  const faltamTentativas = Math.max(0, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED - unlock.attempts);
+  return `Bloqueado: falta 1 quadra de pontuação máxima, ou ${faltamMarcas} marcas de autoria, ou ${faltamTentativas} quadras de perseverança.`;
 }
 
 function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
@@ -1458,8 +1563,7 @@ function getLevel2StatusMessage(progress = ensurePlayerProgress()) {
   if (progress.levelUnlocked >= 2) {
     return "Nível 2 conquistado; será ativado quando a produção mudar para o nível 2.";
   }
-  const missing = MASTERY_CRITERIA.length - countMasteryCriteria(progress);
-  return `Bloqueado: faltam ${Math.max(0, 5 - progress.perfectQuadrasCount)} quadras perfeitas ou ${missing} marcas de maestria.`;
+  return getLevel2MissingMessage(progress);
 }
 
 function canAccessLevel2Preview(progress = ensurePlayerProgress()) {
@@ -1491,30 +1595,41 @@ function syncLevel2TrackAccess(options = {}) {
   return hasAccess;
 }
 
+// Mostra a via mais adiantada das três, para a barra refletir o caminho real.
+function getLevel2BestPathPercent(unlock) {
+  return Math.max(
+    getProgressPercent(unlock.perfect, LEVEL2_PERFECT_QUADRAS_REQUIRED),
+    getProgressPercent(unlock.masteryDone, MASTERY_CRITERIA.length),
+    getProgressPercent(unlock.attempts, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED)
+  );
+}
+
 function renderLevel2MiniProgress(progress = ensurePlayerProgress()) {
-  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
-  const masteryCount = countMasteryCriteria(progress);
+  const unlock = evaluateLevel2Unlock(progress);
   return `
     <div class="level2-mini-progress">
-      <span>Quadras perfeitas: <strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong></span>
-      <span>Critérios dominados: <strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></span>
-      <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${perfectPercent}%"></i></span>
+      <span>Quadra máxima: <strong>${Math.min(unlock.perfect, LEVEL2_PERFECT_QUADRAS_REQUIRED)}/${LEVEL2_PERFECT_QUADRAS_REQUIRED}</strong></span>
+      <span>Marcas de autoria: <strong>${unlock.masteryDone}/${MASTERY_CRITERIA.length}</strong></span>
+      <span>Perseverança: <strong>${Math.min(unlock.attempts, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED)}/${LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED}</strong></span>
+      <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${getLevel2BestPathPercent(unlock)}%"></i></span>
     </div>
   `;
 }
 
 function renderMasteryProgressHTML(update) {
   const progress = update?.progress || ensurePlayerProgress();
-  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
-  const masteryCount = countMasteryCriteria(progress);
+  const unlock = evaluateLevel2Unlock(progress);
+  const perfectPercent = getProgressPercent(unlock.perfect, LEVEL2_PERFECT_QUADRAS_REQUIRED);
+  const masteryCount = unlock.masteryDone;
   const masteryPercent = getProgressPercent(masteryCount, MASTERY_CRITERIA.length);
+  const persistencePercent = getProgressPercent(unlock.attempts, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED);
   const pending = MASTERY_CRITERIA.filter((item) => !progress.mastery?.[item.key]);
   const unlocked = Number(progress.levelUnlocked || 1) >= 2;
   const status = update?.justUnlocked
     ? "Nível 2 desbloqueado! Você provou que a rima humana pode enfrentar a sedução da máquina."
     : unlocked
       ? "Nível 2 desbloqueado pela sua trilha de maestria."
-      : `Faltam ${pending.length} marcas de maestria para liberar o Nível 2.`;
+      : `Faltam ${pending.length} marcas de maestria para liberar o Nível 2 por esta via.`;
   const secondary = update?.justUnlocked
     ? "Agora a Inanna ficará mais persuasiva. Mas a vitória continua dependendo da sua autoria."
     : getPerfectQuadrasMessage(progress);
@@ -1538,17 +1653,22 @@ function renderMasteryProgressHTML(update) {
         </div>
         <span class="mastery-panel__badge">${unlocked ? "Nível 2 desbloqueado" : "Nível 2 bloqueado"}</span>
       </div>
-      <p class="mastery-panel__intro">Complete 5 quadras perfeitas ou domine todos os critérios para liberar o Nível 2.</p>
+      <p class="mastery-panel__intro">Três caminhos abrem o Nível 2, e basta um: uma quadra de pontuação máxima, todas as marcas de autoria, ou ${LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED} quadras de perseverança.</p>
       <div class="mastery-grid">
         <div class="mastery-track">
-          <div class="mastery-track__label"><span>Quadras perfeitas</span><strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong></div>
+          <div class="mastery-track__label"><span>Quadra de pontuação máxima</span><strong>${Math.min(unlock.perfect, LEVEL2_PERFECT_QUADRAS_REQUIRED)}/${LEVEL2_PERFECT_QUADRAS_REQUIRED}</strong></div>
           <div class="mastery-track__bar"><i style="width:${perfectPercent}%"></i></div>
           <p>${escapeHtml(getPerfectQuadrasMessage(progress))}</p>
         </div>
         <div class="mastery-track">
-          <div class="mastery-track__label"><span>Critérios dominados</span><strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></div>
+          <div class="mastery-track__label"><span>Marcas de autoria</span><strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong></div>
           <div class="mastery-track__bar mastery-track__bar--criteria"><i style="width:${masteryPercent}%"></i></div>
           <p>${escapeHtml(status)}</p>
+        </div>
+        <div class="mastery-track">
+          <div class="mastery-track__label"><span>Perseverança</span><strong>${Math.min(unlock.attempts, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED)}/${LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED}</strong></div>
+          <div class="mastery-track__bar"><i style="width:${persistencePercent}%"></i></div>
+          <p>${escapeHtml(unlock.byPersistence ? "A insistência também abre caminho: via liberada." : "Cada quadra nova conta, mesmo as que não somam muitos pontos.")}</p>
         </div>
       </div>
       <ul class="mastery-checklist">${checklist}</ul>
@@ -2470,7 +2590,8 @@ function loadPelejaTemplateImage() {
 }
 
 function getPelejaPlayerName() {
-  return String(state.level2.nickname || state.name || "Você").trim() || "Você";
+  // Vai estampado na imagem da peleja, feita para ser compartilhada: apelido, não nome civil.
+  return String(state.level2.nickname || getPlayerDisplayName()).trim() || "Você";
 }
 
 // Peleja da sessão atual (fim de duelo): lê de state.level2.
@@ -2965,15 +3086,14 @@ function renderDashboardProfileSummary() {
 
 function isLevel2UnlockReady(progress = ensurePlayerProgress()) {
   if (isAdminEmail()) return true;
-  return Number(progress.perfectQuadrasCount || 0) >= 5
-    || MASTERY_CRITERIA.every((item) => !!progress.mastery?.[item.key]);
+  return evaluateLevel2Unlock(progress).unlocked;
 }
 
 function renderPlayerLevel1Rewards() {
   if (!ui.playerLevel1Rewards) return;
   const progress = ensurePlayerProgress();
-  const masteryCount = countMasteryCriteria(progress);
-  const perfectPercent = getProgressPercent(progress.perfectQuadrasCount, 5);
+  const unlock = evaluateLevel2Unlock(progress);
+  const masteryCount = unlock.masteryDone;
   const unlocked = Number(progress.levelUnlocked || 1) >= 2;
   const ready = isLevel2UnlockReady(progress);
   const checklist = MASTERY_CRITERIA.map((item) => {
@@ -2982,11 +3102,12 @@ function renderPlayerLevel1Rewards() {
   }).join("");
   ui.playerLevel1Rewards.innerHTML = `
     <div class="player-reward-metrics">
-      <div><strong>${Math.min(progress.perfectQuadrasCount, 5)}/5</strong><span>quadras perfeitas</span></div>
+      <div><strong>${Math.min(unlock.perfect, LEVEL2_PERFECT_QUADRAS_REQUIRED)}/${LEVEL2_PERFECT_QUADRAS_REQUIRED}</strong><span>quadra máxima</span></div>
       <div><strong>${masteryCount}/${MASTERY_CRITERIA.length}</strong><span>marcas de autoria</span></div>
+      <div><strong>${Math.min(unlock.attempts, LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED)}/${LEVEL2_PERSISTENCE_ATTEMPTS_REQUIRED}</strong><span>perseverança</span></div>
       <div><strong>${progress.bestScore || 0}</strong><span>melhor pontuação</span></div>
     </div>
-    <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${perfectPercent}%"></i></span>
+    <span class="level2-mini-progress__bar" aria-hidden="true"><i style="width:${getLevel2BestPathPercent(unlock)}%"></i></span>
     <p class="workspace-meta">${escapeHtml(unlocked ? "Nível 2 liberado no seu percurso." : ready ? "Suas conquistas já permitem pedir a liberação com Inanna." : getLevel2StatusMessage(progress))}</p>
     <div class="player-mark-list">${checklist}</div>
   `;
@@ -5346,7 +5467,9 @@ function buildSocialPostcardData(text = state.activeText, version = null) {
     folhetoTitle: String(text?.folhetoTitle || state.activeFolheto?.title || "").trim(),
     title: String(sourceVersion?.title || text?.title || "Sextilha sem título").trim() || "Sextilha sem título",
     theme: String(sourceVersion?.theme || text?.theme || "Tema livre").trim() || "Tema livre",
-    authorName: String(state.name || state.email || "Estudante").trim() || "Estudante",
+    // Imagem feita para ser compartilhada: assina com o apelido. O fallback
+    // antigo (nome do check-in, e depois o e-mail) estampava dado pessoal.
+    authorName: getPlayerDisplayName(),
     verses,
   };
 }
@@ -7512,7 +7635,7 @@ if (ui.savePlayerDisplayNameBtn) {
   ui.savePlayerDisplayNameBtn.addEventListener("click", () => {
     const nickname = savePlayerDisplayName(ui.playerDisplayNameInput?.value || "");
     if (ui.playerDisplayNameStatus) {
-      ui.playerDisplayNameStatus.textContent = `Inanna vai chamar você de ${nickname}.`;
+      ui.playerDisplayNameStatus.textContent = `Inanna vai chamar você de ${nickname} — e é assim que você aparece no placar.`;
       ui.playerDisplayNameStatus.style.color = "var(--accent)";
     }
   });
@@ -7964,6 +8087,25 @@ function renderPlacarReactionControls(item) {
   `;
 }
 
+// Conectivos não contam como "nome": preserva apelidos como "Zé da Manga".
+const PLACAR_AUTHOR_CONNECTIVES = ["de", "da", "do", "das", "dos", "e", "di", "du", "del", "la"];
+
+// Regra do placar: nunca exibir mais que um primeiro nome e uma inicial.
+// As quadras enviadas antes desta versão guardaram o nome civil do check-in em
+// `quadras.nome`; até o backfill da migration 012 rodar, elas chegam aqui
+// inteiras. Encurtar na renderização protege essas linhas antigas hoje, e não
+// mexe em apelidos (que têm um ou dois nomes significativos).
+function formatPlacarAuthor(value) {
+  const raw = String(value || "").trim().replace(/\s+/g, " ");
+  if (!raw) return "Autor anônimo";
+  const parts = raw.split(" ");
+  const significant = parts.filter((part) => !PLACAR_AUTHOR_CONNECTIVES.includes(part.toLowerCase()));
+  if (significant.length < 3) return raw;
+  const first = significant[0];
+  const lastInitial = significant[significant.length - 1].charAt(0).toUpperCase();
+  return lastInitial ? `${first} ${lastInitial}.` : first;
+}
+
 function renderPlacarItems(data) {
   ui.placarList.innerHTML = "";
   if (ui.fullPlacarList) ui.fullPlacarList.innerHTML = "";
@@ -8007,7 +8149,7 @@ function renderPlacarItems(data) {
           <span class="placar-pos">${medal}${i + 1}º</span>
           <span class="placar-pontos">${(Number(item.pontos) || 0) + ' pts'}</span>
         </div>
-        <div class="placar-autor">${escapeHtml(item.autor)}</div>
+        <div class="placar-autor">${escapeHtml(formatPlacarAuthor(item.autor))}</div>
         <div class="placar-verso">${renderQuadraVerses(item.verso)}</div>
         ${renderPlacarReactionControls(item)}
       `;
@@ -8110,8 +8252,11 @@ ui.btnSubmitPoem.addEventListener("click", async () => {
   const tempoEscritaMs = getWritingElapsedMs();
   const payload = {
     appVariant: APP_VARIANT,
-    nome: state.name || state.playerData.nome,
-    name: state.name || state.playerData.nome,
+    // `quadras.nome` alimenta a coluna "autor" do placar público, então aqui vai
+    // o APELIDO — nunca o nome do check-in. A identidade real da pesquisa não se
+    // perde: continua em `email` e no vínculo `participante_id` -> participantes.
+    nome: getPlayerDisplayName(),
+    name: getPlayerDisplayName(),
     email: state.email || state.playerData.email,
     tipoAcesso: state.playerData.tipoAcesso,
     participantId: state.participantId || state.playerData.participantId || "",
