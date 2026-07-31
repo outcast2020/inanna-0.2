@@ -4,8 +4,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
+// Arquivos servidos crus, sem passar pelo Vite. `app.js` NÃO entra aqui: ele é
+// o entry <script type="module"> do index.html, então o Vite já o compila para
+// /assets/index-*.js. Copiá-lo também publicava uma segunda cópia, não-minificada
+// e nunca executada — peso morto que ainda enganava quem depurava produção.
+// Os três abaixo entram como <script> clássico (sem type="module"), que o Vite
+// não processa: esses precisam mesmo da cópia crua.
 const passthroughFiles = [
-  "app.js",
   "supabase-client.js",
   "cordel_rhyme_bank.js",
   "prediction_engine_v2.js",
